@@ -1,6 +1,6 @@
 <!--
   Posted into #start-here by the provisioner and pinned. Edit and re-run.
-  A line containing only <!-- split --> starts a new Discord message.
+  A line containing only the split marker starts a new Discord message.
 
   {{game}} and {{tagline}} come from the variables block in the blueprint, so
   the obvious edits can be made in the setup page without opening this file.
@@ -25,7 +25,6 @@ This server is where it gets made in public: builds, bugs, arguments about what 
 · #ask-the-dev: questions get answered and stay searchable afterwards.
 · #off-topic: everything that is not {{game}}.
 
-<!-- split -->
 **Roles you can pick up**
 · **@Ping Me For Playtests**: a mention when a build goes out. A few times a month at most, and you can drop it whenever you like. This is the only way we reach you; nobody here will DM you about a playtest.
 · The interest roles just show what you are here for. Grab or drop any of them under **Channels & Roles**.

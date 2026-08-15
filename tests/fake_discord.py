@@ -30,6 +30,7 @@ class FakeDiscord:
         self.guild = {"id": guild_id, "features": [], "name": "Test Server"}
         self.onboarding = None
         self.messages = {}       # channel id -> [{id, content, author}]
+        self.threads = []        # forum starter posts
         self.welcome_screen = None
         self.bot_role_position = 50   # where this bot's own role sits
         self.calls = []          # (method, path, body)
@@ -109,6 +110,8 @@ class FakeDiscord:
             out.append({"id": "bot-role", "name": "Steward", "managed": True,
                         "position": self.bot_role_position})
             return out
+        if path.endswith("/threads/active"):
+            return {"threads": self.threads}
         if "/messages" in path:
             cid = path.split("/")[2]
             return list(reversed(self.messages.get(cid, [])))    # newest first
@@ -120,6 +123,11 @@ class FakeDiscord:
 
     def _post(self, path, body):
         obj = {**body, "id": str(next(self.ids))}
+        if path.endswith("/threads"):
+            cid = path.split("/")[2]
+            obj = {"id": str(next(self.ids)), "name": body["name"], "parent_id": cid}
+            self.threads.append(obj)
+            return obj
         if path.endswith("/messages"):
             cid = path.split("/")[2]
             obj["author"] = {"id": "4242"}

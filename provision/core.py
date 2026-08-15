@@ -157,7 +157,11 @@ def substitute(bp: dict, values: dict) -> dict:
     return out
 
 
-SPLIT_MARKER = "<!-- split -->"
+# A line containing only this starts a new message. Deliberately NOT an HTML
+# comment: the marker used to be one, and any editor note that mentioned it
+# closed its own comment early and leaked the rest of the note into the
+# channel. A marker that cannot appear inside a comment cannot do that.
+SPLIT_MARKER = "%%SPLIT%%"
 
 
 def substitute_text(text: str, values: dict) -> str:
@@ -167,12 +171,62 @@ def substitute_text(text: str, values: dict) -> str:
 def split_content(text: str) -> list[str]:
     """Turn a markdown file into the messages to post.
 
-    An HTML comment at the top is treated as editor notes and dropped, so the
-    file can explain itself without that ending up in the channel.
+    HTML comments anywhere in the file are editor notes and never reach the
+    channel, so a content file can explain how to edit itself.
     """
-    text = re.sub(r"\A\s*<!--(?!\s*split\s*-->).*?-->\s*", "", text, flags=re.S)
-    parts = [p.strip("\n") for p in text.split(SPLIT_MARKER)]
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    parts = [p.strip("\n") for p in re.split(rf"^{re.escape(SPLIT_MARKER)}\s*$",
+                                             text, flags=re.M)]
     return [p.strip() for p in parts if p.strip()]
+
+
+# Discord's embed limits. A description holds far more than a plain message,
+# which is what stops a long document turning into a wall of separate posts.
+EMBED_DESC_LIMIT = 4096
+EMBED_TITLE_LIMIT = 256
+EMBED_TOTAL_PER_MESSAGE = 6000
+EMBEDS_PER_MESSAGE = 10
+
+
+def as_embed(block: str, color: int) -> dict:
+    """One block becomes one embed. A leading markdown heading becomes its
+    title, so the file stays readable as markdown."""
+    title = None
+    body = block
+    first, _, rest = block.partition("\n")
+    if first.startswith("#"):
+        title = first.lstrip("#").strip()[:EMBED_TITLE_LIMIT]
+        body = rest.strip()
+    embed = {"description": body[:EMBED_DESC_LIMIT]}
+    if title:
+        embed["title"] = title
+    if color:
+        embed["color"] = color
+    return embed
+
+
+def pack_messages(blocks: list[str], color: int | None) -> list[dict]:
+    """Group blocks into as few Discord messages as the limits allow.
+
+    Without embeds each block is its own message and a long document reads as
+    a stack of disconnected posts. With them, several sections fit in one.
+    """
+    if not color:
+        return [{"content": b, "allowed_mentions": {"parse": []}} for b in blocks]
+
+    messages, current, used = [], [], 0
+    for block in blocks:
+        embed = as_embed(block, color)
+        size = len(embed.get("title", "")) + len(embed["description"])
+        if current and (used + size > EMBED_TOTAL_PER_MESSAGE
+                        or len(current) >= EMBEDS_PER_MESSAGE):
+            messages.append({"embeds": current, "allowed_mentions": {"parse": []}})
+            current, used = [], 0
+        current.append(embed)
+        used += size
+    if current:
+        messages.append({"embeds": current, "allowed_mentions": {"parse": []}})
+    return messages
 
 
 # System channel flags, for the notices Discord posts on its own.
@@ -533,11 +587,13 @@ def validate(bp: dict) -> dict:
             continue
         if not blocks:
             warnings.append(f"Channel '{name}': {rel} is empty, so nothing will be posted")
+        color = ch.get("color", bp.get("meta", {}).get("accent_color"))
+        limit = EMBED_DESC_LIMIT if color else 2000
         for i, block in enumerate(blocks, 1):
-            if len(block) > 2000:
+            if len(block) > limit:
                 errors.append(
                     f"Channel '{name}': section {i} of {rel} is {len(block)} characters "
-                    f"and Discord's limit is 2000. Add a <!-- split --> before it")
+                    f"and Discord's limit is {limit}. Add a {SPLIT_MARKER} line before it")
 
     gated = [c for c, s in channels.items() if s.get("type") in COMMUNITY_GATED]
     if gated and not community:
@@ -1263,15 +1319,22 @@ class Provisioner:
                 continue
 
             blocks = split_content(substitute_text(raw, self.bp.get("variables", {})))
-            too_long = [i for i, b in enumerate(blocks) if len(b) > 2000]
+            color = ch.get("color", self.bp.get("meta", {}).get("accent_color"))
+            if isinstance(color, str):
+                color = int(color, 16)
+            limit = EMBED_DESC_LIMIT if color else 2000
+            too_long = [i for i, b in enumerate(blocks) if len(b) > limit]
             if too_long:
                 self._warn(
                     f"{ch['name']}: section {too_long[0] + 1} of {rel} is over Discord's "
-                    f"2000-character limit. Add a <!-- split --> before it.")
+                    f"{limit}-character limit. Add a {SPLIT_MARKER} line before it.")
                 continue
 
+            payloads = pack_messages(blocks, color)
+
             if self.dry:
-                self.log(f"  = #{ch['name']}: {len(blocks)} message(s) from {rel}")
+                self.log(f"  = #{ch['name']}: {len(blocks)} section(s) from {rel} "
+                         f"in {len(payloads)} message(s)")
                 continue
 
             try:
@@ -1281,19 +1344,24 @@ class Provisioner:
             mine = [m for m in reversed(existing) if m.get("author", {}).get("id") == me]
 
             posted = []
-            for i, body in enumerate(blocks):
+            for i, payload in enumerate(payloads):
                 try:
                     if i < len(mine):
-                        self.c.patch(f"/channels/{cid}/messages/{mine[i]['id']}",
-                                     {"content": body})
+                        # Sending both keys clears whichever the message is not
+                        # using, so switching between plain text and embeds
+                        # does not leave the old form behind.
+                        body = {"content": payload.get("content", ""),
+                                "embeds": payload.get("embeds", []),
+                                "allowed_mentions": {"parse": []}}
+                        self.c.patch(f"/channels/{cid}/messages/{mine[i]['id']}", body)
                         posted.append(mine[i]["id"])
                     else:
-                        msg = self.c.post(f"/channels/{cid}/messages", {"content": body})
+                        msg = self.c.post(f"/channels/{cid}/messages", payload)
                         posted.append(msg.get("id"))
                 except Failed as e:
                     self._warn(f"{ch['name']}: could not write message {i + 1}: {str(e)[:120]}")
 
-            for surplus in mine[len(blocks):]:
+            for surplus in mine[len(payloads):]:
                 try:
                     self.c.request("DELETE", f"/channels/{cid}/messages/{surplus['id']}")
                 except Failed:
@@ -1306,7 +1374,73 @@ class Provisioner:
                     pass                      # already pinned, or no permission
 
             verb = "updated" if mine else "posted"
-            self.log(f"  {verb} {len(blocks)} message(s) in #{ch['name']}")
+            shape = "embed" if color else "message"
+            self.log(f"  {verb} {len(payloads)} {shape}(s) in #{ch['name']} "
+                     f"({len(blocks)} section(s))")
+
+    def sync_forum_posts(self, base_dir: Path):
+        """Open the pinned starter post in each forum.
+
+        A forum with no posts in it reads as broken, and the first person to
+        use it has no example to copy. These are the posts that set the format
+        everyone else follows, which is the whole reason bug reports arrive
+        usable or not.
+        """
+        jobs = [(ch, ch["forum_post"]) for cat in self.bp.get("categories", [])
+                for ch in cat.get("channels", [])
+                if ch.get("forum_post") and ch.get("type") == "forum"]
+        if not jobs:
+            return
+        self.log("\nForum starter posts")
+
+        try:
+            active = self.c.get(f"/guilds/{self.gid}/threads/active").get("threads", [])
+        except Failed:
+            active = []
+
+        for ch, spec in jobs:
+            cid = self.channels.get(ch["name"])
+            if not cid:
+                continue
+            title = substitute_text(spec.get("title", "Start here"),
+                                    self.bp.get("variables", {}))[:100]
+            try:
+                raw = (base_dir / spec["content_file"]).read_text(encoding="utf-8")
+            except OSError as e:
+                self._warn(f"{ch['name']}: cannot read {spec.get('content_file')} ({e})")
+                continue
+
+            blocks = split_content(substitute_text(raw, self.bp.get("variables", {})))
+            body = "\n\n".join(blocks)[:2000]        # a starter post is one message
+
+            if self.dry:
+                self.log(f"  = #{ch['name']}: post \"{title}\"")
+                continue
+
+            existing = next((t for t in active
+                             if t.get("parent_id") == cid and t.get("name") == title), None)
+            if existing:
+                self.log(f"  = #{ch['name']}: \"{title}\" already there")
+                continue
+
+            payload = {"name": title,
+                       "message": {"content": body, "allowed_mentions": {"parse": []}}}
+            tag = spec.get("tag")
+            if tag:
+                by_name = {t["name"]: t.get("id") for t in ch.get("available_tags", [])}
+                if by_name.get(tag):
+                    payload["applied_tags"] = [by_name[tag]]
+            try:
+                thread = self.c.post(f"/channels/{cid}/threads", payload)
+                self.log(f"  + #{ch['name']}: \"{title}\"")
+                if spec.get("pin") and thread.get("id"):
+                    # Forum posts pin via a thread flag, not the pins endpoint.
+                    try:
+                        self.c.patch(f"/channels/{thread['id']}", {"flags": 1 << 1})
+                    except Failed:
+                        pass
+            except Failed as e:
+                self._warn(f"{ch['name']}: could not create the starter post: {str(e)[:140]}")
 
     # -- welcome screen ---------------------------------------------------
 
@@ -1394,6 +1528,7 @@ class Provisioner:
         self.sync_welcome_screen()
         if content_dir:
             self.sync_content(Path(content_dir))
+            self.sync_forum_posts(Path(content_dir))
         self.sync_role_positions()
         self.delete_extras(delete_channels, delete_roles)
         return self.problems

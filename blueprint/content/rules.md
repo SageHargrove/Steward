@@ -2,7 +2,7 @@
   Posted into #rules by the provisioner and pinned. Edit this file and re-run;
   it edits the existing messages rather than posting duplicates.
 
-  A line containing only <!-- split --> starts a new Discord message. Discord's
+  A line containing only the split marker starts a new Discord message. Discord's
   hard limit is 2000 characters per message and the provisioner refuses to send
   anything longer. {{game}} and the other blueprint variables work in here.
 
@@ -35,7 +35,6 @@ Slurs and bigotry of any kind, including racism, sexism, homophobia, transphobia
 **3 · No NSFW or shock content**
 No explicit imagery, no gore, no sexual content, anywhere, including in your profile. Immediate permanent ban.
 
-<!-- split -->
 **4 · Leave politics and religion at the door**
 Not because they do not matter, but because this is not the place for them. That includes debates, memes, and the "I was only joking" versions.
 
@@ -45,7 +44,6 @@ Yours and everyone else's. No addresses, phone numbers, emails, real names or wo
 **6 · No advertising**
 No invite links to other servers, no promoting products or services, and never ask members for money. Sharing your own clips, screenshots and videos of {{game}} is not advertising and is actively encouraged.
 
-<!-- split -->
 **7 · Use the right channel**
 Each one has a job, and posting in the right place is the difference between an answer and silence. Check the channel list; most of them say what they are for in the description at the top.
 
@@ -64,9 +62,8 @@ Talking about mods and single-player tinkering is fine. What is not: distributin
 **12 · Credit art that is not yours**
 Do not post work you have no right to post, and credit the artist when you share someone else's. If you are presenting something as your own, it should be your own.
 
-<!-- split -->
 **13 · Mark spoilers**
-Use Discord's spoiler tags for anything story-related that people might not have reached yet. Type it between two pairs of bars, like ||this||, and it stays hidden until someone chooses to click it.
+Use Discord's spoiler tags for anything story-related that people might not have reached yet. Wrap it in two pairs of bars, written as `||like this||`, and it stays hidden until someone chooses to click.
 
 **14 · Listen to moderators**
 Follow staff instructions in the moment; argue afterwards, not during. If you think a decision was wrong, DM a moderator. Do not relitigate it in public chat.
@@ -78,7 +75,7 @@ Not everything can be written down. If you are wondering whether you should post
 You must be 13 or older, and Discord's Terms of Service and Community Guidelines apply here on top of everything above.
 <https://discord.com/terms> · <https://discord.com/guidelines>
 
-<!-- split -->
+%%SPLIT%%
 ## How this is enforced
 
 Most things are a conversation, not a ban. The ladder:

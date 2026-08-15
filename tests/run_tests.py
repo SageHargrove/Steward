@@ -389,6 +389,9 @@ print("\nchannel content")
 def _():
     bp = load()
     base = Path(bp["_base_dir"])
+    # An embed description holds 4096; a plain message only 2000. Which limit
+    # applies depends on whether an accent colour is set.
+    limit = core.EMBED_DESC_LIMIT if bp.get("meta", {}).get("accent_color") else 2000
     found = 0
     for cat in bp["categories"]:
         for ch in cat["channels"]:
@@ -399,9 +402,9 @@ def _():
                 (base / ch["content_file"]).read_text(encoding="utf-8"), bp["variables"]))
             assert blocks, f"{ch['content_file']} produced nothing"
             for i, b in enumerate(blocks, 1):
-                assert len(b) <= 2000, \
-                    f"{ch['content_file']} section {i} is {len(b)} chars"
-    assert found >= 2, "expected content for at least #rules and #start-here"
+                assert len(b) <= limit, (
+                    f"{ch['content_file']} section {i} is {len(b)} chars, limit {limit}")
+    assert found >= 5, f"only {found} channels have content"
 
 
 @test("editor notes at the top of a content file are not posted")
@@ -447,13 +450,92 @@ def _():
     ch = next(c for cat in bp["categories"] for c in cat["channels"]
               if c.get("content_file"))
     big = Path(bp["_base_dir"]) / "content" / "_oversize_test.md"
-    big.write_text("x" * 2500, encoding="utf-8")
+    big.write_text("x" * (core.EMBED_DESC_LIMIT + 200), encoding="utf-8")
     try:
         ch["content_file"] = "content/_oversize_test.md"
         errs = core.validate(bp)["errors"]
-        assert any("2000" in e for e in errs), errs
+        assert any("characters" in e and "limit" in e for e in errs), errs
     finally:
         big.unlink()
+
+
+@test("editor notes never reach the channel")
+def _():
+    # The marker used to be an HTML comment, so a note that mentioned it closed
+    # its own comment early and leaked the rest of the note into #rules.
+    bp = load()
+    base = Path(bp["_base_dir"])
+    for f in sorted(base.glob("content/*.md")):
+        blocks = core.split_content(f.read_text(encoding="utf-8"))
+        joined = " ".join(blocks)
+        assert "<!--" not in joined and "-->" not in joined, f"{f.name} leaks a comment"
+        assert "STARTING POINT" not in joined, f"{f.name} leaks its editor note"
+        assert core.SPLIT_MARKER not in joined, f"{f.name} leaks the split marker"
+        if blocks:
+            assert not blocks[0].startswith("starts a new"), (
+                f"{f.name} starts mid-sentence, so a comment was cut short")
+
+
+@test("posted content can never ping anyone")
+def _():
+    # The rules literally contain the word everyone, and the bot posts them
+    # with Administrator. Without this, publishing the rules mass-pings.
+    bp = load()
+    fake, _ = run(bp, content_dir=Path(bp["_base_dir"]))
+    writes = [b for m, p, b in fake.calls
+              if m in ("POST", "PATCH") and "/messages" in p and b]
+    assert writes, "nothing was written"
+    for b in writes:
+        assert b.get("allowed_mentions") == {"parse": []}, b
+    threads = [b for m, p, b in fake.calls if m == "POST" and p.endswith("/threads")]
+    for t in threads:
+        assert t["message"].get("allowed_mentions") == {"parse": []}, t
+
+
+@test("a long document is not split into a stack of posts")
+def _():
+    bp = load()
+    base = Path(bp["_base_dir"])
+    rules = next(c for cat in bp["categories"] for c in cat["channels"]
+                 if c.get("content_file", "").endswith("rules.md"))
+    blocks = core.split_content(core.substitute_text(
+        (base / rules["content_file"]).read_text(encoding="utf-8"), bp["variables"]))
+    color = bp["meta"]["accent_color"]
+    msgs = core.pack_messages(blocks, color)
+    assert len(msgs) == 1, f"the rules should be one message, got {len(msgs)}"
+    for m in msgs:
+        assert len(m["embeds"]) <= core.EMBEDS_PER_MESSAGE
+        total = sum(len(e.get("title", "")) + len(e["description"]) for e in m["embeds"])
+        assert total <= core.EMBED_TOTAL_PER_MESSAGE, total
+
+
+@test("a markdown heading becomes the embed title")
+def _():
+    e = core.as_embed("# Server Rules" + chr(10) * 2 + "body text here", 0xC9A227)
+    assert e["title"] == "Server Rules"
+    assert e["description"] == "body text here"
+    assert e["color"] == 0xC9A227
+    plain = core.as_embed("no heading here", 0)
+    assert "title" not in plain
+
+
+@test("forum starter posts are created once, not on every run")
+def _():
+    bp = load()
+    fake, _ = run(bp, content_dir=Path(bp["_base_dir"]))
+    made = [b["name"] for m, p, b in fake.calls
+            if m == "POST" and p.endswith("/threads")]
+    assert len(made) == 2, made
+
+    # the fake should now report them as active threads
+    for m, p, b in fake.calls:
+        if m == "POST" and p.endswith("/threads"):
+            pass
+    fake.calls.clear()
+    run(bp, fake=fake, content_dir=Path(bp["_base_dir"]))
+    again = [b["name"] for m, p, b in fake.calls
+             if m == "POST" and p.endswith("/threads")]
+    assert not again, f"re-run duplicated forum posts: {again}"
 
 
 @test("the welcome screen is set from the blueprint")

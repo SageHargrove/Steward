@@ -11,6 +11,8 @@
 meta:
   name: Giltgrave
   slug: giltgrave
+  # Left border on every posted embed. Set it to your game's colour.
+  accent_color: 0xC9A227
 
 # Fill-in-the-blanks. Anything written as {{name}} below gets replaced.
 # This is what makes the blueprint redeployable to the next project instead of
@@ -427,6 +429,8 @@ categories:
       - name: looking-for-guild
         type: text
         overwrites: open
+        content_file: content/looking-for-guild.md
+        pin: true
         topic: "Recruiting, or looking to be recruited. One post per guild, edit it rather than reposting."
 
   - name: FEEDBACK
@@ -434,6 +438,12 @@ categories:
       - name: bug-reports
         type: forum
         overwrites: forum_open
+        # A forum with no posts reads as broken, and the first person to use it
+        # has no example to copy.
+        forum_post:
+          title: "Read this before posting a bug"
+          content_file: content/bug-reports.md
+          pin: true
         topic: |
           One bug per post. Include:
           1. Build number (Settings, bottom of the panel)
@@ -463,6 +473,10 @@ categories:
       - name: suggestions
         type: forum
         overwrites: forum_open
+        forum_post:
+          title: "How suggestions work here"
+          content_file: content/suggestions.md
+          pin: true
         topic: |
           One idea per post. Vote with the 👍 reaction on the first message.
           Read before posting: a duplicate splits the vote and makes your idea
@@ -485,6 +499,8 @@ categories:
       - name: playtest-lounge
         type: text
         overwrites: playtester_only
+        content_file: content/playtest-lounge.md
+        pin: true
         topic: "Build discussion for current playtesters. Anything here is unreleased. Do not post it elsewhere."
 
   - name: DEV
@@ -550,6 +566,8 @@ categories:
       - name: steward-reports
         type: text
         overwrites: staff_only
+        content_file: content/steward-reports.md
+        pin: true
         topic: "Weekly cohort digest, decay alerts, onboarding funnel numbers. Steward posts here."
 
 # Channels shown to every new member during onboarding.
