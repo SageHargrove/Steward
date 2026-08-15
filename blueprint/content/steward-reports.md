@@ -4,7 +4,11 @@
 -->
 # What lands in here
 
-Nothing yet, if the ledger bot has not been started.
+**The pinned status message above tells you whether the ledger is running.**
+Green and it is recording. Red and it is not, which means anything happening
+right now is being lost, because Discord cannot hand back activity from a
+period when nothing was listening. It checks in every ten minutes, so if that
+timestamp stops moving the bot has died rather than stopped politely.
 
 Once it is running, this channel gets the numbers that nothing else will tell you:
 

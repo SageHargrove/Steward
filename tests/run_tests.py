@@ -940,6 +940,32 @@ def _():
         "the ledger invite must include MANAGE_ROLES or the roles can never be removed"
 
 
+@test("the bot says out loud whether it is recording")
+def _():
+    # A bot that silently stops is worse than one that never started, because
+    # you keep believing you have the data.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "async def update_status" in src
+    assert "heartbeat" in src, "no periodic check-in, so a crash looks like silence"
+    assert "async def close" in src, "a deliberate stop should say so"
+    assert "running=False" in src, "the stopped state is never shown"
+
+
+@test("private channels stay reachable after the bot is trimmed")
+def _():
+    # Staff channels hide themselves by denying @everyone, and the bot is part
+    # of @everyone. Administrator hides that during setup; trimming exposes it.
+    bp = load()
+    fake, prov = run(bp)
+    made = [b for m, q, b in fake.calls
+            if m == "POST" and q.endswith("/channels")
+            and b.get("name") == "steward-reports"]
+    assert made, "the report channel was never created"
+    ows = made[0]["permission_overwrites"]
+    assert any(o.get("type") == 1 for o in ows), (
+        "no member-level overwrite, so a trimmed bot cannot see its own channel")
+
+
 @test("the bot asks for members but never message content")
 def _():
     # Reading message content is a privileged intent needing annual

@@ -1021,12 +1021,41 @@ class Provisioner:
             })
         return out
 
+    def _self_id(self):
+        """This bot's own user id, fetched once."""
+        if getattr(self, "_me", None) is None:
+            try:
+                self._me = self.c.get("/users/@me")["id"]
+            except Failed:
+                self._me = ""
+        return self._me
+
     def _channel_body(self, spec, parent_id=None, position=None):
         ctype = spec.get("type", "text")
+        overwrites = self._overwrites(spec.get("overwrites"))
+
+        # A private channel hides itself by denying @everyone, and the bot is
+        # part of @everyone. Administrator papers over that during setup, but
+        # the moment its permissions are trimmed it loses the very channel it
+        # reports into. Give it an explicit way in.
+        hides = any(o["id"] == self.gid
+                    and int(o["deny"]) & PERMISSIONS["VIEW_CHANNEL"]
+                    for o in overwrites)
+        if hides and ctype != "voice":
+            me = self._self_id()
+            if me:
+                overwrites.append({
+                    "id": me, "type": 1,          # 1 = a member, not a role
+                    "allow": str(perms_to_int([
+                        "VIEW_CHANNEL", "SEND_MESSAGES", "READ_MESSAGE_HISTORY",
+                        "EMBED_LINKS", "MANAGE_MESSAGES"])),
+                    "deny": "0",
+                })
+
         body = {
             "name": spec["name"],
             "type": CHANNEL_TYPES[ctype],
-            "permission_overwrites": self._overwrites(spec.get("overwrites")),
+            "permission_overwrites": overwrites,
         }
         if parent_id:
             body["parent_id"] = parent_id

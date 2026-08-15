@@ -38,6 +38,10 @@ RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
 REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
 BLUEPRINT = os.environ.get("STEWARD_BLUEPRINT", "../blueprint/giltgrave.yaml")
 
+# The status message identifies itself by its title, so restarts reuse the
+# same message instead of stacking up.
+STATUS_TITLE = "Ledger"
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,6 +96,7 @@ class Steward(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.ledger = Ledger(DB_PATH)
         self.ephemeral = ephemeral_roles(BLUEPRINT)
+        self.started_at = int(time.time())
 
     async def absorb_attribution(self, member: discord.Member) -> bool:
         """Write down how someone said they found us, then take the role back
@@ -126,6 +131,7 @@ class Steward(discord.Client):
     async def setup_hook(self):
         await self.tree.sync()
         self.nightly_purge.start()
+        self.heartbeat.start()
 
     # -- backfill ---------------------------------------------------------
 
@@ -158,6 +164,8 @@ class Steward(discord.Client):
 
         counts = self.ledger.counts(self.guilds[0].id) if self.guilds else {}
         log.info("ledger: %s", counts)
+        await self.update_status(running=True)
+        log.info("status posted in #%s", REPORT_CHANNEL)
 
     # -- recording --------------------------------------------------------
 
@@ -242,6 +250,85 @@ class Steward(discord.Client):
             self.ledger.record(guild_id=gid, user_id=member.id,
                                channel_id=after.channel.id, event_type="voice_move",
                                **{"from": before.channel.id})
+
+    # -- visible proof of life --------------------------------------------
+
+    async def status_channel(self, guild):
+        return discord.utils.get(guild.text_channels, name=REPORT_CHANNEL)
+
+    async def find_status_message(self, channel):
+        """The one status message, reused so restarts do not stack up."""
+        try:
+            async for m in channel.history(limit=30):
+                if m.author.id == self.user.id and m.embeds:
+                    if (m.embeds[0].title or "").startswith(STATUS_TITLE):
+                        return m
+        except discord.HTTPException:
+            pass
+        return None
+
+    def status_embed(self, guild, running=True):
+        c = self.ledger.counts(guild.id)
+        now = int(time.time())
+        e = discord.Embed(
+            title=f"{STATUS_TITLE} {'recording' if running else 'stopped'}",
+            colour=0x23A55A if running else 0xF23F42)
+        if running:
+            e.description = (
+                f"Started <t:{self.started_at}:R>.\n"
+                f"Last checked in <t:{now}:R>. If that stops moving, so has the bot.")
+        else:
+            e.description = (
+                f"Stopped <t:{now}:R>. **Nothing is being recorded.**\n"
+                "Discord cannot hand back activity from a period when nothing was "
+                "listening, so anything that happens now is lost for good.\n"
+                "Run START-LEDGER.bat to pick it back up.")
+        e.add_field(name="Events recorded", value=f"{c['events']:,}")
+        e.add_field(name="Members tracked", value=f"{c['members']:,}")
+        if c["since"]:
+            e.add_field(name="Recording since", value=f"<t:{c['since']}:D>")
+        e.set_footer(text="Only who posted where and when. Never what was said.")
+        return e
+
+    async def update_status(self, running=True):
+        for guild in self.guilds:
+            channel = await self.status_channel(guild)
+            if channel is None:
+                continue
+            try:
+                embed = self.status_embed(guild, running)
+                existing = await self.find_status_message(channel)
+                if existing:
+                    await existing.edit(embed=embed)
+                else:
+                    msg = await channel.send(embed=embed)
+                    try:
+                        await msg.pin(reason="Steward status")
+                    except discord.HTTPException:
+                        pass
+            except discord.Forbidden:
+                log.warning("cannot post in #%s. Give the bot access to it, or set "
+                            "REPORT_CHANNEL to a channel it can see.", REPORT_CHANNEL)
+            except discord.HTTPException as e:
+                log.warning("could not update the status message: %s", e)
+
+    @tasks.loop(minutes=10)
+    async def heartbeat(self):
+        # The timestamp going stale is the signal that the bot died, which a
+        # message posted once at startup could never give you.
+        await self.update_status(running=True)
+
+    @heartbeat.before_loop
+    async def _wait_heartbeat(self):
+        await self.wait_until_ready()
+
+    async def close(self):
+        # Say so on the way out, so a deliberate stop does not look like a crash.
+        try:
+            await self.update_status(running=False)
+        except Exception:                                    # noqa: BLE001
+            pass
+        await super().close()
 
     # -- retention --------------------------------------------------------
 
