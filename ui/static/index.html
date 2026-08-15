@@ -539,6 +539,7 @@
   <div class="head"><div class="num"><span>7</span></div><h2>Run the ledger</h2>
     <div style="margin-left:auto" class="row">
       <button class="ghost small" onclick="installLedger()" id="instbtn">Install what it needs</button>
+      <button class="ghost small" onclick="restartLedger()" id="rstbtn">Restart</button>
       <button class="ghost small" onclick="stopLedger()" id="stopbtn">Stop</button>
       <button onclick="startLedger()" id="startbtn">Start</button>
     </div>
@@ -660,11 +661,42 @@ setInterval(async () => {
    why their change did nothing. */
 function setStale(files){
   const b = $('#stale');
-  if(!files.length){ b.style.display = 'none'; return; }
+  if(!files.length || RESTARTING){ b.style.display = 'none'; return; }
   b.style.display = '';
-  b.textContent = 'This program is running older code than the files on disk ('
-    + files.join(', ') + '). Close the SETUP-UI window and run it again, '
-    + 'or your edits will not show up here.';
+  b.innerHTML = 'This program is running older code than the files on disk ('
+    + esc(files.join(', ')) + '), so your changes will not show up here yet. '
+    + '<button class="ghost small" onclick="restartApp()">Restart it now</button>';
+}
+
+/* Restarting is a whole new process, because Python will not reload modules.
+   The replacement is launched first and waits for this one to release the
+   port, so the only thing to do here is poll until the page answers again. */
+let RESTARTING = false;
+
+async function restartApp(){
+  if(RESTARTING) return;
+  if(!confirm('Restart the setup program?\n\n'
+    + 'The bot token is held in that program\'s memory and never written to '
+    + 'disk, so restarting forgets it and you will paste it again on step 1. '
+    + 'Nothing already built in Discord is affected.')) return;
+
+  RESTARTING = true;
+  const b = $('#stale');
+  b.style.display = '';
+  b.textContent = 'Restarting...';
+  try{ await api('/api/restart', {method:'POST'}); }
+  catch(e){ /* the process exits mid-reply, so a failure here is expected */ }
+
+  for(let i = 0; i < 90; i++){
+    await new Promise(r => setTimeout(r, 700));
+    try{
+      const r = await fetch('/api/health', {cache:'no-store'});
+      if(r.ok){ location.reload(); return; }
+    }catch(e){ /* still down */ }
+  }
+  RESTARTING = false;
+  b.textContent = 'It did not come back. Check the new console window for an '
+    + 'error, or run SETUP-UI.bat again.';
 }
 
 /* ---------- 1. connect ---------- */
@@ -1780,6 +1812,7 @@ async function ledgerStatus(){
 
   $('#startbtn').disabled = st.running;
   $('#stopbtn').disabled = !st.running;
+  $('#rstbtn').disabled = !st.configured;
 
   if(st.log && st.log !== LEDGER_SEEN_LOG){
     LEDGER_SEEN_LOG = st.log;
@@ -1811,6 +1844,25 @@ async function stopLedger(){
   try{ await api('/api/ledger/stop', {method:'POST', body:'{}'}); }
   catch(e){ $('#lhint').textContent = e.message; }
   setTimeout(ledgerStatus, 800);
+}
+
+/* Any change to the bot's own code needs this. Slash commands are registered
+   at startup and new database tables are created at startup, so editing a file
+   and waiting changes nothing. */
+async function restartLedger(){
+  const b = $('#rstbtn');
+  b.disabled = true; b.textContent = 'Restarting...';
+  try{
+    await api('/api/ledger/restart', {method:'POST', body:'{}'});
+    $('#lhint').textContent = 'Restarting. Slash commands re-register on '
+      + 'startup, so give it a few seconds and refresh Discord with Ctrl+R.';
+    [1200, 4000, 9000].forEach(ms => setTimeout(ledgerStatus, ms));
+  }catch(e){
+    $('#lhint').textContent = e.message;
+  }finally{
+    b.textContent = 'Restart';
+    setTimeout(ledgerStatus, 600);
+  }
 }
 
 async function installLedger(){

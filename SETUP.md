@@ -103,7 +103,7 @@ fail loudly if you re-run it, which is the correct behaviour.
 ### The easy way: Server Setup for Discord
 
 ```powershell
-C:\CommunityOps\ui\SETUP-UI.bat
+C:\CommunityOps\START.bat
 ```
 
 It installs what it needs, starts a local server on `127.0.0.1:8770` and opens

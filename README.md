@@ -20,7 +20,7 @@ steward/                    the bot. Ledger, levels, digest, moderation log,
 SETUP.md                    the runbook. Start there
 ```
 
-**Server Setup for Discord is the easy path.** Run `ui/SETUP-UI.bat`. Nine
+**Server Setup for Discord is the easy path.** Run `START.bat`. Nine
 numbered steps, with the Developer Portal walkthrough built in so it assumes
 you have never made a bot before, and it generates your invite link once you
 paste a token. The CLI does the same job with flags.
@@ -129,8 +129,9 @@ the parts a studio would pay for.
 ## Running things
 
 ```powershell
-# the UI: everything below, with checkboxes
-ui\SETUP-UI.bat
+# the only file you need to run. Everything else is a button on the page,
+# including starting, stopping and restarting the bot.
+START.bat
 
 # or the command line
 cd provision
@@ -371,6 +372,32 @@ half-working. If the strip fails for lack of permission, the answer is still
 recorded and the bot says so once, because the number matters more than the
 tidiness.
 
+## One file to run, and nothing to restart by hand
+
+`START.bat` is the only thing you ever double-click. Everything else is a
+button on the page:
+
+| | |
+|---|---|
+| Start / Stop / **Restart** the bot | step 7 |
+| Restart the setup program itself | the banner at the top, when it is needed |
+| Re-read the calendar without restarting anything | `/calendar-reload` in Discord |
+
+The restart buttons exist because Python loads code once at startup and will
+not reload it. Slash commands are registered at startup and new database tables
+are created at startup, so a change to the bot does nothing until the process
+is replaced. That used to mean finding a console window, closing it, and
+finding a `.bat` again.
+
+**Restarting the setup program forgets the bot token**, because the token lives
+in that process's memory and is never written to disk. The button says so
+before it does it. Nothing already built in Discord is affected.
+
+The replacement process is launched before the old one exits and waits for the
+port to come free, so the browser only has to poll until the page answers again
+and reload itself. `ui/SETUP-UI.bat` and `steward/START-LEDGER.bat` still work
+if you want a console of your own.
+
 ## Running the ledger from the page
 
 A browser cannot launch a program, but the local server behind the page can, so
@@ -388,7 +415,8 @@ to someone who never opened a terminal.
 ## Tests
 
 ```powershell
-python testsun_tests.py
+python tests
+un_tests.py
 ```
 
 151 checks, no test framework to install. `tests/fake_discord.py` stands in for

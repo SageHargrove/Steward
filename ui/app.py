@@ -420,6 +420,67 @@ def ledger_stop():
     return {"ok": True}
 
 
+@app.post("/api/ledger/restart")
+def ledger_restart():
+    """Stop and start in one click.
+
+    Every change to the bot's own code needs this, and doing it as two clicks
+    meant watching the dot go red and remembering to press the other button.
+    """
+    if not (STEWARD / ".env").exists():
+        raise HTTPException(400, "No steward/.env yet. Add the bot token first.")
+    meta = ledger_meta()
+    pid = int(meta.get("ledger_pid", 0) or 0)
+    if pid and pid_alive(pid):
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True)
+            else:
+                os.kill(pid, 15)
+        except OSError as e:
+            raise HTTPException(400, f"Could not stop it: {e}")
+        # SQLite in WAL mode needs the old process to let go before the new one
+        # opens the same file, and taskkill returns before the handle closes.
+        for _ in range(40):
+            if not pid_alive(pid):
+                break
+            time.sleep(0.1)
+    return ledger_start()
+
+
+@app.post("/api/restart")
+def restart_self():
+    """Restart the setup program itself.
+
+    Python does not reload modules, so any change to app.py or core.py needs a
+    new process. Doing that by hand means finding the console window, closing
+    it, and finding the .bat again. The replacement is launched first and waits
+    for this one to release the port, so the browser can just poll until the
+    page answers again.
+    """
+    env = dict(os.environ)
+    env["PORT"] = str(PORT)
+    env["COPS_WAIT_FOR_PORT"] = "1"
+    creation = 0
+    if os.name == "nt":
+        creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    try:
+        subprocess.Popen([sys.executable, "app.py"], cwd=str(HERE), env=env,
+                         creationflags=creation, close_fds=True)
+    except OSError as e:
+        raise HTTPException(400, f"Could not start the replacement: {e}")
+
+    def bow_out():
+        # Long enough for this response to reach the browser. The replacement
+        # is already up and waiting on the port.
+        time.sleep(0.7)
+        os._exit(0)
+
+    threading.Thread(target=bow_out, daemon=True).start()
+    return {"ok": True, "port": PORT}
+
+
 @app.post("/api/ledger/install")
 def ledger_install():
     """Install the ledger's dependencies, so nobody has to find a terminal."""
@@ -635,6 +696,15 @@ if __name__ == "__main__":
 
     url = f"http://127.0.0.1:{PORT}"
 
+    # Launched by the Restart button: the old process still holds the port for
+    # a moment, so wait for it rather than refusing to start.
+    if os.environ.get("COPS_WAIT_FOR_PORT"):
+        print("  Waiting for the previous window to let go of the port...")
+        for _ in range(80):
+            if not port_busy(PORT):
+                break
+            time.sleep(0.25)
+
     if port_busy(PORT):
         print(f"\n  Something is already using port {PORT}.")
         print(f"  If the setup page is already open, use it: {url}")
@@ -651,10 +721,13 @@ if __name__ == "__main__":
         "  Your bot token stays in this window's memory. It is never written\n"
         "  to disk and never sent back to the browser. Closing this forgets it.\n")
     print(banner, flush=True)
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+    # On a restart the browser tab is already open and polling, so opening a
+    # second one would be the only visible result of pressing the button.
+    if not os.environ.get("COPS_WAIT_FOR_PORT"):
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
     try:
         uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
     except KeyboardInterrupt:
