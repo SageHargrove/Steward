@@ -1099,8 +1099,7 @@ async def remember_me(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Recording resumed. Nothing previously deleted was restored."
         if changed else "You were not opted out.", ephemeral=True)
-
-
+@app_commands.guild_only()
 @client.tree.command(name="ledger-status",
                      description="Ledger health. Staff only.")
 async def ledger_status(interaction: discord.Interaction):
@@ -1134,8 +1133,7 @@ async def ledger_status(interaction: discord.Interaction):
         lines += [f"{k}: {v} ({v / total * 100:.0f}%)" for k, v in attribution.items()]
     lines += ["", *[f"- {k}: {v}" for k, v in c["by_type"].items()]]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-
+@app_commands.guild_only()
 @client.tree.command(name="rank", description="See your level and how far into the next one you are.")
 @app_commands.describe(member="Whose rank to look up. Yours if left blank.")
 async def rank(interaction: discord.Interaction, member: discord.Member | None = None):
@@ -1168,8 +1166,7 @@ async def rank(interaction: discord.Interaction, member: discord.Member | None =
                     inline=False)
     e.set_thumbnail(url=who.display_avatar.url)
     await interaction.response.send_message(embed=e)
-
-
+@app_commands.guild_only()
 @client.tree.command(name="leaderboard", description="The top of the server by level.")
 @app_commands.describe(page="Which page, ten at a time.")
 async def leaderboard(interaction: discord.Interaction, page: int = 1):
@@ -1200,8 +1197,7 @@ async def leaderboard(interaction: discord.Interaction, page: int = 1):
                       colour=0xC9A227)
     e.set_footer(text=f"Page {page} of {max(1, (total + 9) // 10)}  ·  {total} ranked")
     await interaction.response.send_message(embed=e)
-
-
+@app_commands.guild_only()
 @client.tree.command(name="digest", description="Post this week's numbers now. Staff only.")
 async def digest_now(interaction: discord.Interaction):
     perms = interaction.user.guild_permissions if interaction.guild else None
@@ -1214,8 +1210,7 @@ async def digest_now(interaction: discord.Interaction):
         f"Posted in #{REPORT_CHANNEL}." if ok
         else f"Could not post. Is there a #{REPORT_CHANNEL} the bot can write to?",
         ephemeral=True)
-
-
+@app_commands.guild_only()
 @client.tree.command(name="sweep-roles",
                      description="Record and remove any leftover attribution roles. Staff only.")
 async def sweep_roles(interaction: discord.Interaction):
@@ -1255,6 +1250,7 @@ def staff_only(interaction) -> bool:
     return bool(perms and perms.manage_guild)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="calendar",
                      description="What the content calendar has coming. Staff only.")
 @app_commands.describe(days="How far ahead to look. Default 60.")
@@ -1301,6 +1297,65 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
     await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
 
 
+@app_commands.guild_only()
+@client.tree.command(name="calendar-run",
+                     description="Draft a beat right now instead of waiting. Staff only.")
+@app_commands.describe(
+    beat="Which beat to draft now. Leave blank to run everything due today.")
+async def calendar_run(interaction: discord.Interaction, beat: str | None = None):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    today = datetime.now(timezone.utc).date()
+
+    if beat:
+        occ = client.calendar.find(beat, today)
+        if occ is None:
+            ids = ", ".join(f"`{i}`" for i in client.calendar.ids()[:25])
+            await interaction.followup.send(
+                f"No beat called `{beat}`.\n\nThere is: {ids}", ephemeral=True)
+            return
+        seen = client.ledger.calendar_seen(interaction.guild_id, occ.id,
+                                           today.isoformat())
+        if seen:
+            await interaction.followup.send(
+                f"`{beat}` was already handled today ({seen['status']}). Beats are "
+                f"remembered per day, so try again tomorrow or pick another one.",
+                ephemeral=True)
+            return
+        ok = await client.draft_beat(interaction.guild, occ)
+        await interaction.followup.send(
+            f"Drafted `{beat}` into #{REPORT_CHANNEL}. Approve or skip it there."
+            if ok else f"Could not draft `{beat}`. Check the console for why.",
+            ephemeral=True)
+        return
+
+    # The hourly tick refuses to run before post_hour, on purpose. This is the
+    # override, because otherwise the only way to see any of this work is to
+    # wait until late afternoon on a day something happens to be due.
+    due = client.calendar.due(today)
+    fresh = [o for o in due
+             if not client.ledger.calendar_seen(interaction.guild_id, o.id,
+                                                o.date.isoformat())]
+    for occ in fresh:
+        await client.draft_beat(interaction.guild, occ)
+    await interaction.followup.send(
+        f"{len(due)} beat(s) due in the last week, {len(fresh)} not yet handled. "
+        f"Drafted those into #{REPORT_CHANNEL}."
+        if fresh else
+        f"{len(due)} beat(s) due in the last week and all of them are already "
+        f"handled. Use `/calendar` to see what is coming, or name a beat to "
+        f"draft one now for a look.", ephemeral=True)
+
+
+@calendar_run.autocomplete("beat")
+async def _beat_choices(interaction: discord.Interaction, current: str):
+    out = [i for i in client.calendar.ids() if current.lower() in i.lower()]
+    return [app_commands.Choice(name=i, value=i) for i in out[:25]]
+
+
+@app_commands.guild_only()
 @client.tree.command(name="calendar-reload",
                      description="Re-read the calendar file after editing it. Staff only.")
 async def calendar_reload(interaction: discord.Interaction):
@@ -1324,6 +1379,7 @@ async def calendar_reload(interaction: discord.Interaction):
 # The playtest pipeline
 # --------------------------------------------------------------------------
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-join",
                      description="Put your name down for playtests.")
 async def playtest_join(interaction: discord.Interaction):
@@ -1349,6 +1405,7 @@ async def playtest_join(interaction: discord.Interaction):
           f"Use `/playtest-leave` any time." + note, ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-leave",
                      description="Take your name off the playtest list.")
 async def playtest_leave(interaction: discord.Interaction):
@@ -1364,6 +1421,7 @@ async def playtest_leave(interaction: discord.Interaction):
         "moderator if you want it revoked.", ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-open",
                      description="Open a playtest wave. Staff only.")
 @app_commands.describe(name="A short name for the wave, like 'wave-1'.",
@@ -1386,6 +1444,7 @@ async def playtest_open(interaction: discord.Interaction, name: str, cap: int = 
         f"people who need a build outside Steam.", ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-keys",
                      description="Add keys to a wave. Staff only.")
 @app_commands.describe(wave="Which wave.",
@@ -1415,6 +1474,7 @@ async def playtest_keys(interaction: discord.Interaction, wave: str, keys: str):
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-issue",
                      description="Send someone a key. Staff only.")
 @app_commands.describe(wave="Which wave.", member="Who to give it to.")
@@ -1462,6 +1522,7 @@ async def playtest_issue(interaction: discord.Interaction, wave: str,
         f"{member.mention}.", ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-status",
                      description="Waves, keys and signups. Staff only.")
 async def playtest_status(interaction: discord.Interaction):
@@ -1493,6 +1554,7 @@ async def playtest_status(interaction: discord.Interaction):
     await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-close",
                      description="Close a wave. Staff only.")
 async def playtest_close(interaction: discord.Interaction, wave: str):
@@ -1505,6 +1567,7 @@ async def playtest_close(interaction: discord.Interaction, wave: str):
         ephemeral=True)
 
 
+@app_commands.guild_only()
 @client.tree.command(name="playtest-report",
                      description="File a bug from the playtest.")
 @app_commands.describe(summary="One line: what went wrong.",

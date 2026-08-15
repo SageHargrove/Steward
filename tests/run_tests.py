@@ -1899,6 +1899,61 @@ def _():
     assert "add_view(BeatApproval())" in src, "the view is never re-registered"
 
 
+@test("bot.py imports and every command is registered")
+def _():
+    """The suite read bot.py as text until now, so a decorator discord.py
+    rejects, or a parameter type it cannot turn into a slash-command option,
+    would only surface the next time the bot was started. This builds the real
+    command tree in a subprocess and reads back what is on it."""
+    import os, subprocess, tempfile, json as _json
+    probe = (
+        "import sys, json\n"
+        "sys.path.insert(0, r'{steward}')\n"
+        "import bot\n"
+        "print(json.dumps(sorted(c.name for c in bot.client.tree.get_commands())))"
+    ).format(steward=ROOT / "steward")
+    with tempfile.TemporaryDirectory() as d:
+        env = dict(os.environ)
+        env["STEWARD_DB"] = str(Path(d) / "t.sqlite3")
+        r = subprocess.run([sys.executable, "-c", probe], capture_output=True,
+                           text=True, cwd=str(ROOT), env=env, timeout=180)
+    assert r.returncode == 0, r.stderr[-1500:]
+    names = _json.loads(r.stdout.strip().splitlines()[-1])
+    for wanted in ("calendar", "calendar-run", "calendar-reload",
+                   "playtest-join", "playtest-leave", "playtest-open",
+                   "playtest-keys", "playtest-issue", "playtest-status",
+                   "playtest-close", "playtest-report",
+                   "rank", "leaderboard", "digest", "forget-me"):
+        assert wanted in names, f"/{wanted} is not registered. Have: {names}"
+
+
+@test("every command touching interaction.guild is marked guild_only")
+def _():
+    # In a DM interaction.guild is None and the command dies on an attribute
+    # error, which Discord shows the user as "the application did not respond".
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    parts = src.split("@client.tree.command(")
+    for i, block in enumerate(parts[1:], 1):
+        name = re.search(r'name="([\w-]+)"', block).group(1)
+        body = block
+        if not any(t in body for t in ("interaction.guild", "interaction.guild_id")):
+            continue
+        assert parts[i - 1].rstrip().endswith("@app_commands.guild_only()"), \
+            f"/{name} reads interaction.guild but is not guild_only"
+
+
+@test("a beat can be found by name so it can be tested out of season")
+def _():
+    # Without this the only way to see a beat is to wait for its date, which
+    # for a T-140 beat is months. /calendar-run leans on it.
+    cal = fresh_calendar()
+    occ = cal.find("launch-day", _date(2026, 9, 1))
+    assert occ is not None and occ.date == _date(2026, 9, 1)
+    assert "{{" not in occ.beat["body"], "find() skipped the placeholder fill"
+    assert cal.find("no-such-beat", _date(2026, 9, 1)) is None
+    assert "launch-day" in cal.ids() and "screenshot-saturday" in cal.ids()
+
+
 @test("the calendar claims a beat before posting it")
 def _():
     # If the send fails after the claim, the beat is marked failed. If the claim

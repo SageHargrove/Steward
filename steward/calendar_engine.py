@@ -160,6 +160,20 @@ class Calendar:
     def upcoming(self, today: date, days: int = 60) -> list[Occurrence]:
         return self.occurrences(today + timedelta(days=1), today + timedelta(days=days))
 
+    def find(self, beat_id: str, when: date) -> Occurrence | None:
+        """One named beat, dated to whatever day you ask for. This is how a
+        beat gets tested without waiting months for its real date."""
+        for beat in self.beats:
+            if beat.get("id") == beat_id:
+                return Occurrence(self.fill(beat), when)
+        for beat in self.recurring:
+            if beat.get("id") == beat_id:
+                return Occurrence(self.fill(beat), when, recurring=True)
+        return None
+
+    def ids(self) -> list[str]:
+        return [b.get("id", "") for b in self.beats + self.recurring if b.get("id")]
+
     def fill(self, beat: dict) -> dict:
         out = {}
         for k, v in beat.items():
