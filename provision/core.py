@@ -208,7 +208,12 @@ def customize(bp: dict, selection: dict | None) -> dict:
     validation failures.
     """
     sel = selection or {}
-    bp = substitute(bp, sel.get("variables"))
+    # Substitution happens at the very END, not here. The UI is handed the raw
+    # blueprint, so its keep-lists hold raw names like "What brings you to
+    # {{game}}?". Substituting first renamed things out from under those lists
+    # and silently dropped them. Every keep-list, rename key and default below
+    # therefore matches against the blueprint's own untouched names.
+    bp = copy.deepcopy(bp)
 
     # Whole features the user can switch off, as opposed to individual items.
     feats = sel.get("features") or {}
@@ -358,7 +363,11 @@ def customize(bp: dict, selection: dict | None) -> dict:
         for a in bp.get("automod", []):
             a["exempt_roles"] = [rr(x) for x in a.get("exempt_roles", [])]
 
-    # -- user-added items, appended after renames so their names are literal
+    # -- fill in {{placeholders}}, now that every selection has been matched
+    # against the raw names it was built from
+    bp = substitute(bp, sel.get("variables"))
+
+    # -- user-added items, appended last so their names stay exactly as typed
     add = sel.get("additions") or {}
 
     for spec in add.get("roles", []):

@@ -90,6 +90,28 @@ def _():
     assert any("One Trick" in t for t in topics)
     assert not any("{{" in t for t in topics), "unsubstituted placeholder left"
 
+@test("a selection built from raw names keeps items whose names hold placeholders")
+def _():
+    # The UI is handed the raw blueprint, so its keep-lists contain
+    # "What brings you to {{game}}?". Substituting before filtering renamed
+    # that prompt out from under the list and silently dropped it, which
+    # reached a live server as "2 prompts" instead of 3.
+    raw = core.load(BLUEPRINT)
+    inv = core.inventory(raw)
+    assert any("{{" in p["title"] for p in inv["prompts"]), \
+        "this test is pointless unless a prompt title still has a placeholder"
+    sel = {"variables": {"game": "Giltgrave"},
+           "prompts": [p["title"] for p in inv["prompts"]],
+           "channels": [c["name"] for cat in inv["categories"] for c in cat["channels"]],
+           "roles": [r["name"] for r in inv["roles"]],
+           "automod": [a["name"] for a in inv["automod"]],
+           "defaults": inv["onboarding_defaults"]}
+    out = core.customize(raw, sel)
+    assert len(out["onboarding_prompts"]) == len(inv["prompts"]), \
+        f"lost a prompt: {[p['title'] for p in out['onboarding_prompts']]}"
+    assert out["onboarding_prompts"][0]["title"] == "What brings you to Giltgrave?"
+    assert not core.validate(out)["errors"]
+
 @test("unpicked channels are dropped, required ones survive")
 def _():
     bp = load({"channels": ["general"]})

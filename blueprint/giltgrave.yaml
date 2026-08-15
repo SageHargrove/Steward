@@ -39,11 +39,56 @@ guild:
 # clamped below its own integration role.
 # ---------------------------------------------------------------------------
 roles:
+  # Discord ownership is a property of the server, not a role: you already hold
+  # every permission and the crown next to your name. This exists only so the
+  # member list shows it, which is why it grants nothing.
+  - name: Owner
+    note: "Cosmetic. Server ownership is not a role, so this grants nothing."
+    color: 0xE0B341
+    hoist: true
+    mentionable: false
+    permissions: []
+
   - name: Dev
     color: 0xC9A227
     hoist: true
     mentionable: true
     permissions: [ADMINISTRATOR]
+
+  # Full server management without being a developer. Deliberately NOT
+  # Administrator: that one permission bypasses every channel restriction and
+  # cannot be undone by a channel override, so it stays on Dev alone.
+  - name: Admin
+    note: "Runs the server. Everything a Mod can do, plus channels, roles and invites."
+    color: 0xB5533C
+    hoist: true
+    mentionable: true
+    permissions:
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - SEND_MESSAGES_IN_THREADS
+      - CREATE_PUBLIC_THREADS
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - ADD_REACTIONS
+      - READ_MESSAGE_HISTORY
+      - MENTION_EVERYONE
+      - MANAGE_MESSAGES
+      - MANAGE_THREADS
+      - MANAGE_NICKNAMES
+      - MANAGE_CHANNELS
+      - MANAGE_ROLES
+      - MANAGE_GUILD
+      - MANAGE_EVENTS
+      - CREATE_INSTANT_INVITE
+      - KICK_MEMBERS
+      - BAN_MEMBERS
+      - MODERATE_MEMBERS
+      - VIEW_AUDIT_LOG
+      - CONNECT
+      - SPEAK
+      - MUTE_MEMBERS
+      - MOVE_MEMBERS
 
   - name: Mod
     color: 0x7A5CA8
@@ -70,6 +115,39 @@ roles:
       - SPEAK
       - MUTE_MEMBERS
       - MOVE_MEMBERS
+
+  # Somebody you are trying out. Can calm a room down and clean up, but cannot
+  # kick or ban, so a bad hire cannot cost you members.
+  - name: Trial Mod
+    note: "Can delete messages and time people out. Cannot kick or ban."
+    color: 0x5E8C7B
+    hoist: true
+    mentionable: true
+    permissions:
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - SEND_MESSAGES_IN_THREADS
+      - CREATE_PUBLIC_THREADS
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - ADD_REACTIONS
+      - READ_MESSAGE_HISTORY
+      - MANAGE_MESSAGES
+      - MODERATE_MEMBERS
+      - CONNECT
+      - SPEAK
+      - MUTE_MEMBERS
+
+  # Streamers and video makers who join. Worth its own role because the build
+  # plan's outreach track needs a way to reach exactly these people, and a
+  # mentionable role is the only compliant way to do that. Discord prohibits
+  # unsolicited DMs.
+  - name: Content Creator
+    note: "Streamers and video makers. Mentionable, so you can reach them without DMs."
+    color: 0xD07B4F
+    hoist: false
+    mentionable: true
+    permissions: []
 
   # Scarcity mechanic. Granted by hand to everyone who joins before the public
   # announcement, then never granted again. Costs nothing, people care.
@@ -191,6 +269,8 @@ overwrite_presets:
       allow: [VIEW_CHANNEL, READ_MESSAGE_HISTORY]
     - role: Dev
       allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
+    - role: Admin
+      allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
     - role: Mod
       allow: [SEND_MESSAGES, CREATE_PUBLIC_THREADS]
 
@@ -201,6 +281,8 @@ overwrite_presets:
       deny: [SEND_MESSAGES, CREATE_PUBLIC_THREADS, CREATE_PRIVATE_THREADS]
       allow: [VIEW_CHANNEL, READ_MESSAGE_HISTORY, ADD_REACTIONS, SEND_MESSAGES_IN_THREADS]
     - role: Dev
+      allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
+    - role: Admin
       allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
     - role: Mod
       allow: [SEND_MESSAGES, CREATE_PUBLIC_THREADS]
@@ -228,6 +310,8 @@ overwrite_presets:
       deny: [VIEW_CHANNEL]
     - role: Playtester
       allow: [VIEW_CHANNEL, SEND_MESSAGES, SEND_MESSAGES_IN_THREADS, CREATE_PUBLIC_THREADS, EMBED_LINKS, ATTACH_FILES, ADD_REACTIONS, READ_MESSAGE_HISTORY]
+    - role: Admin
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, MENTION_EVERYONE]
     - role: Dev
       allow: [VIEW_CHANNEL, SEND_MESSAGES, MENTION_EVERYONE]
     - role: Mod
@@ -237,6 +321,10 @@ overwrite_presets:
     - role: everyone
       deny: [VIEW_CHANNEL]
     - role: Dev
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
+    - role: Admin
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
+    - role: Trial Mod
       allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
     - role: Mod
       allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
@@ -541,7 +629,7 @@ automod:
     actions:
       - block: "That looked like spam to the server filter."
       - alert: mod-log
-    exempt_roles: [Dev, Mod]
+    exempt_roles: [Dev, Admin, Mod]
 
   - name: "Mention spam"
     note: "Blocks messages with more than 6 mentions and times the sender out for 10 minutes."
@@ -552,7 +640,7 @@ automod:
       - block: "Too many mentions in one message."
       - alert: mod-log
       - timeout: 600
-    exempt_roles: [Dev, Mod]
+    exempt_roles: [Dev, Admin, Mod]
 
   - name: "Invite links and advertising"
     note: "Exempts #looking-for-guild, where recruiters legitimately post links."
@@ -566,7 +654,7 @@ automod:
       - block: "Invite links and advertising are not allowed here. Ask a mod if you think this is a mistake."
       - alert: mod-log
       - timeout: 300
-    exempt_roles: [Dev, Mod]
+    exempt_roles: [Dev, Admin, Mod]
     # #looking-for-guild is where guild recruiters legitimately post links.
     exempt_channels: [looking-for-guild]
 
@@ -587,4 +675,4 @@ automod:
     allow_list: []
     actions:
       - block_member_interaction: true
-    exempt_roles: [Dev, Mod]
+    exempt_roles: [Dev, Admin, Mod]
