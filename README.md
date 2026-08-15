@@ -189,10 +189,30 @@ Discord's onboarding channel minimums (7 defaults, 5 of them fully open),
 AutoMod per-trigger limits, regex over 260 characters, and timeout actions on
 trigger types that do not support them.
 
+## Attribution without cluttering profiles
+
+"How did you find us?" is the one number Discord will not give you: Server
+Insights needs 500 members and is coarse even then. But Discord rejects any
+onboarding answer that grants neither a role nor a channel, so the question
+cannot be a pure survey.
+
+The answer grants a role for about a second. Roles marked `ephemeral: true` in
+the blueprint are recorded into the ledger by Steward, which then takes the
+role straight back off. Nobody wears "Found via Reddit" on their profile, and
+`/ledger-status` still shows the split.
+
+This only works while Steward is running. If it is off, the roles sit on
+members until it next starts and sweeps them, or until you run `/sweep-roles`.
+If you are not going to run Steward, delete the question instead of leaving it
+half-working. If the strip fails for lack of permission, the answer is still
+recorded and the bot says so once, because the number matters more than the
+tidiness.
+
 ## Tests
 
 ```powershell
-python testsun_tests.py
+python tests
+un_tests.py
 ```
 
 42 checks, no test framework to install. `tests/fake_discord.py` stands in for

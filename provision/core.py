@@ -105,7 +105,9 @@ DEFAULT_OVERWRITES = {
 
 # Permission integers for the invite URLs the UI shows.
 INVITE_PERMS_PROVISION = 8            # Administrator, needed for the first run
-INVITE_PERMS_LEDGER = 2147568640      # view, send, history, embed, slash commands
+INVITE_PERMS_LEDGER = 2416004096      # view, send, history, embed, slash commands,
+                                      # plus MANAGE_ROLES so Steward can remove the
+                                      # ephemeral attribution roles after recording them
 
 
 class Failed(Exception):
@@ -178,6 +180,7 @@ def inventory(bp: dict) -> dict:
             "required_reason": r.get("required_reason", ""),
             "color": r.get("color", 0),
             "note": r.get("note", ""),
+            "ephemeral": bool(r.get("ephemeral")),
         } for r in bp.get("roles", [])],
         "automod": [{
             "name": a["name"],

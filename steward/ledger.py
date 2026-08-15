@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS members (
     onboarding_completed_at INTEGER,
     first_message_at        INTEGER,
     last_seen_at            INTEGER,
+    -- How they said they found you. Discord will not accept an onboarding
+    -- answer that grants nothing, so the answer grants a role for a moment and
+    -- the bot writes it here and takes the role back off. The number lives in
+    -- this column instead of on the member's profile.
+    attribution             TEXT,
     PRIMARY KEY (guild_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS ix_members_joined ON members (guild_id, first_joined_at);
@@ -74,10 +79,40 @@ class Ledger:
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
         self._opted_out: set[int] = {
             row["user_id"] for row in self.db.execute("SELECT user_id FROM opt_outs")
         }
+
+    def _migrate(self):
+        """Add columns that later versions introduced. CREATE TABLE IF NOT
+        EXISTS does nothing to a table that already exists, so a database made
+        by an older build would otherwise be missing them."""
+        have = {r["name"] for r in self.db.execute("PRAGMA table_info(members)")}
+        for column, decl in (("attribution", "TEXT"),):
+            if column not in have:
+                self.db.execute(f"ALTER TABLE members ADD COLUMN {column} {decl}")
+
+    # -- attribution ------------------------------------------------------
+
+    def set_attribution(self, guild_id: int, user_id: int, source: str) -> bool:
+        """Record how someone said they found you. First answer wins, so a
+        rejoin cannot overwrite the original. Returns whether it was stored."""
+        if user_id in self._opted_out:
+            return False
+        cur = self.db.execute(
+            "UPDATE members SET attribution = ? "
+            "WHERE guild_id = ? AND user_id = ? AND attribution IS NULL",
+            (source, guild_id, user_id))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def attribution_counts(self, guild_id: int) -> dict[str, int]:
+        return {r["attribution"]: r["n"] for r in self.db.execute(
+            "SELECT attribution, COUNT(*) AS n FROM members "
+            "WHERE guild_id = ? AND attribution IS NOT NULL "
+            "GROUP BY attribution ORDER BY n DESC", (guild_id,))}
 
     # -- opt-out ----------------------------------------------------------
 

@@ -55,6 +55,13 @@ keep-list, rename and default against raw names and only fill in
 `{{placeholders}}` at the end. Substituting earlier silently drops anything
 whose name contains a placeholder. This shipped once and looked like success.
 
+**Attribution roles are ephemeral by design.** The six `Found via ...` roles
+exist only because Discord refuses an onboarding answer that grants nothing.
+Steward records the answer and removes the role, so they must never be given a
+colour, hoist, or permissions, and must never be treated as something a member
+keeps. Stripping them requires MANAGE_ROLES, which is why the ledger invite
+includes it.
+
 **Never invent a third-party bot's client id** for an invite URL. A wrong
 invite link sends someone's server to the wrong application. Point at Discord's
 App Directory instead.

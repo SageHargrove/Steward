@@ -477,6 +477,82 @@ def _():
     L2.close()
 
 
+@test("attribution is stored once and the first answer wins")
+def _():
+    L = fresh_ledger()
+    L.touch_member(1, 100, int(_time.time()))
+    assert L.set_attribution(1, 100, "Steam") is True
+    assert L.set_attribution(1, 100, "Reddit") is False, "a rejoin must not overwrite"
+    assert L.attribution_counts(1) == {"Steam": 1}, L.attribution_counts(1)
+    L.close()
+
+
+@test("attribution respects opt-out and survives retention")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    L.touch_member(1, 100, now)
+    L.set_attribution(1, 100, "Steam")
+    L.touch_member(1, 200, now)
+    L.forget(200)
+    assert L.set_attribution(1, 200, "Reddit") is False, "opted-out member recorded anyway"
+    L.record(guild_id=1, user_id=100, event_type="attribution", ts=now - 500 * 86400)
+    L.purge_older_than(365)
+    assert L.attribution_counts(1) == {"Steam": 1}, "attribution must outlive event retention"
+    L.close()
+
+
+@test("an older database gains the attribution column")
+def _():
+    import sqlite3
+    d = tempfile.mkdtemp()
+    path = Path(d) / "old.sqlite3"
+    # a members table exactly as an earlier build wrote it, with no attribution
+    con = sqlite3.connect(path)
+    con.executescript("""
+        CREATE TABLE members (
+            guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+            first_joined_at INTEGER NOT NULL, last_left_at INTEGER,
+            onboarding_completed_at INTEGER, first_message_at INTEGER,
+            last_seen_at INTEGER, PRIMARY KEY (guild_id, user_id));
+        INSERT INTO members (guild_id, user_id, first_joined_at) VALUES (1, 100, 0);
+    """)
+    con.commit(); con.close()
+
+    L = Ledger(path)                                  # must migrate, not crash
+    assert L.set_attribution(1, 100, "Steam") is True
+    assert L.attribution_counts(1) == {"Steam": 1}
+    L.close()
+
+
+@test("the blueprint's ephemeral roles map to readable answers")
+def _():
+    sys.path.insert(0, str(ROOT / "steward"))
+    import importlib
+    botmod = importlib.import_module("bot") if "bot" in sys.modules else None
+    # Import bot only if discord.py is present; otherwise read the mapping the
+    # same way it does, so this still checks the blueprint side.
+    import yaml
+    bp = yaml.safe_load(BLUEPRINT.read_text(encoding="utf-8"))
+    eph = {r["name"]: r["name"].split("Found via ", 1)[-1]
+           for r in bp["roles"] if r.get("ephemeral")}
+    assert len(eph) == 6, eph
+    assert eph["Found via Steam"] == "Steam"
+    assert eph["Found via a Creator"] == "a Creator"
+    # every ephemeral role must actually be granted by an onboarding answer,
+    # or it would never be handed out and never recorded
+    granted = {r for p in bp["onboarding_prompts"] for o in p["options"]
+               for r in o.get("roles", [])}
+    assert set(eph) <= granted, set(eph) - granted
+
+
+@test("stripping ephemeral roles needs Manage Roles in the ledger invite")
+def _():
+    sys.path.insert(0, str(ROOT / "provision"))
+    assert core.INVITE_PERMS_LEDGER & (1 << 28), \
+        "the ledger invite must include MANAGE_ROLES or the roles can never be removed"
+
+
 @test("the bot asks for members but never message content")
 def _():
     # Reading message content is a privileged intent needing annual

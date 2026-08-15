@@ -160,52 +160,66 @@ roles:
     mentionable: true
     permissions: []
 
-  # Attribution roles. Discord rejects any onboarding answer that grants
-  # neither a role nor a channel, so "How did you find us?" cannot be a pure
-  # survey. Granting a role is better regardless: Server Settings, Members,
-  # filter by role turns each answer into a number you can actually count.
-  # They carry no permissions, no colour and no hoist, so members never see them.
+  # Attribution roles, held for about a second each.
+  #
+  # Discord rejects any onboarding answer that grants neither a role nor a
+  # channel, so "How did you find us?" cannot be a pure survey. The answer has
+  # to grant something. But nothing says it has to keep it: these are marked
+  # ephemeral, so Steward writes the answer into the ledger and takes the role
+  # straight back off. Nobody ends up wearing "Found via Reddit" on their
+  # profile, and the number still lands somewhere you can query.
+  #
+  # REQUIRES STEWARD TO BE RUNNING. If the ledger bot is off, these roles pile
+  # up on members exactly as if they were permanent, and Steward sweeps them on
+  # its next start. If you are not going to run Steward, delete this question
+  # rather than leaving it half-working.
   - name: "Found via Steam"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   - name: "Found via a Friend"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   - name: "Found via a Creator"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   - name: "Found via Reddit"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   - name: "Found via Another Server"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   - name: "Found via Elsewhere"
+    ephemeral: true
     color: 0x000000
     hoist: false
     mentionable: false
     permissions: []
-    note: "Attribution only. Count them under Server Settings, Members."
+    note: "Removed automatically once Steward records the answer. Never stays on anyone."
 
   # Interest roles, granted by onboarding answers.
   - name: Tower Climber

@@ -36,12 +36,45 @@ TOKEN = os.environ.get("DISCORD_TOKEN")
 DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
 REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
+BLUEPRINT = os.environ.get("STEWARD_BLUEPRINT", "../blueprint/giltgrave.yaml")
+
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
 log = logging.getLogger("steward")
+
+
+def ephemeral_roles(path: str) -> dict[str, str]:
+    """Roles the blueprint marks `ephemeral: true`, mapped to the answer they
+    stand for.
+
+    Discord will not accept an onboarding answer that grants neither a role nor
+    a channel, so "How did you find us?" has to hand out a role. These are the
+    ones it hands out, and they are meant to be taken straight back off: the
+    answer belongs in the ledger, not on somebody's profile.
+    """
+    try:
+        import yaml
+        with open(path, encoding="utf-8") as fh:
+            bp = yaml.safe_load(fh)
+    except FileNotFoundError:
+        log.warning("no blueprint at %s, so attribution roles will not be stripped", path)
+        return {}
+    except Exception as e:                                   # noqa: BLE001
+        log.warning("could not read %s (%s); attribution roles will not be stripped",
+                    path, e)
+        return {}
+
+    out = {}
+    for r in bp.get("roles", []):
+        if r.get("ephemeral"):
+            name = r["name"]
+            # "Found via a Creator" -> "a Creator"
+            out[name] = name.split("Found via ", 1)[-1]
+    return out
+
 
 # GUILDS for structure, MEMBERS for joins and leaves and onboarding flags,
 # VOICE_STATES for voice. MEMBERS is privileged: toggle it in the Developer
@@ -58,6 +91,37 @@ class Steward(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.ledger = Ledger(DB_PATH)
+        self.ephemeral = ephemeral_roles(BLUEPRINT)
+
+    async def absorb_attribution(self, member: discord.Member) -> bool:
+        """Write down how someone said they found us, then take the role back
+        off so it never shows on their profile.
+
+        Returns whether anything was removed. Safe to call repeatedly.
+        """
+        held = [r for r in member.roles if r.name in self.ephemeral]
+        if not held:
+            return False
+
+        for role in held:
+            source = self.ephemeral[role.name]
+            if self.ledger.set_attribution(member.guild.id, member.id, source):
+                self.ledger.record(guild_id=member.guild.id, user_id=member.id,
+                                   event_type="attribution", source=source)
+        try:
+            await member.remove_roles(*held, reason="attribution recorded by Steward")
+            return True
+        except discord.Forbidden:
+            # Either the bot lacks Manage Roles, or its own role sits below
+            # these. Either way the answer is already saved; say so once
+            # rather than every time somebody joins.
+            log.warning(
+                "recorded attribution for %s but could not remove %s. Give the bot "
+                "Manage Roles and drag its role above them, then run /sweep-roles.",
+                member.id, ", ".join(r.name for r in held))
+        except discord.HTTPException as e:
+            log.warning("could not remove attribution roles from %s: %s", member.id, e)
+        return False
 
     async def setup_hook(self):
         await self.tree.sync()
@@ -79,6 +143,19 @@ class Steward(discord.Client):
                                      int(member.joined_at.timestamp()))
                 seeded += 1
             log.info("%s: seeded %d members", guild.name, seeded)
+
+            # Anyone who answered while the bot was off is still wearing the
+            # role. Record them and clean up, so being offline costs data but
+            # never leaves clutter behind.
+            if self.ephemeral:
+                swept = 0
+                for member in guild.members:
+                    if not member.bot and await self.absorb_attribution(member):
+                        swept += 1
+                if swept:
+                    log.info("%s: recorded and removed attribution roles from %d members",
+                             guild.name, swept)
+
         counts = self.ledger.counts(self.guilds[0].id) if self.guilds else {}
         log.info("ledger: %s", counts)
 
@@ -144,6 +221,12 @@ class Steward(discord.Client):
             self.ledger.record(guild_id=after.guild.id, user_id=after.id,
                                event_type="onboarding_complete", ts=now)
             self.ledger.mark(after.guild.id, after.id, "onboarding_completed_at", now)
+
+        # The attribution answer arrives as a role appearing. Write it down and
+        # take it straight back off; only compare when something actually
+        # changed, since this event also fires for nicknames and avatars.
+        if self.ephemeral and {r.id for r in before.roles} != {r.id for r in after.roles}:
+            await self.absorb_attribution(after)
 
     async def on_voice_state_update(self, member, before, after):
         if member.bot:
@@ -248,6 +331,8 @@ async def ledger_status(interaction: discord.Interaction):
     joined = f["joined"] or 0
     pct = lambda n: f"{(n / joined * 100):.0f}%" if joined else "n/a"
 
+    attribution = client.ledger.attribution_counts(interaction.guild_id)
+
     lines = [
         "**Ledger**",
         f"{c['events']} events since " + (f"<t:{c['since']}:D>" if c["since"] else "never"),
@@ -259,10 +344,36 @@ async def ledger_status(interaction: discord.Interaction):
         f"completed onboarding: {f['onboarded']} ({pct(f['onboarded'])})",
         f"posted at least once: {f['posted']} ({pct(f['posted'])})",
         f"already left: {f['left_server']} ({pct(f['left_server'])})",
-        "",
-        *[f"- {k}: {v}" for k, v in c["by_type"].items()],
     ]
+    if attribution:
+        total = sum(attribution.values())
+        lines += ["", "**How they found you** (all time)"]
+        lines += [f"{k}: {v} ({v / total * 100:.0f}%)" for k, v in attribution.items()]
+    lines += ["", *[f"- {k}: {v}" for k, v in c["by_type"].items()]]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="sweep-roles",
+                     description="Record and remove any leftover attribution roles. Staff only.")
+async def sweep_roles(interaction: discord.Interaction):
+    perms = interaction.user.guild_permissions if interaction.guild else None
+    if not perms or not perms.manage_guild:
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    if not client.ephemeral:
+        await interaction.response.send_message(
+            "No roles are marked ephemeral in the blueprint, so there is nothing to sweep.",
+            ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    swept = 0
+    for member in interaction.guild.members:
+        if not member.bot and await client.absorb_attribution(member):
+            swept += 1
+    await interaction.followup.send(
+        f"Recorded and cleaned up {swept} member(s)." if swept
+        else "Nothing to clean up. Every answer is already recorded.", ephemeral=True)
 
 
 if __name__ == "__main__":
