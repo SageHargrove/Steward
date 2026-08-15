@@ -43,3 +43,23 @@ Licensed under the SIL Open Font License, which permits commercial use.
 `marks.py` and `banner.py` in the session scratchpad produced these. Both are
 plain Pillow, no design tool needed. Change a colour constant at the top and
 re-run to get the whole set again.
+
+
+## Palettes
+
+`palettes-sheet.png` is the one to look at: eight two-colour schemes, each shown
+as the banner and as the matching avatar at 96px and 40px, so the pair can be
+judged together rather than separately.
+
+    pal-banner-<name>.png    680x240
+    pal-seal-<name>.png      512x512, the same two colours
+
+The banner is deliberately plain. A wordmark on a flat ground is the one thing
+that never dates, and nothing more elaborate survives being a strip nobody
+looks at twice.
+
+Both files of a pair use the same two colours in opposite roles, which is what
+makes the profile read as one thing instead of two.
+
+Regenerate the whole set from `palettes.py` by editing the PALETTES dict at the
+top; every file rebuilds from those eight pairs of hex values.

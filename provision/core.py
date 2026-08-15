@@ -436,8 +436,13 @@ def customize(bp: dict, selection: dict | None) -> dict:
         c for c in bp.get("onboarding_defaults", []) if c in chans_keep]
 
     if bp.get("levels", {}).get("rewards"):
-        bp["levels"]["rewards"] = [r for r in bp["levels"]["rewards"]
-                                   if r["role"] in roles_keep]
+        # Roles added by hand are appended further down, so they are not in
+        # roles_keep yet. Keep their rewards rather than pruning them here.
+        added_names = {(r.get("name") or "").strip()
+                       for r in (sel.get("additions") or {}).get("roles", [])}
+        bp["levels"]["rewards"] = [
+            r for r in bp["levels"]["rewards"]
+            if r["role"] in roles_keep or r["role"] in added_names]
 
     for p in bp.get("onboarding_prompts", []):
         for o in p.get("options", []):
@@ -515,6 +520,10 @@ def customize(bp: dict, selection: dict | None) -> dict:
                 o["roles"] = [rr(x) for x in o.get("roles", [])]
         for a in bp.get("automod", []):
             a["exempt_roles"] = [rr(x) for x in a.get("exempt_roles", [])]
+        # A threshold belongs to the role, not to its name. Without this,
+        # renaming a tier silently stopped it ever being granted.
+        for reward in bp.get("levels", {}).get("rewards", []):
+            reward["role"] = rr(reward["role"])
 
     # -- recolouring, which the UI offers on every role rather than only on
     # ones somebody added by hand

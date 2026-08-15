@@ -725,6 +725,33 @@ def _():
     assert not core.validate(bp)["errors"]
 
 
+@test("renaming a role carries its level threshold with it")
+def _():
+    # A threshold belongs to the role, not to its name. Without this, renaming
+    # a tier silently stopped it ever being granted.
+    star1 = "★" + "1"
+    bp = load({"renames": {"roles": {star1: "Bronze"}}})
+    rewards = {r["role"]: r["level"] for r in bp["levels"]["rewards"]}
+    assert "Bronze" in rewards, f"threshold was stranded: {rewards}"
+    assert star1 not in rewards
+    assert not core.validate(bp)["errors"]
+
+
+@test("a role you added can be a level reward")
+def _():
+    bp = load({"additions": {"roles": [{"name": "Regular", "color": 0x00FF00}]},
+               "levels": {"rewards": {"Regular": 15}}})
+    assert any(r["name"] == "Regular" for r in bp["roles"])
+    assert {"level": 15, "role": "Regular"} in bp["levels"]["rewards"]
+    assert not core.validate(bp)["errors"]
+
+
+@test("a threshold on a role that exists nowhere is dropped")
+def _():
+    bp = load({"levels": {"rewards": {"Nonexistent": 5}}})
+    assert bp["levels"]["rewards"] == [], bp["levels"]["rewards"]
+
+
 @test("thresholds come back in unlock order")
 def _():
     bp = load({"levels": {"rewards": {"Veteran": 30, "Playtester": 2,

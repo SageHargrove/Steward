@@ -1222,10 +1222,33 @@ function addedRoleRow(a){
   const i = SEL.additions.roles.indexOf(a);
   return `<div class="item">
     <div class="meta"><div class="nm"><input type="text" value="${esc(a.name)}"
-      onchange="editAdded('roles', ${i}, this.value)">
+      onchange="editAddedRoleName(${i}, this.value)"
+      style="color:${hex(a.color || 0)}">
       <span class="tag added">yours</span></div>
       <div class="why">You added this one. No special permissions.</div></div>
+    <div class="unlock" title="Leave blank if this role is not a level reward">
+      unlocks at
+      <input type="number" min="1" max="500" value="${SEL.levels.rewards[a.name] ?? ''}"
+             placeholder="-" onchange="setAddedReward(${i}, this.value)">
+    </div>
+    <div class="swatch">
+      <input type="color" value="${hex(a.color || 0)}" title="Colour"
+             onchange="setAddedColor(${i}, this.value)">
+    </div>
     <button class="rm" onclick="dropAdded('roles', ${i})">Remove</button></div>`;
+}
+
+function setAddedReward(i, value){
+  const name = SEL.additions.roles[i].name;
+  const level = parseInt(value, 10);
+  if(!value.trim() || isNaN(level) || level < 1) delete SEL.levels.rewards[name];
+  else SEL.levels.rewards[name] = level;
+  redraw();
+}
+
+function setAddedColor(i, value){
+  SEL.additions.roles[i].color = parseInt(value.replace('#', ''), 16) || 0;
+  redraw();
 }
 
 function simpleGroup(kind, title, items, nameOf, noteOf){
@@ -1284,6 +1307,20 @@ function renameRole(i, val){
   const orig = INV.roles[i].name; val = val.trim();
   if(!val || val === orig) delete SEL.renames.roles[orig];
   else SEL.renames.roles[orig] = val;
+  redraw();
+}
+
+function editAddedRoleName(i, val){
+  // The threshold and colour are keyed by name, so carry them across a rename
+  // rather than stranding them on a name nothing uses any more.
+  const was = SEL.additions.roles[i].name;
+  val = val.trim();
+  if(!val || val === was) return redraw();
+  if(SEL.levels.rewards[was] !== undefined){
+    SEL.levels.rewards[val] = SEL.levels.rewards[was];
+    delete SEL.levels.rewards[was];
+  }
+  SEL.additions.roles[i].name = val;
   redraw();
 }
 
