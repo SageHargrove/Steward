@@ -153,6 +153,13 @@
     letter-spacing:.03em; font-weight:600; cursor:pointer}
   .pill.on{background:rgba(88,101,242,.18); border-color:var(--blue); color:#c3cafd}
 
+  .curve input[type=text]{width:100%; max-width:150px; padding:3px 7px; font-size:13px}
+  .curve input[type=number]{width:64px; padding:3px 7px; font-size:13px; text-align:center}
+  .curve .drop{background:transparent; border:1px solid var(--line); color:var(--dimmer);
+    padding:2px 8px; font-size:11px; border-radius:3px}
+  .curve .drop:hover{border-color:var(--red); color:#f5c2c3}
+  .curve .addrow{background:transparent; border-top:1px solid var(--line-soft);
+    padding:9px 0 0}
   .curve{padding:0 13px 13px}
   .curve table{width:100%; border-collapse:collapse; font-size:12.5px}
   .curve th{text-align:left; font-weight:600; color:var(--muted); padding:5px 8px;
@@ -922,15 +929,19 @@ function renderTree(){
 function levelsPanel(){
   const L = SEL.levels;
   const noun = esc(L.noun || 'Level');
+  const on = L.enabled !== false;
   const opt = (v, label) => `<option value="${v}" ${L.announce === v ? 'selected' : ''}>${label}</option>`;
-  return `<div class="group"><div class="gh">Levels</div>
+  const head = `<div class="group"><div class="gh">Levels</div>
     <div class="item">
-      <label class="sw"><input type="checkbox" ${L.enabled === false ? '' : 'checked'}
+      <label class="sw"><input type="checkbox" ${on ? 'checked' : ''}
         onchange="setLevel('enabled', this.checked)"><span></span></label>
       <div class="meta"><div class="nm"><b>Give people levels</b></div>
       <div class="why">Members earn a level for taking part, and roles unlock at the
       levels you set below. Switch this off and nothing tracks XP at all.</div></div>
-    </div>
+    </div>`;
+  // Switched off, none of the rest applies, so none of it is shown.
+  if(!on) return head + `</div>`;
+  return head + `
     <div class="lvlgrid">
       <div>
         <label>What a level is called</label>
@@ -1001,6 +1012,13 @@ function levelsPanel(){
         <div class="hint">Squared cost. Zero keeps late levels reachable; 5 is the
           usual chat-bot value and puts level 120 out of anyone's reach.</div>
       </div>
+      <div>
+        <label>Highest level</label>
+        <input type="number" min="0" max="5000" value="${L.max_level || 0}"
+               onchange="setLevel('max_level', +this.value)">
+        <div class="hint">Nobody goes past this. Leave it at 0 for no ceiling,
+          or set 999 if you want a long ladder.</div>
+      </div>
     </div>
     ${curveTable()}
     <div class="gone">Set which roles unlock, and when, using the
@@ -1043,46 +1061,79 @@ function humanDays(days){
   return `${(days / 365).toFixed(1)} years`;
 }
 
+function tierRows(){
+  /* Every role with an unlock level, whether it came from the blueprint or was
+     added here. Name and level are editable in place: this is the table people
+     look at, so it is where the edit belongs. */
+  const out = [];
+  (INV.roles || []).forEach((r, i) => {
+    const name = SEL.renames.roles[r.name] || r.name;
+    if(SEL.roles.includes(r.name) && SEL.levels.rewards[r.name] !== undefined)
+      out.push({name, level: +SEL.levels.rewards[r.name], kind: 'bp', i});
+  });
+  (SEL.additions.roles || []).forEach((a, i) => {
+    if(SEL.levels.rewards[a.name] !== undefined)
+      out.push({name: a.name, level: +SEL.levels.rewards[a.name], kind: 'add', i});
+  });
+  return out.sort((a, b) => a.level - b.level);
+}
+
 function curveTable(){
-  const rewards = Object.entries(SEL.levels.rewards || {})
-    .map(([role, level]) => ({role, level: +level}))
-    .sort((a, b) => a.level - b.level);
-  if(!rewards.length){
-    return `<div class="curve"><div class="hint">No roles have an
-      <b>unlocks at</b> level yet, so nothing is handed out. Set one on a role below
-      and this fills in with what it costs.</div></div>`;
-  }
+  const tiers = tierRows();
   const perDay = xpPerDay();
-  const rows = rewards.map(r => {
-    const xp = xpToReach(r.level);
+  const cap = +(SEL.levels.max_level || 0);
+
+  const rows = tiers.map(t => {
+    const xp = xpToReach(t.level);
     const days = xp / perDay;
-    const cls = days > 730 ? 'never' : (days > 400 ? 'slow' : '');
+    const over = cap > 0 && t.level > cap;
+    const cls = over ? 'never' : (days > 730 ? 'never' : (days > 400 ? 'slow' : ''));
+    const edit = t.kind === 'bp'
+      ? `onchange="renameRole(${t.i}, this.value)"`
+      : `onchange="editAddedRoleName(${t.i}, this.value)"`;
+    const lvl = t.kind === 'bp'
+      ? `onchange="setReward(${t.i}, this.value)"`
+      : `onchange="setAddedReward(${t.i}, this.value)"`;
+    const drop = t.kind === 'bp'
+      ? `onclick="setReward(${t.i}, '')"`
+      : `onclick="setAddedReward(${t.i}, '')"`;
     return `<tr>
-      <td>${esc(r.role)}</td>
-      <td>${r.level}</td>
-      <td>${xp.toLocaleString()}</td>
-      <td class="${cls}">${humanDays(days)}</td>
-      <td class="${cls}">${humanDays(days * 4)}</td>
+      <td><input type="text" value="${esc(t.name)}" ${edit}></td>
+      <td><input type="number" min="1" max="5000" value="${t.level}" ${lvl}></td>
+      <td>${over ? '&mdash;' : xp.toLocaleString()}</td>
+      <td class="${cls}">${over ? 'above the ceiling' : humanDays(days)}</td>
+      <td class="${cls}">${over ? '' : humanDays(days * 4)}</td>
+      <td><button class="drop" ${drop} title="Stop this role being a reward">x</button></td>
     </tr>`;
   }).join('');
 
-  const worst = xpToReach(rewards[rewards.length - 1].level) / perDay;
+  const empty = `<div class="hint">No role unlocks at a level yet, so nothing is
+    handed out. Put a number in the <b>unlocks at</b> box on any role below and it
+    appears here.</div>`;
+
   let verdict = '';
-  if(worst > 730) verdict = `<div class="msg err">The last tier needs
-    ${humanDays(worst)} of steady chatting. Nobody will reach it. Lower the
-    level, or lower the cost per level.</div>`;
-  else if(worst > 400) verdict = `<div class="msg warn">The last tier needs
-    ${humanDays(worst)}. That is a long haul; fine if you mean it.</div>`;
+  if(tiers.length){
+    const worst = xpToReach(tiers[tiers.length - 1].level) / perDay;
+    const over = cap > 0 && tiers.some(t => t.level > cap);
+    if(over) verdict = `<div class="msg err">A role unlocks above ${cap}, which is
+      the highest level anyone can reach, so it can never be given out.</div>`;
+    else if(worst > 730) verdict = `<div class="msg err">The last tier needs
+      ${humanDays(worst)} of steady chatting. Nobody will reach it. Lower the level,
+      or lower the cost per level.</div>`;
+    else if(worst > 400) verdict = `<div class="msg warn">The last tier needs
+      ${humanDays(worst)}. That is a long haul; fine if you mean it.</div>`;
+  }
 
   return `<div class="curve">
-    <table>
-      <tr><th>Role</th><th>${esc(SEL.levels.noun || 'Level')}</th><th>Total XP</th>
-          <th>Chatting daily</th><th>Casual</th></tr>
+    ${tiers.length ? `<table>
+      <tr><th>Role</th><th>Unlocks at</th><th>Total XP</th>
+          <th>Chatting daily</th><th>Casual</th><th></th></tr>
       ${rows}
-    </table>
-    <div class="hint">Assumes about ${perDay.toLocaleString()} XP a day for someone
-      chatting on and off, and a quarter of that for someone dropping in. The
-      cooldown, not the XP range, is what really sets the pace.</div>
+    </table>` : empty}
+    <div class="hint">Rename a role or change its level right here. Assumes about
+      ${perDay.toLocaleString()} XP a day for someone chatting on and off, and a
+      quarter of that for someone dropping in. The cooldown, not the XP range, is
+      what really sets the pace.</div>
     ${verdict}
   </div>`;
 }

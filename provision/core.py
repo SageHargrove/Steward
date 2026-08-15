@@ -348,12 +348,16 @@ def customize(bp: dict, selection: dict | None) -> dict:
     if lv:
         levels = dict(bp.get("levels") or {})
         for key in ("enabled", "noun", "cooldown_seconds", "voice_xp_per_minute",
-                    "announce", "announce_only_rewards", "no_xp_channels"):
+                    "announce", "announce_only_rewards", "no_xp_channels",
+                    "max_level"):
             if key in lv:
                 levels[key] = lv[key]
         if "xp_per_message" in lv:
             pair = lv["xp_per_message"]
             levels["xp_per_message"] = [int(pair[0]), int(pair[1])]
+        if "curve" in lv and isinstance(lv["curve"], dict):
+            levels["curve"] = {k: int(v) for k, v in lv["curve"].items()
+                               if k in ("base", "linear", "quadratic")}
         if "rewards" in lv:
             # Sent as {role: level}; stored as a list so the order is the
             # order they unlock in.

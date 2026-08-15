@@ -1221,6 +1221,39 @@ def _():
     L.close()
 
 
+@test("a level ceiling stops anyone going past it")
+def _():
+    L = fresh_ledger()
+    lv = Levels(L, {"xp_per_message": [500, 500], "cooldown_seconds": 0,
+                    "max_level": 5, "curve": {"base": 50, "linear": 0, "quadratic": 0}})
+    for _ in range(60):
+        lv.award_message(1, 100)
+    r = lv.rank(1, 100)
+    assert r["level"] == 5, f"went past the ceiling to {r['level']}"
+    assert r["at_cap"] is True
+    assert r["needed"] == 0, "there is no next level at the ceiling"
+    L.close()
+
+
+@test("no ceiling means no ceiling")
+def _():
+    L = fresh_ledger()
+    lv = Levels(L, {"xp_per_message": [500, 500], "cooldown_seconds": 0,
+                    "max_level": 0, "curve": {"base": 50, "linear": 0, "quadratic": 0}})
+    for _ in range(60):
+        lv.award_message(1, 100)
+    assert lv.rank(1, 100)["level"] > 5
+    L.close()
+
+
+@test("the ceiling is editable and reaches the bot")
+def _():
+    bp = load({"levels": {"max_level": 999}})
+    assert bp["levels"]["max_level"] == 999
+    assert core.inventory(core.load(BLUEPRINT))["levels"].get("max_level") is not None, (
+        "the UI cannot see the ceiling")
+
+
 @test("the tier levels mirror the game's star caps")
 def _():
     want = {"1": 10, "2": 20, "3": 40, "4": 60, "5": 80, "6": 99, "7": 120}

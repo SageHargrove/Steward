@@ -874,6 +874,10 @@ levels:
     linear: 24
     quadratic: 0
 
+  # The highest level anyone can reach. 0 means no ceiling. Set to match your
+  # own game if it has one; 120 is the cap a transcendent star carries here.
+  max_level: 120
+
   # Star tiers mirror the level caps each star carries in the game: a 1-star
   # tops out at 10, a 2-star at 20, and so on to 120 for the transcendent one.
   # Against a member who chats most days that is roughly 3 days to the first

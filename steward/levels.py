@@ -40,18 +40,22 @@ class Curve:
                 self._cumulative[-1] + self.step(len(self._cumulative) - 1))
         return self._cumulative[level]
 
-    def level_at(self, xp: int) -> int:
+    def level_at(self, xp: int, cap: int = 0) -> int:
+        """`cap` is the highest level anyone can reach. 0 means no ceiling,
+        and 5000 is a runaway guard rather than a design decision."""
+        ceiling = cap if cap > 0 else 5000
         level = 0
-        while self.total_for(level + 1) <= xp:
+        while level < ceiling and self.total_for(level + 1) <= xp:
             level += 1
-            if level > 1000:                       # a guard, not a real ceiling
-                break
         return level
 
-    def progress(self, xp: int) -> tuple[int, int, int]:
+    def progress(self, xp: int, cap: int = 0) -> tuple[int, int, int]:
         """(level, xp into this level, xp this level needs)."""
-        level = self.level_at(xp)
+        level = self.level_at(xp, cap)
         floor = self.total_for(level)
+        if cap and level >= cap:
+            # At the ceiling there is no next level to be part-way through.
+            return level, 0, 0
         return level, xp - floor, self.total_for(level + 1) - floor
 
 
@@ -70,6 +74,8 @@ class Levels:
         self.only_announce_rewards = bool(cfg.get("announce_only_rewards", True))
         self.no_xp_channels = set(cfg.get("no_xp_channels") or [])
         self.curve = Curve(**(cfg.get("curve") or {}))
+        # The highest level anyone can reach. 0 means no ceiling.
+        self.max_level = int(cfg.get("max_level", 0) or 0)
         # {level: role name}
         self.rewards = {int(r["level"]): r["role"] for r in cfg.get("rewards", [])}
 
@@ -97,8 +103,8 @@ class Levels:
         if total is None:
             return None                                    # cooldown, or opted out
 
-        was = self.curve.level_at(before["xp"])
-        now = self.curve.level_at(total)
+        was = self.curve.level_at(before["xp"], self.max_level)
+        now = self.curve.level_at(total, self.max_level)
         if now == was:
             return None
         self.ledger.set_level(guild_id, user_id, now)
@@ -113,15 +119,16 @@ class Levels:
 
     def rank(self, guild_id: int, user_id: int) -> dict:
         row = self.ledger.xp_of(guild_id, user_id)
-        level, into, needed = self.curve.progress(row["xp"])
+        level, into, needed = self.curve.progress(row["xp"], self.max_level)
         return {**row, "level": level, "into": into, "needed": needed,
+                "at_cap": bool(self.max_level and level >= self.max_level),
                 "total_ranked": self.ledger.ranked_count(guild_id)}
 
     def board(self, guild_id: int, limit: int = 10, offset: int = 0) -> list[dict]:
         out = []
         for i, row in enumerate(self.ledger.leaderboard(guild_id, limit, offset), 1):
             out.append({**row, "position": offset + i,
-                        "level": self.curve.level_at(row["xp"])})
+                        "level": self.curve.level_at(row["xp"], self.max_level)})
         return out
 
     def bar(self, into: int, needed: int, width: int = 12) -> str:
