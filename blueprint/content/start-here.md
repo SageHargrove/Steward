@@ -9,18 +9,16 @@
 
 {{tagline}}
 
-Your tower is yours alone. So is everyone else's, which is what makes the arena, the trade post and the siege boards worth reading: the same hundred floors, a hundred different rosters, and nobody agreeing on the right way up.
-
 This server is where it gets made in public: builds, bugs, arguments about what to change, and the occasional screenshot nobody believes.
 
 **Start here**
-· Read the rules. Two minutes, and the short version is "be decent".
-· Say hello in #general. The first post is the hardest one.
+· Read the rules. Short version is just: be a decent person!
+· Say hello in #general!
 · The questions you answered on the way in set your roles. Change them any time under **Channels & Roles** at the top of the channel list.
 
 **Where things happen**
-· #announcements: releases, playtests, events. Worth turning on.
-· #patch-notes: every build, kept separate so you can mute one and not the other.
+· #announcements: releases, playtests, events.
+· #patch-notes: what changed in each build, down to the small stuff.
 · #devlog: how it is being made, and why things ended up the way they are.
 · #bug-reports: one bug per post, with a build number.
 · #suggestions: one idea per post. Vote with 👍 rather than replying "this".
@@ -28,13 +26,13 @@ This server is where it gets made in public: builds, bugs, arguments about what 
 · #off-topic: everything that is not {{game}}.
 
 **Roles you can pick up**
-· **@Ping Me For Playtests**: a mention when a build goes out. A few times a month at most, and you can drop it whenever you like. This is the only way we reach you; nobody here will DM you about a playtest.
+· **@Ping Me For Playtests**: a mention when a build goes out. A few times a month at most, and you can drop it whenever you like. 
 · The interest roles just show what you are here for. Grab or drop any of them under **Channels & Roles**.
 
 **Roles you earn**
-· **@Founding Member**: you were here before the public announcement. Granted by hand, and then never again.
+· **@Founding Member**: you were here before the public announcement.
 · **@Playtester**: early builds and the playtest channel. Ask if you want in.
-· **@Veteran**: around long enough to be part of the furniture.
+· **@Veteran**: for people who have been here a while and help others.
 
 **A note on what is recorded**
 A bot logs who posted in which channel and when, so that questions like "did anyone come back after the last build" have an answer. It does **not** record what anyone writes. It does not even ask Discord for permission to read message content.

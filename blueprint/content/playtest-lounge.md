@@ -9,17 +9,17 @@
 -->
 # You are a playtester
 
-Thank you. Genuinely. A build nobody plays teaches nothing.
+Thank you. Genuinely. I greatly value each of you for taking the time to playtest the game.
 
 **What is useful**
-· **When something confused you.** Confusion is the most valuable thing you can report and the thing you are most likely to dismiss as your own fault. It is not.
-· **When you stopped playing, and why.** "I got bored on floor 9" is worth more than a page of feature requests.
+· **When something confused you.** Confusion is the most valuable thing you can report and the thing you are most likely to dismiss as your own fault; it isn't.
+· **When you stopped playing, and why.** "I got bored about twenty minutes in" is worth more than a page of feature requests.
 · **The moment something felt good.** Knowing what to protect matters as much as knowing what to fix.
 
 **What to do with it**
-Small reactions go here, in chat. Anything reproducible goes in the bug forum with a build number, because things posted here scroll away and things posted there get tracked.
+Small reactions go here, in chat. Anything you can reproduce goes in the bug forum with a build number, because things posted here scroll away and things posted there get tracked.
 
 **What not to worry about**
 Placeholder art, missing sounds, and obviously unfinished screens. If it looks like it was never finished, it probably was not. Ask before writing it up.
 
-**Builds are unfinished by definition.** Say what you actually think. A polite playtester is a useless playtester, and nothing you say here will be taken personally.
+**Builds are unfinished by definition.** Say what you actually think; be as honest as you possibly can. Nothing you say here will be taken personally!

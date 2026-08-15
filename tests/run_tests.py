@@ -555,7 +555,10 @@ def _():
                      if m == "POST" and q.endswith("/messages")])
         assert first, "nothing was posted the first time"
 
-        rules.write_text(backup.replace("Read once", "Read this once"), encoding="utf-8")
+        # Append a marker rather than swapping a phrase, so rewording the
+        # rules never breaks this test.
+        marker = "Ledger regression marker, safe to delete."
+        rules.write_text(backup.rstrip() + "\n\n" + marker + "\n", encoding="utf-8")
         fake.calls.clear()
         prov = core.Provisioner(core.Client("t", log=lambda *_: None),
                                 fake.guild_id, load(), log=lambda *_: None)
@@ -567,7 +570,7 @@ def _():
         assert edits, "nothing was edited"
         import json as _j
         body = _j.dumps(fake.messages, ensure_ascii=False)
-        assert "Read this once" in body, "the new wording never reached Discord"
+        assert marker in body, "the new wording never reached Discord"
     finally:
         rules.write_text(backup, encoding="utf-8")
 

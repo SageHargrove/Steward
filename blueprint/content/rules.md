@@ -24,10 +24,10 @@
 -->
 # {{game}} Server Rules
 
-Read once, takes two minutes. These exist so this stays somewhere people want to be.
+Please take a moment to review the rules. These exist so this stays somewhere people want to be.
 
 **1 · Be decent to each other**
-Disagreement is fine, contempt is not. Banter between friends is welcome, but if it lands as malicious for the person receiving it, it was. Defuse things or bring in a mod. Do not escalate and do not pile on.
+Disagreement is fine, contempt is not. Banter between friends is welcome, but if it lands as malicious for the person receiving it, it was. Defuse things or bring in a mod.
 
 **2 · No hate speech. Zero tolerance.**
 Slurs and bigotry of any kind, including racism, sexism, homophobia, transphobia and ableism, mean an immediate permanent ban. This is not a warning-track offence. Usernames, avatars and bios count as messages.

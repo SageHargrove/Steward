@@ -178,6 +178,7 @@ roles:
     permissions: []
 
   - name: Veteran
+    note: "For people who have been here a while and help others. Community-driven rather than long-serving."
     color: 0x9C4A3C
     hoist: false
     mentionable: false
@@ -188,6 +189,63 @@ roles:
     color: 0x3F7A6B
     hoist: true
     mentionable: true
+    permissions: []
+
+  # Level tiers, handed out by a leveling bot at set levels.
+  #
+  # Stars rather than floors on purpose: if your game already shows players a
+  # floor, a level or any other number, reusing that word on Discord makes two
+  # unrelated numbers look like the same one. A separate scale sidesteps that.
+  # The colours climb the way rarity does, so the tier reads at a glance.
+  # Rename or delete these to suit; they are only meaningful to the bot that
+  # awards them.
+  - name: "★1"
+    note: "Level tier 1. Awarded automatically by the leveling bot."
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★2"
+    note: "Level tier 2. Awarded automatically by the leveling bot."
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★3"
+    note: "Level tier 3. Awarded automatically by the leveling bot."
+    color: 0x8A9BA8
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★4"
+    note: "Level tier 4. Awarded automatically by the leveling bot."
+    color: 0x5E8C7B
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★5"
+    note: "Level tier 5. Awarded automatically by the leveling bot."
+    color: 0x4A7FB5
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★6"
+    note: "Level tier 6. Awarded automatically by the leveling bot."
+    color: 0x8B5FBF
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "★7"
+    note: "Level tier 7. Awarded automatically by the leveling bot."
+    color: 0xC9A227
+    hoist: false
+    mentionable: false
     permissions: []
 
   # The compliance rail. Every proactive reach routes through this role
@@ -846,6 +904,27 @@ manual_steps:
     after: >-
       Point its logging at your mod channel. Skip its join-role feature, the
       new-member questions already handle roles.
+
+  - kind: bot
+    title: "Lurkr"
+    why: >-
+      Levels and XP. Members expect a server to count something, and this is
+      the one members actually see. Free where most charge: message XP, voice
+      XP, role rewards and leaderboards are all outside the paywall, and rank
+      card styling is free too.
+    where:
+      - "Click your server name at the top left"
+      - "App Directory"
+      - "Search for Lurkr"
+      - "Add to Server, pick your server, Authorize"
+      - "Open its dashboard and add role rewards, one star role per tier"
+    after: >-
+      Two settings worth changing straight away. Point the role rewards at the
+      star roles rather than inventing new ones, so the tier a member holds and
+      the level the bot tracks stay the same thing. Then set which levels get
+      announced, because an announcement on every single level is the most
+      irritating thing a Discord bot does. Announcing only the levels that grant
+      a star is usually right.
 
   - kind: bot
     title: "Statbot"

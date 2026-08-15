@@ -9,8 +9,8 @@ A good report gets fixed. A vague one gets a follow-up question and sits for a w
 
 **Put these in every report**
 
-**1. What build.** In {{game}}, open Settings and look at the bottom of the panel. Copy the whole string.
-**2. What you did.** Step by step, from something we can start at. "Loaded a save, entered floor 12, used the second skill" beats "it broke in combat".
+**1. What build.** Find the version or build number, usually in Settings or on the title screen. Copy it exactly rather than describing it.
+**2. What you did.** Step by step, starting from something we can repeat. "Loaded my save, opened the menu, used the second option" beats "it broke".
 **3. What you expected.** Sounds obvious, but half of all reports are actually a rules misunderstanding, and this is the line that reveals it.
 **4. What happened instead.** Exact wording of any error. A screenshot if it is visual, a clip if it moves.
 
@@ -24,4 +24,4 @@ The plain ones describe the area. The ones only staff can apply are the triage s
 
 **One bug per post.** Three bugs in one thread means two of them get forgotten.
 
-If the game is crashing on startup and you cannot reach Settings, say so and post whatever log file you have. That is a different problem and we will treat it as one.
+If it crashes before you can reach the menus, say so and attach whatever log file you can find. That is a different problem and gets treated as one.
