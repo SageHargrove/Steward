@@ -111,7 +111,8 @@ def main():
     prov = core.Provisioner(client, args.guild, blueprint)
     try:
         problems = prov.run(server_name=args.server_name, icon=icon,
-                            icon_name=args.icon.name if args.icon else "icon.png")
+                            icon_name=args.icon.name if args.icon else "icon.png",
+                            content_dir=args.blueprint.parent)
     except core.Failed as e:
         sys.exit(f"\nFailed:\n{e}")
 

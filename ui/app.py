@@ -259,7 +259,8 @@ def apply(request: Request, payload: dict = Body(...)):
             client = core.Client(session["token"], dry_run=dry, log=log)
             prov = core.Provisioner(client, guild_id, bp, log=log)
             problems = prov.run(server_name=server_name, icon=icon, icon_name=icon_name,
-                                delete_channels=del_channels, delete_roles=del_roles)
+                                delete_channels=del_channels, delete_roles=del_roles,
+                                content_dir=BLUEPRINTS)
             q.put(("done", {"problems": problems, "dry_run": dry}))
         except core.Failed as e:
             q.put(("failed", str(e)[:1200]))

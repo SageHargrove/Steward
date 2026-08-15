@@ -189,6 +189,29 @@ Discord's onboarding channel minimums (7 defaults, 5 of them fully open),
 AutoMod per-trigger limits, regex over 260 characters, and timeout actions on
 trigger types that do not support them.
 
+## What it writes for you
+
+The rules and the welcome post are real documents, not placeholders, and the
+tool posts and pins them:
+
+```
+blueprint/content/rules.md        16 rules, an enforcement ladder, and the
+                                  list of things that skip it
+blueprint/content/start-here.md   what this is, where things happen, which
+                                  roles to pick up, what the ledger records
+```
+
+Edit the markdown and re-run; it edits the messages already there rather than
+posting duplicates, and deletes any it previously posted that the file no
+longer contains. A line containing only `<!-- split -->` starts a new Discord
+message, because Discord caps a message at 2000 characters and the provisioner
+refuses to send anything longer. `{{game}}` works inside these files too.
+
+It also sets the welcome screen, points Discord's join notices at `#general`,
+silences the setup-tip nagging, sets an AFK channel and turns on the boost
+progress bar. All of those have endpoints that most guides tell you to click
+through by hand.
+
 ## Attribution without cluttering profiles
 
 "How did you find us?" is the one number Discord will not give you: Server

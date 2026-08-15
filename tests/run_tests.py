@@ -383,6 +383,106 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+print("\nchannel content")
+
+@test("rules and welcome text fit Discord's message limit")
+def _():
+    bp = load()
+    base = Path(bp["_base_dir"])
+    found = 0
+    for cat in bp["categories"]:
+        for ch in cat["channels"]:
+            if not ch.get("content_file"):
+                continue
+            found += 1
+            blocks = core.split_content(core.substitute_text(
+                (base / ch["content_file"]).read_text(encoding="utf-8"), bp["variables"]))
+            assert blocks, f"{ch['content_file']} produced nothing"
+            for i, b in enumerate(blocks, 1):
+                assert len(b) <= 2000, \
+                    f"{ch['content_file']} section {i} is {len(b)} chars"
+    assert found >= 2, "expected content for at least #rules and #start-here"
+
+
+@test("editor notes at the top of a content file are not posted")
+def _():
+    out = core.split_content("<!--\n  a note to whoever edits this\n-->\n# Real title\nbody")
+    assert out == ["# Real title\nbody"], out
+
+
+@test("content files get variables filled in")
+def _():
+    bp = load({"variables": {"game": "One Trick"}})
+    base = Path(bp["_base_dir"])
+    ch = next(c for cat in bp["categories"] for c in cat["channels"]
+              if c.get("content_file", "").endswith("rules.md"))
+    text = core.substitute_text(
+        (base / ch["content_file"]).read_text(encoding="utf-8"), bp["variables"])
+    assert "One Trick" in text
+    assert "{{game}}" not in text
+
+
+@test("content is posted, pinned, and edited rather than duplicated on a re-run")
+def _():
+    bp = load()
+    fake, _ = run(bp, content_dir=Path(bp["_base_dir"]))
+    posts = [(p, b) for m, p, b in fake.calls
+             if m == "POST" and p.endswith("/messages")]
+    assert posts, "nothing was posted"
+    pins = [p for m, p, _ in fake.calls if m == "PUT" and "/pins/" in p]
+    assert pins, "the first message was never pinned"
+
+    first_count = len(posts)
+    fake.calls.clear()
+    run(bp, fake=fake, content_dir=Path(bp["_base_dir"]))
+    reposts = [p for m, p, b in fake.calls if m == "POST" and p.endswith("/messages")]
+    edits = [p for m, p, b in fake.calls if m == "PATCH" and "/messages/" in p]
+    assert not reposts, f"re-run posted {len(reposts)} duplicate message(s)"
+    assert len(edits) == first_count, f"expected {first_count} edits, got {len(edits)}"
+
+
+@test("an oversized section is refused before anything is sent")
+def _():
+    bp = load()
+    ch = next(c for cat in bp["categories"] for c in cat["channels"]
+              if c.get("content_file"))
+    big = Path(bp["_base_dir"]) / "content" / "_oversize_test.md"
+    big.write_text("x" * 2500, encoding="utf-8")
+    try:
+        ch["content_file"] = "content/_oversize_test.md"
+        errs = core.validate(bp)["errors"]
+        assert any("2000" in e for e in errs), errs
+    finally:
+        big.unlink()
+
+
+@test("the welcome screen is set from the blueprint")
+def _():
+    bp = load()
+    fake, _ = run(bp)
+    call = next((b for m, p, b in fake.calls
+                 if m == "PATCH" and p.endswith("/welcome-screen")), None)
+    assert call, "welcome screen was never set"
+    assert call["enabled"] is True
+    assert 1 <= len(call["welcome_channels"]) <= 5, call["welcome_channels"]
+    assert all(c["channel_id"] for c in call["welcome_channels"])
+
+
+@test("join notices are pointed at a channel and setup tips silenced")
+def _():
+    bp = load()
+    fake, _ = run(bp)
+    call = next(b for m, p, b in fake.calls
+                if m == "PATCH" and p == "/guilds/5" and b and "features" in b)
+    assert call.get("system_channel_id"), "system channel was never set"
+    flags = call.get("system_channel_flags", 0)
+    assert flags & core.SYSTEM_CHANNEL_FLAGS["suppress_setup_tips"], \
+        "Discord's setup-tip nagging was left on"
+    assert not flags & core.SYSTEM_CHANNEL_FLAGS["suppress_join_notifications"], \
+        "join messages should stay on; a small server feels alive when people arrive"
+
+
+# ---------------------------------------------------------------------------
 print("\nmanual steps")
 
 @test("every step says where to click")

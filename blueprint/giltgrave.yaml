@@ -32,6 +32,40 @@ guild:
   public_updates_channel: server-updates
   safety_alerts_channel: mod-log
 
+  # Where Discord posts its own notices. Left unset it picks a channel itself
+  # and adds "setup tips" nagging, which looks like clutter you left behind.
+  # Join messages are kept on purpose: a small server feels alive when you can
+  # see people arrive.
+  system_channel: general
+  system_channel_flags:
+    - suppress_setup_tips
+    - suppress_join_stickers
+  afk_channel: General Voice
+  afk_timeout: 3600
+  boost_progress_bar: true
+
+# The panel Discord shows to people opening the invite, before they join.
+# Separate from the questions they answer after joining, and it has an endpoint
+# despite most guides telling you to set it by hand.
+welcome_screen:
+  description: "A tower that remembers the nameless. Builds, bugs, and arguments about floor 40."
+  channels:
+    - channel: start-here
+      description: "What this is"
+      emoji: "📜"
+    - channel: general
+      description: "Say hello"
+      emoji: "💬"
+    - channel: hero-showcase
+      description: "Show a pull"
+      emoji: "🗡️"
+    - channel: bug-reports
+      description: "Report a bug"
+      emoji: "🐛"
+    - channel: announcements
+      description: "Release news"
+      emoji: "📣"
+
 # ---------------------------------------------------------------------------
 # Roles
 #
@@ -336,11 +370,16 @@ categories:
       - name: start-here
         type: text
         overwrites: readonly
+        # Posted and pinned automatically. Edit the file and re-run.
+        content_file: content/start-here.md
+        pin: true
         topic: "What {{game}} is, how the server works, where to go first."
 
       - name: rules
         type: text
         overwrites: readonly
+        content_file: content/rules.md
+        pin: true
         required: true
         required_when: community
         required_reason: "Community mode will not turn on without a rules channel."

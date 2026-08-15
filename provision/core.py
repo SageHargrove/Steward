@@ -119,7 +119,12 @@ class Failed(Exception):
 # --------------------------------------------------------------------------
 
 def load(path: str | Path) -> dict:
-    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    path = Path(path)
+    bp = yaml.safe_load(path.read_text(encoding="utf-8"))
+    # Remembered so content_file entries resolve relative to the blueprint,
+    # wherever the tool is invoked from.
+    bp["_base_dir"] = str(path.parent.resolve())
+    return bp
 
 
 def declared_variables(bp: dict) -> dict:
@@ -150,6 +155,35 @@ def substitute(bp: dict, values: dict) -> dict:
     out = walk(copy.deepcopy(bp))
     out["variables"] = merged
     return out
+
+
+SPLIT_MARKER = "<!-- split -->"
+
+
+def substitute_text(text: str, values: dict) -> str:
+    return _VAR.sub(lambda m: str(values.get(m.group(1), m.group(0))), text)
+
+
+def split_content(text: str) -> list[str]:
+    """Turn a markdown file into the messages to post.
+
+    An HTML comment at the top is treated as editor notes and dropped, so the
+    file can explain itself without that ending up in the channel.
+    """
+    text = re.sub(r"\A\s*<!--(?!\s*split\s*-->).*?-->\s*", "", text, flags=re.S)
+    parts = [p.strip("\n") for p in text.split(SPLIT_MARKER)]
+    return [p.strip() for p in parts if p.strip()]
+
+
+# System channel flags, for the notices Discord posts on its own.
+SYSTEM_CHANNEL_FLAGS = {
+    "suppress_join_notifications": 1 << 0,
+    "suppress_boost_notifications": 1 << 1,
+    "suppress_setup_tips": 1 << 2,
+    "suppress_join_stickers": 1 << 3,
+    "suppress_subscription_notifications": 1 << 4,
+    "suppress_subscription_replies": 1 << 5,
+}
 
 
 def inventory(bp: dict) -> dict:
@@ -481,6 +515,29 @@ def validate(bp: dict) -> dict:
                     f"was removed. Keep it, or turn Community mode off")
             elif g[key] not in channels:
                 errors.append(f"Community mode's {label} channel '{g[key]}' does not exist")
+
+    base = bp.get("_base_dir")
+    for name, ch in channels.items():
+        rel = ch.get("content_file")
+        if not rel or base is None:
+            continue
+        path = Path(base) / rel
+        if not path.is_file():
+            errors.append(f"Channel '{name}': no content file at {rel}")
+            continue
+        try:
+            blocks = split_content(substitute_text(
+                path.read_text(encoding="utf-8"), bp.get("variables", {})))
+        except OSError as e:
+            errors.append(f"Channel '{name}': cannot read {rel} ({e})")
+            continue
+        if not blocks:
+            warnings.append(f"Channel '{name}': {rel} is empty, so nothing will be posted")
+        for i, block in enumerate(blocks, 1):
+            if len(block) > 2000:
+                errors.append(
+                    f"Channel '{name}': section {i} of {rel} is {len(block)} characters "
+                    f"and Discord's limit is 2000. Add a <!-- split --> before it")
 
     gated = [c for c, s in channels.items() if s.get("type") in COMMUNITY_GATED]
     if gated and not community:
@@ -985,8 +1042,29 @@ class Provisioner:
         if g.get("safety_alerts_channel") and self.channels.get(g["safety_alerts_channel"]):
             body["safety_alerts_channel_id"] = self.channels[g["safety_alerts_channel"]]
 
+        # Where Discord posts its own notices, and which of them to silence.
+        # Left unset, Discord picks a channel itself and adds setup-tip spam.
+        if g.get("system_channel") and self.channels.get(g["system_channel"]):
+            body["system_channel_id"] = self.channels[g["system_channel"]]
+        if g.get("system_channel_flags"):
+            flags = 0
+            for name in g["system_channel_flags"]:
+                if name not in SYSTEM_CHANNEL_FLAGS:
+                    self._warn(f"unknown system channel flag {name}")
+                    continue
+                flags |= SYSTEM_CHANNEL_FLAGS[name]
+            body["system_channel_flags"] = flags
+        if g.get("afk_channel") and self.channels.get(g["afk_channel"]):
+            body["afk_channel_id"] = self.channels[g["afk_channel"]]
+        if g.get("afk_timeout"):
+            body["afk_timeout"] = int(g["afk_timeout"])
+        if "boost_progress_bar" in g:
+            body["premium_progress_bar_enabled"] = bool(g["boost_progress_bar"])
+
         self.c.patch(f"/guilds/{self.gid}", body)
         self.log("  on. Verification: verified email. Media filter: all members")
+        if body.get("system_channel_id"):
+            self.log(f"  join messages go to #{g['system_channel']}, setup tips silenced")
 
     # -- automod ----------------------------------------------------------
 
@@ -1150,6 +1228,114 @@ class Provisioner:
         except Failed as e:
             self._warn(f"could not set server name/icon: {str(e)[:160]}")
 
+    # -- channel content --------------------------------------------------
+
+    def sync_content(self, base_dir: Path):
+        """Post the pinned welcome and rules text into their channels.
+
+        Re-running edits the messages already there rather than posting again,
+        so the rules can be corrected by editing a markdown file and running
+        this once more. Anything the bot previously posted and that the file no
+        longer contains is deleted, so the channel ends up matching the file
+        exactly.
+        """
+        jobs = [(ch, ch.get("content_file")) for cat in self.bp.get("categories", [])
+                for ch in cat.get("channels", []) if ch.get("content_file")]
+        if not jobs:
+            return
+        self.log("\nChannel content")
+
+        try:
+            me = self.c.get("/users/@me")["id"]
+        except Failed as e:
+            self._warn(f"could not identify the bot, skipping content: {str(e)[:120]}")
+            return
+
+        for ch, rel in jobs:
+            cid = self.channels.get(ch["name"])
+            if not cid:
+                continue
+            path = (base_dir / rel).resolve()
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as e:
+                self._warn(f"{ch['name']}: cannot read {rel} ({e})")
+                continue
+
+            blocks = split_content(substitute_text(raw, self.bp.get("variables", {})))
+            too_long = [i for i, b in enumerate(blocks) if len(b) > 2000]
+            if too_long:
+                self._warn(
+                    f"{ch['name']}: section {too_long[0] + 1} of {rel} is over Discord's "
+                    f"2000-character limit. Add a <!-- split --> before it.")
+                continue
+
+            if self.dry:
+                self.log(f"  = #{ch['name']}: {len(blocks)} message(s) from {rel}")
+                continue
+
+            try:
+                existing = self.c.get(f"/channels/{cid}/messages?limit=100")
+            except Failed:
+                existing = []
+            mine = [m for m in reversed(existing) if m.get("author", {}).get("id") == me]
+
+            posted = []
+            for i, body in enumerate(blocks):
+                try:
+                    if i < len(mine):
+                        self.c.patch(f"/channels/{cid}/messages/{mine[i]['id']}",
+                                     {"content": body})
+                        posted.append(mine[i]["id"])
+                    else:
+                        msg = self.c.post(f"/channels/{cid}/messages", {"content": body})
+                        posted.append(msg.get("id"))
+                except Failed as e:
+                    self._warn(f"{ch['name']}: could not write message {i + 1}: {str(e)[:120]}")
+
+            for surplus in mine[len(blocks):]:
+                try:
+                    self.c.request("DELETE", f"/channels/{cid}/messages/{surplus['id']}")
+                except Failed:
+                    pass
+
+            if ch.get("pin") and posted and posted[0]:
+                try:
+                    self.c.put(f"/channels/{cid}/pins/{posted[0]}", None)
+                except Failed:
+                    pass                      # already pinned, or no permission
+
+            verb = "updated" if mine else "posted"
+            self.log(f"  {verb} {len(blocks)} message(s) in #{ch['name']}")
+
+    # -- welcome screen ---------------------------------------------------
+
+    def sync_welcome_screen(self):
+        """The panel Discord shows on the invite. Separate from onboarding,
+        and one of the things people usually set by hand because they do not
+        know it has an endpoint."""
+        spec = self.bp.get("welcome_screen")
+        if not spec or not self.bp.get("guild", {}).get("community"):
+            return
+        channels = []
+        for entry in spec.get("channels", [])[:5]:      # Discord allows five
+            cid = self.channels.get(entry.get("channel"))
+            if not cid:
+                continue
+            item = {"channel_id": cid, "description": entry.get("description", "")[:50]}
+            if entry.get("emoji"):
+                item["emoji_name"] = entry["emoji"]
+            channels.append(item)
+
+        body = {"enabled": True,
+                "description": (spec.get("description") or "")[:140],
+                "welcome_channels": channels}
+        try:
+            self.c.patch(f"/guilds/{self.gid}/welcome-screen", body)
+            self.log(f"\nWelcome screen\n  on, {len(channels)} channel(s) highlighted")
+        except Failed as e:
+            self._warn(f"welcome screen not set: {str(e)[:140]}")
+
     # -- deletions --------------------------------------------------------
 
     def delete_extras(self, channel_ids, role_ids):
@@ -1197,7 +1383,7 @@ class Provisioner:
     # -- run --------------------------------------------------------------
 
     def run(self, server_name=None, icon=None, icon_name="icon.png",
-            delete_channels=None, delete_roles=None):
+            delete_channels=None, delete_roles=None, content_dir=None):
         self.set_identity(server_name, icon, icon_name)
         self.sync_roles()
         self.sync_channels(gated=False)
@@ -1205,6 +1391,9 @@ class Provisioner:
         self.sync_channels(gated=True)
         self.sync_automod()
         self.sync_onboarding()
+        self.sync_welcome_screen()
+        if content_dir:
+            self.sync_content(Path(content_dir))
         self.sync_role_positions()
         self.delete_extras(delete_channels, delete_roles)
         return self.problems
@@ -1216,78 +1405,117 @@ class Provisioner:
 
 def manual_steps(app_id: str | None = None, game: str = "the game",
                  mod_channel: str = "mod-log") -> list[dict]:
-    """Everything the provisioner cannot do, with the exact clicks.
+    """The steps with no endpoint behind them, with the exact clicks.
 
-    Bot installation is a permission flow requiring a human with Manage Server
-    to press Authorize, so every server-blueprint product ever built has a
-    manual bot step. The honest move is to make each one as short as possible
-    rather than pretend otherwise.
+    This list is deliberately short. Anything that could be automated has
+    been: the rules and welcome text are posted and pinned, the welcome screen
+    is set, join notices are pointed at a channel and the setup-tip nagging is
+    silenced. What is left is genuinely client-only, plus installing other
+    bots, which is a permission flow needing a human to press Authorize.
 
     No invite URLs for third-party bots: their OAuth links are keyed to client
-    ids that are not ours to guess, and a wrong invite link would send someone's
+    ids that are not ours to guess, and a wrong link would send someone's
     server to the wrong application. Discord's own App Directory is reachable
     from the server dropdown and is the safe route.
     """
-    rules = (
-        f"1. Be decent to each other. Disagreement is fine, contempt is not.\n"
-        f"2. No slurs, harassment, or sexual content. The filter catches some of "
-        f"it and a human catches the rest.\n"
-        f"3. No advertising or invite links outside #looking-for-guild.\n"
-        f"4. Playtest builds are unreleased. Do not post screenshots, footage, or "
-        f"files from them outside #playtest-lounge until a build is public.\n"
-        f"5. Bugs go in #bug-reports with a build number and repro steps. A bug "
-        f"reported in #general is a bug that gets lost."
-    )
+    # Discord's Rules Screening takes up to 16 rules, each a short title with
+    # an optional description. These mirror the long version posted in #rules.
+    screening = "\n\n".join([
+        "Be decent to each other\nDisagreement is fine, contempt is not. Defuse things or bring in a mod.",
+        "No hate speech\nSlurs and bigotry of any kind mean an immediate permanent ban. No warnings.",
+        "No NSFW or shock content\nIncluding your username, avatar and bio. Immediate permanent ban.",
+        "No politics or religion\nIncluding debates, memes, and the joking versions.",
+        "Protect personal information\nYours and everyone else's. Check your screenshots before posting.",
+        "No advertising\nNo invite links, no promoting services, never ask members for money.",
+        "Use the right channel\nEach one has a job. The right place is the difference between an answer and silence.",
+        "Bug reports need a build number\nBuild number, steps, and what you expected. In #bug-reports, not #general.",
+        "Playtest builds are confidential\nNothing from #playtest-lounge leaves it until that build is public.",
+        "No spam or mass pings\nNo flooding, no repeated content, no pinging staff or members repeatedly.",
+        "Do not impersonate staff\nNo lookalike names or avatars. Staff never DM you first asking for anything.",
+        "No cheats that affect others\nNo distributing hacks or unsafe files. Report exploits, do not use them.",
+        "Credit art that is not yours\nGame-generated images are game content. Fan art should be your own work.",
+        "Listen to moderators\nFollow instructions in the moment. Dispute them afterwards, in DMs.",
+        "Use common sense\nIf you are wondering whether to post it, that hesitation is usually the answer.",
+        "Discord's rules apply too\nYou must be 13 or older, and Discord's Terms and Guidelines apply here.",
+    ])
 
     steps = [
         {
             "kind": "setting", "title": "Rules Screening",
-            "why": "Shows your rules to every new member and makes them agree before "
-                   "they can post. There is no API for it.",
+            "why": "Makes every new member tick a box agreeing to the rules before they "
+                   "can post. The long version is already posted and pinned in #rules; "
+                   "this is the short version Discord shows at the door. No endpoint "
+                   "exists for it, so this is the one piece of real typing.",
             "where": ["Click your server name at the top left",
-                      "Server Settings",
-                      "Safety Setup",
-                      "Rules Screening",
-                      "Paste the rules below, one per box. 16 maximum."],
-            "copy_label": "Copy the draft rules",
-            "copy": rules,
+                      "Server Settings, then Safety Setup",
+                      "Rules Screening, then Set Up Rules Screening",
+                      "Paste one rule per box. Each block below is a title on the first "
+                      "line and its description underneath.",
+                      "Save. 16 is Discord's maximum and there are exactly 16 here."],
+            "copy_label": "Copy all 16 rules",
+            "copy": screening,
         },
         {
             "kind": "setting", "title": "Server Guide",
-            "why": "The panel new members see first. Worth five minutes; it is the "
-                   "difference between someone posting and someone lurking.",
-            "where": ["Server name at the top left", "Server Settings", "Onboarding",
-                      "Server Guide tab",
-                      "Add #start-here, #announcements and #bug-reports as resource "
-                      "pages, one line of description each"],
+            "why": "The checklist a new member sees on their first visit. Different from "
+                   "the welcome screen, which is already set for you. Worth five minutes: "
+                   "it is the difference between someone posting and someone lurking.",
+            "where": ["Server name at the top left, Server Settings",
+                      "Onboarding, then the Server Guide tab",
+                      "Under New Member To-Dos, add #start-here, #general and #bug-reports",
+                      "Give each one a line saying what to do there, not what it is",
+                      "Under Resources, add #rules and #announcements",
+                      "Save Changes"],
+            "after": "Keep the to-dos to three. A checklist of ten reads as homework.",
         },
         {
-            "kind": "setting", "title": "Raid Protection",
-            "why": "Detects join spikes and makes new joiners solve a CAPTCHA for an "
-                   "hour. Turn it on now, not after your first raid.",
-            "where": ["Server name at the top left", "Server Settings", "Safety Setup",
-                      "Turn on Raid Protection"],
+            "kind": "setting", "title": "Raid Protection and DM filtering",
+            "why": "Raid protection spots join floods and makes new arrivals solve a "
+                   "CAPTCHA for an hour. The DM filter scans direct messages from other "
+                   "members for scams, which is the most common way a small server gets "
+                   "hurt. Neither has an endpoint.",
+            "where": ["Server name at the top left, Server Settings, Safety Setup",
+                      "Turn on Raid Protection",
+                      "Set Direct Message Spam Filter to Filter All Messages",
+                      "Check Alerts is pointed at #" + mod_channel],
+            "after": "Turn these on before you invite anyone, not after the first raid.",
         },
         {
-            "kind": "setting", "title": "Make yourself Dev",
-            "why": "The Dev role was created but Discord will not assign roles to you "
-                   "automatically. Nothing shows you as staff until you do this.",
-            "where": ["Server name at the top left", "Server Settings", "Members",
-                      "Find yourself", "Press the + next to your name", "Pick Dev"],
+            "kind": "setting", "title": "Give yourself the Dev role",
+            "why": "The role exists but Discord will not assign it to you. Until you do "
+                   "this, nothing marks you as staff and your name shows in the default "
+                   "colour.",
+            "where": ["Server name at the top left, Server Settings, Members",
+                      "Find yourself in the list",
+                      "Press the + next to your name and pick Dev",
+                      "While you are here, drag the bot's own role to just under Dev"],
+            "after": "Moving the bot's role up is what lets the setup tool order the rest "
+                     "of the roles for you. A bot cannot move anything above itself.",
+        },
+        {
+            "kind": "setting", "title": "Make an invite link that does not expire",
+            "why": "Discord's default invite dies after 7 days, which is how servers end "
+                   "up with a dead link in their Steam page and no idea why nobody joins.",
+            "where": ["Right-click #general, then Invite People",
+                      "Click Edit invite link",
+                      "Set Expire After to Never and Max Number of Uses to No Limit",
+                      "Generate a New Link and keep it somewhere you will find it"],
         },
         {
             "kind": "bot", "title": "Wick",
             "why": "Security. Anti-nuke, CAPTCHA verification, and a join gate that "
-                   "filters brand-new and avatarless accounts.",
+                   "filters brand-new and avatarless accounts. The one bot worth "
+                   "installing before you have members rather than after.",
             "where": ["Click your server name at the top left", "App Directory",
                       "Search for Wick", "Add to Server, pick your server, Authorize"],
-            "after": "Set its join gate to reject accounts under 7 days old, and point "
-                     f"its logging at #{mod_channel}.",
+            "after": "Set its join gate to reject accounts under 7 days old and point its "
+                     f"logging at #{mod_channel}. Leave its automod off; yours is already "
+                     "configured and two filters fighting is worse than one.",
         },
         {
             "kind": "bot", "title": "Sapphire",
-            "why": "Moderation, reaction roles and logging. Genuinely free, and it "
-                   "covers what MEE6 charges for.",
+            "why": "Moderation, reaction roles and logging. Genuinely free, and it covers "
+                   "what MEE6 charges for.",
             "where": ["Server name at the top left", "App Directory",
                       "Search for Sapphire", "Add to Server, pick your server, Authorize"],
             "after": f"Point its logging at #{mod_channel}. Skip its join-role feature, "
@@ -1295,28 +1523,31 @@ def manual_steps(app_id: str | None = None, game: str = "the game",
         },
         {
             "kind": "bot", "title": "Statbot", "optional": True,
-            "why": "Charts and member counters. Its free tier only keeps 30 days of "
+            "why": "Charts and member counters. Its free tier keeps only 30 days of "
                    "history, which is exactly why the ledger exists alongside it.",
             "where": ["Server name at the top left", "App Directory",
                       "Search for Statbot", "Add to Server, pick your server, Authorize"],
         },
         {
             "kind": "bot", "title": "Steamy", "optional": True,
-            "why": "Posts new Steam reviews and weekly rating digests into Discord. "
-                   f"Install it the day {game} has a Steam page, not before.",
+            "why": f"Posts new Steam reviews and weekly rating digests into Discord. "
+                   f"Install it the day {game} has a Steam page, and not before.",
             "where": ["Server name at the top left", "App Directory",
                       "Search for Steamy", "Add to Server, pick your server, Authorize"],
+            "after": "Point it at #patch-notes rather than #announcements. Reviews are a "
+                     "steady drip and announcements should stay rare enough to matter.",
         },
     ]
 
     if app_id:
         steps.append({
             "kind": "bot", "title": "Trim your own bot's permissions", "optional": True,
-            "why": "Your bot still has Administrator from the setup run. It only needs "
-                   "to read channels and post reports from here on.",
+            "why": "Your bot still has Administrator from the setup run. From here it "
+                   "only needs to read channels, post reports, and remove the temporary "
+                   "attribution roles.",
             "where": ["Open the link below", "Pick the same server", "Authorize"],
             "url": invite_url(app_id, INVITE_PERMS_LEDGER),
-            "after": "Re-running this setup tool afterwards will fail until you give it "
-                     "Administrator again. That is deliberate.",
+            "after": "Running this setup tool again will fail until you give it "
+                     "Administrator back. That is deliberate.",
         })
     return steps

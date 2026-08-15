@@ -29,6 +29,8 @@ class FakeDiscord:
         self.automod = []
         self.guild = {"id": guild_id, "features": [], "name": "Test Server"}
         self.onboarding = None
+        self.messages = {}       # channel id -> [{id, content, author}]
+        self.welcome_screen = None
         self.bot_role_position = 50   # where this bot's own role sits
         self.calls = []          # (method, path, body)
         self.deleted = []
@@ -107,6 +109,9 @@ class FakeDiscord:
             out.append({"id": "bot-role", "name": "Steward", "managed": True,
                         "position": self.bot_role_position})
             return out
+        if "/messages" in path:
+            cid = path.split("/")[2]
+            return list(reversed(self.messages.get(cid, [])))    # newest first
         if path.endswith("/channels"):
             return self.channels
         if "auto-moderation" in path:
@@ -115,6 +120,11 @@ class FakeDiscord:
 
     def _post(self, path, body):
         obj = {**body, "id": str(next(self.ids))}
+        if path.endswith("/messages"):
+            cid = path.split("/")[2]
+            obj["author"] = {"id": "4242"}
+            self.messages.setdefault(cid, []).append(obj)
+            return obj
         if path.endswith("/channels"):
             # Refuse gated types before Community mode, exactly as Discord does.
             if obj.get("type") in GATED_TYPES and "COMMUNITY" not in self.guild["features"]:
@@ -133,6 +143,13 @@ class FakeDiscord:
             self.guild.update({k: v for k, v in (body or {}).items() if k != "features"})
         elif "onboarding" in path:
             self.onboarding = body
+        elif path.endswith("/welcome-screen"):
+            self.welcome_screen = body
+        elif "/messages/" in path:
+            cid, mid = path.split("/")[2], path.split("/")[4]
+            for m in self.messages.get(cid, []):
+                if m["id"] == mid:
+                    m.update(body or {})
         elif path.startswith("/channels/"):
             cid = path.split("/")[2]
             for c in self.channels:
