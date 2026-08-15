@@ -27,10 +27,12 @@ class FakeDiscord:
         self.channels = list(channels or [])
         self.roles = list(roles or [{"id": guild_id, "name": "@everyone", "managed": False}])
         self.automod = []
-        self.guild = {"id": guild_id, "features": [], "name": "Test Server"}
+        self.guild = {"id": guild_id, "features": [], "name": "Test Server",
+                      "owner_id": "77"}
         self.onboarding = None
         self.messages = {}       # channel id -> [{id, content, author}]
         self.threads = []        # forum starter posts
+        self.invites = {}        # channel id -> [invite]
         self.welcome_screen = None
         self.bot_role_position = 50   # where this bot's own role sits
         self.calls = []          # (method, path, body)
@@ -119,6 +121,8 @@ class FakeDiscord:
             out.append({"id": "bot-role", "name": "Steward", "managed": True,
                         "position": self.bot_role_position})
             return out
+        if path.endswith("/invites"):
+            return self.invites.get(path.split("/")[2], [])
         if path.endswith("/threads/active"):
             return {"threads": self.threads}
         if "/messages" in path:
@@ -132,6 +136,12 @@ class FakeDiscord:
 
     def _post(self, path, body):
         obj = {**body, "id": str(next(self.ids))}
+        if path.endswith("/invites"):
+            cid = path.split("/")[2]
+            inv = {"code": "testinvite", "max_age": body.get("max_age"),
+                   "max_uses": body.get("max_uses")}
+            self.invites.setdefault(cid, []).append(inv)
+            return inv
         if path.endswith("/threads"):
             cid = path.split("/")[2]
             obj = {"id": str(next(self.ids)), "name": body["name"], "parent_id": cid}

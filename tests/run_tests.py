@@ -609,6 +609,42 @@ def _():
     assert webapp._content_path("content/rules.md").name == "rules.md"
 
 
+@test("a permanent invite is created and reused")
+def _():
+    # Discord's default invite expires after 7 days, which is how a dead link
+    # ends up on a store page.
+    bp = load()
+    fake, prov = run(bp)
+    made = [b for m, q, b in fake.calls if m == "POST" and q.endswith("/invites")]
+    assert made, "no invite was created"
+    assert made[0]["max_age"] == 0 and made[0]["max_uses"] == 0, made[0]
+    assert prov.invite_url_made and prov.invite_url_made.startswith("https://discord.gg/")
+
+    fake.calls.clear()
+    run(bp, fake=fake)
+    again = [q for m, q, _ in fake.calls if m == "POST" and q.endswith("/invites")]
+    assert not again, "a second invite was created on re-run"
+
+
+@test("the server owner is given the top role")
+def _():
+    bp = load()
+    fake, _ = run(bp)
+    puts = [q for m, q, _ in fake.calls if m == "PUT" and "/roles/" in q and "/members/" in q]
+    assert puts, "the owner was never given a role"
+
+
+@test("join-raid alerts are left switched on")
+def _():
+    # RAID_ALERTS_DISABLED is the off switch, so it must be absent.
+    bp = load()
+    fake, _ = run(bp)
+    call = next(b for m, q, b in fake.calls
+                if m == "PATCH" and q == "/guilds/5" and b and "features" in b)
+    assert "COMMUNITY" in call["features"]
+    assert "RAID_ALERTS_DISABLED" not in call["features"],         "raid alerts were switched off"
+
+
 @test("the welcome screen is set from the blueprint")
 def _():
     bp = load()

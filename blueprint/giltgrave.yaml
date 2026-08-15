@@ -43,6 +43,9 @@ guild:
   # and adds "setup tips" nagging, which looks like clutter you left behind.
   # Join messages are kept on purpose: a small server feels alive when you can
   # see people arrive.
+  # Discord's default invite dies after 7 days. This makes a permanent one.
+  owner_role: Dev
+  raid_alerts: true
   system_channel: general
   system_channel_flags:
     - suppress_setup_tips
@@ -54,6 +57,9 @@ guild:
 # The panel Discord shows to people opening the invite, before they join.
 # Separate from the questions they answer after joining, and it has an endpoint
 # despite most guides telling you to set it by hand.
+invite:
+  channel: general
+
 welcome_screen:
   description: "A tower that remembers the nameless. Builds, bugs, and arguments about floor 40."
   channels:
@@ -803,10 +809,11 @@ manual_steps:
   - kind: setting
     title: "Rules Screening"
     why: >-
-      Makes every new member tick a box agreeing to the rules before they can
-      post. The long version is already posted and pinned in your rules
-      channel; this is the short version Discord shows at the door. There is no
-      endpoint for it, so this is the one piece with real typing.
+      This is not the same as the rules already posted in your rules channel.
+      That is a message people can scroll past. This is a gate: nobody can
+      post, react or DM anyone here until they tick the box, which makes it one
+      of the better anti-raid measures you get for free. Discord exposes no
+      endpoint for it, so it is the one piece with real typing left.
     where:
       - "Click your server name at the top left"
       - "Server Settings, then Safety Setup"
@@ -822,9 +829,10 @@ manual_steps:
   - kind: setting
     title: "Server Guide"
     why: >-
-      The checklist a new member sees on their first visit. Different from the
-      welcome screen, which is already set for you. Worth five minutes: it is
-      the difference between someone posting and someone lurking.
+      Not the same as the welcome screen, which is already set for you. That
+      one is the panel shown on the invite, before joining. This is the
+      checklist shown after, on a member's first visit, and it is the thing
+      that turns a lurker into someone who posts. No endpoint exists for it.
     where:
       - "Server name at the top left, Server Settings"
       - "Onboarding, then the Server Guide tab"
@@ -837,43 +845,16 @@ manual_steps:
   - kind: setting
     title: "Raid Protection and DM filtering"
     why: >-
-      Raid protection spots join floods and makes new arrivals solve a CAPTCHA
-      for an hour. The DM filter scans direct messages from other members for
-      scams, which is the most common way a small server gets hurt. Neither has
-      an endpoint.
+      Join-raid alerts are already on and already pointed at your mod channel,
+      because that one is a guild flag a bot may change. These two are not.
+      Raid Protection makes new arrivals solve a CAPTCHA when a join flood is
+      detected, and the DM filter scans direct messages between members for
+      scams, which is the most common way a small server gets hurt.
     where:
       - "Server name at the top left, Server Settings, Safety Setup"
       - "Turn on Raid Protection"
       - "Set Direct Message Spam Filter to Filter All Messages"
-      - "Check the alerts channel is pointed at your mod channel"
     after: "Turn these on before you invite anyone, not after the first raid."
-
-  - kind: setting
-    title: "Give yourself the top role"
-    why: >-
-      The roles exist but Discord will not assign one to you. Until you do
-      this, nothing marks you as staff and your name shows in the default
-      colour.
-    where:
-      - "Server name at the top left, Server Settings, Members"
-      - "Find yourself in the list"
-      - "Press the + next to your name and pick your staff role"
-      - "While you are here, drag the bot's own role to just underneath it"
-    after: >-
-      Moving the bot's role up is what lets this tool order the rest of the
-      roles for you. A bot cannot move anything above itself, so if the run
-      said it skipped ordering, this is the fix.
-
-  - kind: setting
-    title: "Make an invite link that does not expire"
-    why: >-
-      Discord's default invite dies after 7 days, which is how servers end up
-      with a dead link on their store page and no idea why nobody joins.
-    where:
-      - "Right-click your general channel, then Invite People"
-      - "Click Edit invite link"
-      - "Set Expire After to Never and Max Number of Uses to No Limit"
-      - "Generate a New Link and keep it somewhere you will find it again"
 
   - kind: bot
     title: "Wick"
@@ -944,6 +925,12 @@ manual_steps:
     why: >-
       Posts new Steam reviews and weekly rating digests into Discord. Install
       it the day {{game}} has a Steam page, and not before.
+      Not on Steam? The same job is worth doing wherever your players actually
+      leave feedback: itch.io and Game Jolt have RSS feeds a webhook bot can
+      follow, CurseForge and Modrinth both publish update feeds for mods and
+      modpacks, and for anything else an RSS-to-Discord bot pointed at your
+      release notes covers it. The point is that people hear about a release
+      without you posting it twice.
     where:
       - "Server name at the top left"
       - "App Directory"

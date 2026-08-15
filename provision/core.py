@@ -890,6 +890,7 @@ class Provisioner:
         self.channels: dict[str, str] = {}
         self.dry = client.dry_run
         self.problems: list[str] = []
+        self.invite_url_made: str | None = None
 
     def _warn(self, msg):
         self.problems.append(msg)
@@ -1107,6 +1108,10 @@ class Provisioner:
         guild = self.c.get(f"/guilds/{self.gid}")
         features = set(guild.get("features", [])) if guild else set()
         features.add("COMMUNITY")
+        # RAID_ALERTS_DISABLED is the off switch, so removing it turns join-raid
+        # alerts on. One of only four features Discord lets a bot change.
+        if self.bp.get("guild", {}).get("raid_alerts", True):
+            features.discard("RAID_ALERTS_DISABLED")
 
         rules = self.channels.get(g.get("rules_channel"))
         updates = self.channels.get(g.get("public_updates_channel"))
@@ -1148,6 +1153,8 @@ class Provisioner:
 
         self.c.patch(f"/guilds/{self.gid}", body)
         self.log("  on. Verification: verified email. Media filter: all members")
+        if self.bp.get("guild", {}).get("raid_alerts", True):
+            self.log("  join-raid alerts on")
         if body.get("system_channel_id"):
             self.log(f"  join messages go to #{g['system_channel']}, setup tips silenced")
 
@@ -1528,6 +1535,65 @@ class Provisioner:
         except Failed as e:
             self._warn(f"welcome screen not set: {str(e)[:140]}")
 
+    def sync_invite(self):
+        """Make a permanent invite, or reuse the one already made.
+
+        Discord's default invite expires after seven days, which is how a
+        server ends up with a dead link on its store page and no idea why
+        nobody arrives.
+        """
+        spec = self.bp.get("invite")
+        if not spec:
+            return
+        cid = self.channels.get(spec.get("channel"))
+        if not cid:
+            return
+
+        if self.dry:
+            self.log("\nInvite\n  [dry run] would create a permanent invite")
+            return
+
+        try:
+            for inv in self.c.get(f"/channels/{cid}/invites"):
+                if inv.get("max_age") == 0 and inv.get("max_uses") == 0:
+                    self.invite_url_made = f"https://discord.gg/{inv['code']}"
+                    self.log(f"\nInvite\n  already had one: {self.invite_url_made}")
+                    return
+        except Failed:
+            pass
+
+        try:
+            inv = self.c.post(f"/channels/{cid}/invites",
+                              {"max_age": 0, "max_uses": 0, "unique": False})
+            self.invite_url_made = f"https://discord.gg/{inv['code']}"
+            self.log(f"\nInvite\n  {self.invite_url_made}  (never expires)")
+        except Failed as e:
+            self._warn(f"could not create an invite: {str(e)[:140]}")
+
+    def grant_owner_role(self):
+        """Give the server owner the top staff role.
+
+        Discord never assigns a role to anyone automatically, so without this
+        the person who owns the server shows up in the default colour with no
+        badge, which reliably reads as the setup having failed.
+        """
+        role_name = self.bp.get("guild", {}).get("owner_role")
+        if not role_name:
+            return
+        rid = self.roles.get(role_name)
+        if not rid or self.dry:
+            return
+        try:
+            owner = self.c.get(f"/guilds/{self.gid}").get("owner_id")
+            if not owner:
+                return
+            self.c.put(f"/guilds/{self.gid}/members/{owner}/roles/{rid}", None)
+            self.log(f"\nOwner\n  gave {role_name} to the server owner")
+        except Failed as e:
+            # Usually means the bot's own role sits below the one it is trying
+            # to hand out, which it cannot do.
+            self._warn(f"could not give the owner the {role_name} role: {str(e)[:120]}")
+
     # -- deletions --------------------------------------------------------
 
     def delete_extras(self, channel_ids, role_ids):
@@ -1588,6 +1654,8 @@ class Provisioner:
             self.sync_content(Path(content_dir))
             self.sync_forum_posts(Path(content_dir))
         self.sync_role_positions()
+        self.grant_owner_role()
+        self.sync_invite()
         self.delete_extras(delete_channels, delete_roles)
         return self.problems
 
