@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import core                                          # noqa: E402
 from fake_discord import FakeDiscord, install, CATEGORY, TEXT, VOICE, FORUM, ANNOUNCEMENT  # noqa: E402
 
-BLUEPRINT = ROOT / "blueprint" / "giltgrave.yaml"
+BLUEPRINT = ROOT / "blueprint" / "default.yaml"
 
 PASS, FAIL = [], []
 
@@ -65,7 +65,7 @@ def _():
 @test("has the shape the docs claim")
 def _():
     s = core.validate(load())["summary"]
-    assert s["channels"] == 21, s
+    assert s["channels"] == 20, s
     assert s["categories"] == 7, s
     assert s["community"] is True
     assert s["defaults"] >= 7 and s["defaults_open"] >= 5, s
@@ -100,7 +100,7 @@ def _():
     inv = core.inventory(raw)
     assert any("{{" in p["title"] for p in inv["prompts"]), \
         "this test is pointless unless a prompt title still has a placeholder"
-    sel = {"variables": {"game": "Giltgrave"},
+    sel = {"variables": {"game": "Testgame"},
            "prompts": [p["title"] for p in inv["prompts"]],
            "channels": [c["name"] for cat in inv["categories"] for c in cat["channels"]],
            "roles": [r["name"] for r in inv["roles"]],
@@ -109,7 +109,7 @@ def _():
     out = core.customize(raw, sel)
     assert len(out["onboarding_prompts"]) == len(inv["prompts"]), \
         f"lost a prompt: {[p['title'] for p in out['onboarding_prompts']]}"
-    assert out["onboarding_prompts"][0]["title"] == "What brings you to Giltgrave?"
+    assert out["onboarding_prompts"][0]["title"] == "What brings you to Testgame?"
     assert not core.validate(out)["errors"]
 
 @test("unpicked channels are dropped, required ones survive")
@@ -187,8 +187,8 @@ def _():
 @test("added channels can satisfy the onboarding minimum")
 def _():
     bp = load({
-        "channels": ["general", "screenshots", "hero-showcase", "off-topic"],
-        "defaults": ["general", "screenshots", "hero-showcase", "off-topic"],
+        "channels": ["general", "screenshots", "strategy", "off-topic"],
+        "defaults": ["general", "screenshots", "strategy", "off-topic"],
         "additions": {"channels": [
             {"name": f"chat-{i}", "type": "text", "category": "PLAY", "default": True}
             for i in range(2, 6)]}})
@@ -294,28 +294,21 @@ def _():
     assert prov.problems, "should have recorded the failures"
     assert fake.onboarding is not None, "run should have continued to onboarding"
 
-@test("the tier colours are exactly the ones asked for")
+@test("the shipped tiers work on a server with no boosts")
 def _():
-    # Taken from the game's own star colours. A tier that does not match is
-    # worse than no colour at all, because it looks deliberate.
-    want = {"1": 0xFFFFFF, "2": 0x4DFF4D, "3": 0x1E90FF,
-            "4": 0xB84DFF, "5": 0xFFB300, "6": 0xFF3333}
-    by = {r["name"]: r for r in core.load(BLUEPRINT)["roles"]}
-    for n, colour in want.items():
-        role = by["★" + n]
-        assert role["color"] == colour, (
-            f"star{n} is #{role['color']:06X}, should be #{colour:06X}")
-        assert not role.get("colors"), f"star{n} should be a flat colour"
+    # Fades and the animated style need three boosts. A default that quietly
+    # depends on them would look broken on most servers.
+    styled = [r["name"] for r in core.load(BLUEPRINT)["roles"] if r.get("colors")]
+    assert not styled, f"the default asks for boost-only styles: {styled}"
 
 
-@test("only the top tier animates, and it degrades to a plain colour")
+@test("every tier has a colour of its own")
 def _():
-    by = {r["name"]: r for r in core.load(BLUEPRINT)["roles"]}
-    top = by["★" + "7"]
-    assert core.role_colors(top) == core.HOLOGRAPHIC, "the top tier should animate"
-    assert top.get("color"), "it needs a plain colour for servers without boosts"
-    animated = [r["name"] for r in core.load(BLUEPRINT)["roles"] if r.get("colors")]
-    assert animated == ["★" + "7"], f"more than one tier animates: {animated}"
+    tiers = {r["role"] for r in core.load(BLUEPRINT)["levels"]["rewards"]}
+    colours = [r["color"] for r in core.load(BLUEPRINT)["roles"]
+               if r["name"] in tiers]
+    assert len(colours) == len(tiers), "a tier is missing from the roles list"
+    assert len(set(colours)) == len(colours), "two tiers share a colour"
 
 
 @test("a server without the perk still gets its roles")
@@ -329,20 +322,20 @@ def _():
     assert sent, "no roles created"
     assert not any("colors" in b for b in sent), (
         "gradients were sent to a server that has not unlocked them")
-    assert any(b["name"] == "★" + "7" for b in sent), "the top tier was skipped"
+    assert any(b["name"] == "Tier 5" for b in sent), "the top tier was skipped"
 
 
-@test("with the perk, the styles are sent")
+@test("with the perk, a style set on a role is sent")
 def _():
     fake = install(core, FakeDiscord())
     fake.guild["features"] = [core.ENHANCED_ROLE_COLORS]
-    bp = load()
+    bp = load({"colors": {"Tier 5": {"holographic": True},
+                          "Tier 4": {"color": 0x8B5CF6, "secondary": 0x3B82F6}}})
     fake, prov = run(bp, fake=fake)
     sent = {b["name"]: b for m, q, b in fake.calls
             if m == "POST" and q.endswith("/roles")}
-    assert "colors" in sent["★" + "7"], "holographic never sent"
-    assert sent["★" + "7"]["colors"] == core.HOLOGRAPHIC
-    assert "colors" not in sent["★" + "6"], "a flat tier carried a style"
+    assert sent["Tier 5"]["colors"] == core.HOLOGRAPHIC, "holographic never sent"
+    assert "secondary_color" in sent["Tier 4"]["colors"], "gradient never sent"
     assert "colors" not in sent["Dev"], "a plain role should not carry a style"
 
 
@@ -661,7 +654,7 @@ def _():
         import app as webapp
     except Exception:                                      # noqa: BLE001
         return                                             # ui deps missing
-    for bad in ("../../secrets.md", "giltgrave.yaml", "content/../../core.py"):
+    for bad in ("../../secrets.md", "default.yaml", "content/../../core.py"):
         try:
             webapp._content_path(bad)
             raise AssertionError(f"accepted {bad!r}")
@@ -718,7 +711,7 @@ def _():
 @test("a reward pointing at a removed role is dropped")
 def _():
     keep = [r["name"] for r in core.load(BLUEPRINT)["roles"]
-            if not r["name"].startswith("★")]
+            if not r["name"].startswith("Tier ")]
     bp = load({"roles": keep})
     assert bp["levels"]["rewards"] == [], (
         "rewards still point at roles that will not exist")
@@ -729,7 +722,7 @@ def _():
 def _():
     # A threshold belongs to the role, not to its name. Without this, renaming
     # a tier silently stopped it ever being granted.
-    star1 = "★" + "1"
+    star1 = "Tier 1"
     bp = load({"renames": {"roles": {star1: "Bronze"}}})
     rewards = {r["role"]: r["level"] for r in bp["levels"]["rewards"]}
     assert "Bronze" in rewards, f"threshold was stranded: {rewards}"
@@ -1254,15 +1247,15 @@ def _():
         "the UI cannot see the ceiling")
 
 
-@test("the tier levels mirror the game's star caps")
+@test("the tiers climb and every one is reachable")
 def _():
-    want = {"1": 10, "2": 20, "3": 40, "4": 60, "5": 80, "6": 99, "7": 120}
-    rewards = {r["role"]: r["level"]
-               for r in core.load(BLUEPRINT)["levels"]["rewards"]}
-    for star, level in want.items():
-        role = "★" + star
-        assert rewards.get(role) == level, (
-            f"{role} unlocks at {rewards.get(role)}, should be {level}")
+    rewards = core.load(BLUEPRINT)["levels"]["rewards"]
+    levels = [r["level"] for r in rewards]
+    assert levels == sorted(levels), f"tiers are out of order: {levels}"
+    assert len(set(levels)) == len(levels), "two tiers unlock at the same level"
+    cap = core.load(BLUEPRINT)["levels"].get("max_level", 0)
+    if cap:
+        assert max(levels) <= cap, "a tier sits above the ceiling"
 
 
 @test("the page's level calculator matches the bot's curve")
@@ -1457,12 +1450,12 @@ if _started:
     def _():
         w = Web(BASE)
         assert w.get("/")[0] == 200
-        assert "giltgrave.yaml" in w.get("/api/blueprints")[1]
+        assert "default.yaml" in w.get("/api/blueprints")[1]
 
     @test("refuses requests from another origin")
     def _():
         w = Web(BASE)
-        code, _body = w.post("/api/preview", {"file": "giltgrave.yaml"},
+        code, _body = w.post("/api/preview", {"file": "default.yaml"},
                              origin="http://evil.test")
         assert code == 403, code
 
@@ -1488,13 +1481,13 @@ if _started:
     def _():
         w = Web(BASE)                                    # fresh jar, no cookie
         assert w.get("/api/guilds")[0] == 401
-        assert w.post("/api/apply", {"file": "giltgrave.yaml", "guild_id": "5"})[0] == 401
+        assert w.post("/api/apply", {"file": "default.yaml", "guild_id": "5"})[0] == 401
 
     @test("preview needs no token and reports errors")
     def _():
         w = Web(BASE)
         code, body = w.post("/api/preview",
-                            {"file": "giltgrave.yaml", "selection": {"channels": ["general"]}})
+                            {"file": "default.yaml", "selection": {"channels": ["general"]}})
         assert code == 200, body
         assert _json.loads(body)["errors"], "a one-channel server should fail onboarding rules"
 
@@ -1502,7 +1495,7 @@ if _started:
     def _():
         w = Web(BASE)
         w.post("/api/connect", {"token": "t"})
-        code, _b = w.post("/api/apply", {"file": "giltgrave.yaml", "guild_id": "5",
+        code, _b = w.post("/api/apply", {"file": "default.yaml", "guild_id": "5",
                                          "selection": {"channels": ["general"]}})
         assert code == 400, code
 
@@ -1511,7 +1504,7 @@ if _started:
         fake = install(core, FakeDiscord())
         w = Web(BASE)
         w.post("/api/connect", {"token": "t"})
-        code, body = w.post("/api/apply", {"file": "giltgrave.yaml", "guild_id": "5",
+        code, body = w.post("/api/apply", {"file": "default.yaml", "guild_id": "5",
                                            "selection": {}, "dry_run": False})
         assert code == 200, body
         events = [_json.loads(l[6:]) for l in body.splitlines() if l.startswith("data: ")]

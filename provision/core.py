@@ -165,7 +165,7 @@ def substitute(bp: dict, values: dict) -> dict:
     """Replace {{name}} placeholders throughout every string in the blueprint.
 
     This is what makes a blueprint redeployable rather than a config file.
-    `{{game}}` survives a move to the next project; "Giltgrave" does not.
+    `{{game}}` survives a move to the next project; a name typed in does not.
     """
     merged = {**declared_variables(bp), **(values or {})}
 
@@ -846,7 +846,7 @@ class Client:
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bot {token}",
-            "User-Agent": "CommunityOpsProvisioner (https://giltgrave.example, 1.0)",
+            "User-Agent": "CommunityOpsProvisioner (https://github.com/, 1.0)",
             "Content-Type": "application/json",
         })
 

@@ -41,7 +41,21 @@ DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
 REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
 MOD_CHANNEL = os.environ.get("MOD_CHANNEL", "mod-log")
-BLUEPRINT = os.environ.get("STEWARD_BLUEPRINT", "../blueprint/giltgrave.yaml")
+def find_blueprint() -> str:
+    """Where the blueprint is. Falls back to whatever is in the folder, so
+    renaming or replacing it does not silently switch levels off."""
+    named = os.environ.get("STEWARD_BLUEPRINT")
+    if named and os.path.exists(named):
+        return named
+    for guess in ("../blueprint/default.yaml", "blueprint/default.yaml"):
+        if os.path.exists(guess):
+            return guess
+    import glob
+    found = sorted(glob.glob("../blueprint/*.yaml")) or sorted(glob.glob("blueprint/*.yaml"))
+    return found[0] if found else (named or "../blueprint/default.yaml")
+
+
+BLUEPRINT = find_blueprint()
 
 # The status message identifies itself by its title, so restarts reuse the
 # same message instead of stacking up.

@@ -21,7 +21,7 @@ there instead.
 2. At the bottom of that column, click the green **+** button. Its tooltip
    says *Add a Server*.
 3. Click **Create My Own**, then **For me and my friends**.
-4. Name it **Giltgrave** and click **Create**.
+4. Give it a name and click **Create**.
 
 You are now its owner, which matters below. You do not need the server id: the
 UI lists your servers by name, and the CLI takes it from Developer Mode
@@ -131,15 +131,15 @@ cd C:\CommunityOps\provision
 python -m pip install -r requirements.txt
 
 # Check the spec offline first. No token, no network, no changes.
-python provision.py --blueprint ..\blueprint\giltgrave.yaml --validate
+python provision.py --blueprint ..\blueprint\default.yaml --validate
 
 $env:DISCORD_TOKEN = "your-bot-token"
 
 # See what it would do.
-python provision.py --guild YOUR_SERVER_ID --blueprint ..\blueprint\giltgrave.yaml --dry-run
+python provision.py --guild YOUR_SERVER_ID --blueprint ..\blueprint\default.yaml --dry-run
 
 # Do it.
-python provision.py --guild YOUR_SERVER_ID --blueprint ..\blueprint\giltgrave.yaml
+python provision.py --guild YOUR_SERVER_ID --blueprint ..\blueprint\default.yaml
 ```
 
 It runs in this order, and the order is load-bearing: roles, then categories

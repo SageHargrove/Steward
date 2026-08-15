@@ -1,27 +1,28 @@
-# Giltgrave community server blueprint
+# Community server blueprint
 #
 # This file is the spec. The server is its first instantiation.
 # Applied by ../provision/provision.py, which is idempotent: run it as many
 # times as you like, it updates in place rather than duplicating.
 #
-# Everything here is deliberately game-agnostic in structure and Giltgrave-
-# specific only in content, so a second game (One Trick) forks this file
-# rather than starting over.
+# It ships deliberately plain. Rename anything, delete what you do not want,
+# add your own, and set the variables below; the setup page does all of that
+# without opening this file. What is here is a starting point that works on any
+# game community, not a recommendation about yours.
 
 meta:
-  name: Giltgrave
-  slug: giltgrave
+  name: Default
+  slug: default
   # Left border on every posted embed. Set it to your game's colour.
   accent_color: 0xC9A227
 
 # Fill-in-the-blanks. Anything written as {{name}} below gets replaced.
 # This is what makes the blueprint redeployable to the next project instead of
-# being a config file for one server: {{game}} survives the move, "Giltgrave"
-# does not. The UI turns this block into form fields.
+# being a config file for one server: {{game}} survives the move, a game name
+# typed straight into a channel topic does not. The UI turns this block into form fields.
 variables:
-  game: Giltgrave
-  # What the community calls itself. Used in channel topics.
-  players: climbers
+  # The name of your game or project. It appears in channel topics, the rules
+  # and the welcome post, so setting it here changes all of them at once.
+  game: "the game"
   # One line for the top of the welcome post. Deliberately blank: this is the
   # one thing nobody else's words will do, and a placeholder here would end up
   # posted in somebody's server unchanged. Fill it in from the setup page.
@@ -64,7 +65,7 @@ invite:
   channel: general
 
 welcome_screen:
-  description: "A tower that remembers the nameless. Builds, bugs, and arguments about floor 40."
+  description: "Builds, bugs, and arguments about what to change next."
   channels:
     - channel: start-here
       description: "What this is"
@@ -72,9 +73,9 @@ welcome_screen:
     - channel: general
       description: "Say hello"
       emoji: "💬"
-    - channel: hero-showcase
-      description: "Show a pull"
-      emoji: "🗡️"
+    - channel: screenshots
+      description: "Share a shot"
+      emoji: "📸"
     - channel: bug-reports
       description: "Report a bug"
       emoji: "🐛"
@@ -200,92 +201,53 @@ roles:
     mentionable: true
     permissions: []
 
-  # Level tiers, handed out by the leveling system at the levels set further
-  # down. Stars rather than floors on purpose: if your game already shows
-  # players a floor, a level or a depth, reusing that word on Discord makes two
-  # unrelated numbers look like the same one.
+  # Level tiers, handed out automatically at the levels set further down.
   #
-  # WHAT DISCORD CAN AND CANNOT DO WITH A ROLE COLOUR
+  # Named and coloured plainly on purpose. Rename them to whatever your
+  # community would recognise, add more, or delete the lot; they mean nothing
+  # to Discord and only matter to the rewards list below.
   #
-  #   solid colour   any hex you like        no boosts needed
-  #   colors.primary + colors.secondary      a fade between two hex values,
-  #                                          needs 3 server boosts
-  #   colors.holographic: true               Discord's animated sheen. Its
-  #                                          colours are fixed by the API and
-  #                                          cannot be chosen. Needs 3 boosts.
+  # A role name can also be a fade between two colours, or Discord's animated
+  # sheen, both of which need the server to have three boosts:
   #
-  # There is no glow, no halo, no drop shadow, and no custom animation at any
-  # boost level. A role name is one colour, or a fade between two, or the one
-  # animated style Discord ships.
-  #
-  # Every colour below is exact and works on a server with ZERO boosts. Only
-  # the style on the top tier needs them, and without them that role simply
-  # uses its plain colour. Nothing else changes.
-  #
-  # Rename, recolour or delete any of these. They mean nothing to Discord and
-  # only matter to the rewards list further down.
-  - name: "★1"
-    note: "Level tier 1. White."
-    color: 0xFFFFFF
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  - name: "★2"
-    note: "Level tier 2. Bright green."
-    color: 0x4DFF4D
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  - name: "★3"
-    note: "Level tier 3. Dodger blue."
-    color: 0x1E90FF
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  - name: "★4"
-    note: "Level tier 4. Neon purple."
-    color: 0xB84DFF
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  - name: "★5"
-    note: "Level tier 5. Radiant gold."
-    color: 0xFFB300
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  - name: "★6"
-    note: "Level tier 6. Crimson."
-    color: 0xFF3333
-    hoist: false
-    mentionable: false
-    permissions: []
-
-  # The top tier is the only one that moves, which is the property worth
-  # keeping. Discord cannot paint a scrolling rainbow across a role name, so
-  # holographic is the nearest thing it has: an animated sheen, in colours
-  # Discord fixes rather than ones you pick.
-  #
-  # Prefer a colour you chose over one that moves? Delete the `colors` block
-  # and it stays magenta. Prefer a fade? Swap it for:
   #     colors:
-  #       primary: 0xFF2020
-  #       secondary: 0xB040FF
-  # which sweeps red to violet and is the closest a chosen palette gets to a
-  # spectrum. Both of those, and this, are one click in the setup page.
-  - name: "★7"
-    note: "Level tier 7. The only one that animates. Falls back to magenta without boosts."
-    color: 0xFF30C0
+  #       primary: 0xE0403E
+  #       secondary: 0xF0862D     # fades between the two
+  #
+  #     colors:
+  #       holographic: true       # animated, colours fixed by Discord
+  #
+  # Without the boosts those roles quietly use their plain colour instead, so
+  # nothing breaks by adding one.
+  - name: "Tier 1"
+    color: 0x9BA3AF
     hoist: false
     mentionable: false
     permissions: []
-    colors:
-      holographic: true
+
+  - name: "Tier 2"
+    color: 0x3BA55D
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "Tier 3"
+    color: 0x3B82F6
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "Tier 4"
+    color: 0x8B5CF6
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: "Tier 5"
+    color: 0xE0A32E
+    hoist: false
+    mentionable: false
+    permissions: []
 
   # The compliance rail. Every proactive reach routes through this role
   # instead of a DM. Granted by the onboarding prompt below.
@@ -298,14 +260,15 @@ roles:
     mentionable: true
     permissions: []
 
-  # Interest roles, granted by onboarding answers.
-  - name: Tower Climber
+  # Interest roles, granted by onboarding answers. Rename these to match what
+  # people actually come to your community for.
+  - name: Strategist
     color: 0x000000
     hoist: false
     mentionable: true
     permissions: []
 
-  - name: Guild Seeker
+  - name: Group Finder
     color: 0x000000
     hoist: false
     mentionable: true
@@ -505,7 +468,7 @@ categories:
         type: text
         overwrites: open
         default: true
-        topic: "Everything {{game}}."
+        topic: "Everything about {{game}}."
 
       - name: screenshots
         type: text
@@ -514,24 +477,19 @@ categories:
         topic: "Post what your run looked like."
 
       # For a gacha this is the highest-engagement channel in the server.
-      - name: hero-showcase
+      - name: strategy
         type: text
         overwrites: open
         default: true
-        topic: "Pulls, ascensions, ornament builds. Brag here."
+        topic: "Tactics, builds, and whatever you are stuck on."
 
-      - name: tower-talk
+      - name: looking-for-group
         type: text
         overwrites: open
         default: true
-        topic: "Strategy, floor progression, zone comps, what wall you are stuck on."
-
-      - name: looking-for-guild
-        type: text
-        overwrites: open
-        content_file: content/looking-for-guild.md
+        content_file: content/looking-for-group.md
         pin: true
-        topic: "Recruiting, or looking to be recruited. One post per guild, edit it rather than reposting."
+        topic: "Find people to play with. Edit your post rather than reposting it."
 
   - name: FEEDBACK
     channels:
@@ -644,7 +602,7 @@ categories:
         type: voice
         overwrites: voice_open
 
-      - name: Co-op and Raids
+      - name: Co-op
         type: voice
         overwrites: voice_open
 
@@ -679,8 +637,8 @@ onboarding_defaults:
   - announcements
   - general
   - screenshots
-  - hero-showcase
-  - tower-talk
+  - strategy
+  - looking-for-group
   - off-topic
 
 # ---------------------------------------------------------------------------
@@ -693,23 +651,23 @@ onboarding_prompts:
     single_select: false
     required: true
     options:
-      - title: "Climbing the tower"
-        description: "Floor progression, comps, the wall you are stuck on."
-        emoji: "🗼"
-        roles: [Tower Climber]
-        channels: [tower-talk]
-      - title: "Guilds and other players"
-        description: "Raids, trade, finding people to run with."
-        emoji: "🛡️"
-        roles: [Guild Seeker]
-        channels: [looking-for-guild]
+      - title: "Tactics and builds"
+        description: "How to play well, and what you are stuck on."
+        emoji: "🧠"
+        roles: [Strategist]
+        channels: [strategy]
+      - title: "Playing with other people"
+        description: "Finding a group, and playing together."
+        emoji: "🤝"
+        roles: [Group Finder]
+        channels: [looking-for-group]
       - title: "Breaking things"
         description: "You find bugs and you enjoy it."
         emoji: "🐛"
         roles: [Bug Hunter]
         channels: [bug-reports]
-      - title: "The world and the writing"
-        description: "Lore, art, how it all got made."
+      - title: "The world and how it is made"
+        description: "Story, art, and the making of it."
         emoji: "📜"
         roles: [Lore Reader]
         channels: [devlog]
@@ -792,7 +750,7 @@ automod:
     exempt_roles: [Dev, Admin, Mod]
 
   - name: "Invite links and advertising"
-    note: "Exempts #looking-for-guild, where recruiters legitimately post links."
+    note: "Exempts #looking-for-group, where recruiters legitimately post links."
     trigger: keyword
     regex_patterns:
       - '(discord\.(gg|io|me|li)|discordapp\.com/invite)/[a-zA-Z0-9-]+'
@@ -804,8 +762,8 @@ automod:
       - alert: mod-log
       - timeout: 300
     exempt_roles: [Dev, Admin, Mod]
-    # #looking-for-guild is where guild recruiters legitimately post links.
-    exempt_channels: [looking-for-guild]
+    # #looking-for-group is where guild recruiters legitimately post links.
+    exempt_channels: [looking-for-group]
 
   # Note: Discord's preset filters (profanity, sexual content, slurs) are only
   # available on the keyword_preset trigger, which applies to messages. Member
@@ -874,22 +832,20 @@ levels:
     linear: 24
     quadratic: 0
 
-  # The highest level anyone can reach. 0 means no ceiling. Set to match your
-  # own game if it has one; 120 is the cap a transcendent star carries here.
-  max_level: 120
+  # The highest level anyone can reach. 0 means no ceiling, which is the right
+  # default. Set one if your own game has a cap you want to mirror.
+  max_level: 0
 
-  # Star tiers mirror the level caps each star carries in the game: a 1-star
-  # tops out at 10, a 2-star at 20, and so on to 120 for the transcendent one.
-  # Against a member who chats most days that is roughly 3 days to the first
-  # and ten months to the last.
+  # Which role unlocks at which level. The setup page shows what each of these
+  # works out to in days, so change them there and read the table rather than
+  # guessing. Roughly: first tier on day one, last after about four months of
+  # someone chatting most days.
   rewards:
-    - { level: 10,  role: "★1" }    # about 3 days
-    - { level: 20,  role: "★2" }    # about 10 days
-    - { level: 40,  role: "★3" }    # about 5 weeks
-    - { level: 60,  role: "★4" }    # about 11 weeks
-    - { level: 80,  role: "★5" }    # about 4.5 months
-    - { level: 99,  role: "★6" }    # about 7 months
-    - { level: 120, role: "★7" }    # about 10 months, transcendent
+    - { level: 5,  role: "Tier 1" }
+    - { level: 15, role: "Tier 2" }
+    - { level: 30, role: "Tier 3" }
+    - { level: 50, role: "Tier 4" }
+    - { level: 75, role: "Tier 5" }
 
 # ---------------------------------------------------------------------------
 # The steps no API can perform.

@@ -1,9 +1,9 @@
 """
 Apply a server blueprint to a Discord guild, from the command line.
 
-    python provision.py --blueprint ../blueprint/giltgrave.yaml --validate
-    python provision.py --guild 123... --blueprint ../blueprint/giltgrave.yaml --dry-run
-    python provision.py --guild 123... --blueprint ../blueprint/giltgrave.yaml
+    python provision.py --blueprint ../blueprint/default.yaml --validate
+    python provision.py --guild 123... --blueprint ../blueprint/default.yaml --dry-run
+    python provision.py --guild 123... --blueprint ../blueprint/default.yaml
 
 For a UI instead of flags, run ../ui/app.py.
 

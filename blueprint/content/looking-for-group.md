@@ -6,7 +6,7 @@
 
 **Recruiting? Use this shape.**
 
-> **Guild name**
+> **Group name**
 > **Playing:** roughly when, and which timezone
 > **Looking for:** how many, and anything specific
 > **How to join:** who to message
@@ -15,6 +15,6 @@
 
 **Two rules that keep this channel usable**
 · **Edit your post rather than reposting it.** A channel full of the same message four times is a channel nobody reads.
-· **One post per guild/player.** If it has scrolled away and things have genuinely changed, delete the old one and post again.
+· **One post per group or player.** If it has scrolled away and things have genuinely changed, delete the old one and post again.
 
-Invite links to other Discord servers are allowed **here and nowhere else**, and only for a guild inside {{game}}. Anywhere else, that is advertising and the filter will remove it.
+Invite links to other Discord servers are allowed **here and nowhere else**, and only for a group playing {{game}}. Anywhere else, that is advertising and the filter will remove it.

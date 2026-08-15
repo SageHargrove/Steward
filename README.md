@@ -1,13 +1,13 @@
 # community-ops
 
-The Giltgrave community server, the automation behind it, and the reusable
+A Discord community server, the automation behind it, and the reusable
 thing both become.
 
 Planning lives one level up in [docs/build-plan.md](docs/build-plan.md) and
 [docs/roadmap.md](docs/roadmap.md). The rest of this repo is the implementation.
 
 ```
-blueprint/giltgrave.yaml    the server spec. Channels, roles, permissions,
+blueprint/default.yaml    the server spec. Channels, roles, permissions,
                             forum tags, onboarding prompts, AutoMod rules
 provision/core.py           load, template, customize, validate, apply.
                             The CLI and the UI both import this
@@ -55,7 +55,7 @@ own server templates drop.
 From the build plan, unchanged:
 
 1. **Blueprint** — the architecture, written as a spec rather than as clicks.
-   `blueprint/giltgrave.yaml`.
+   `blueprint/default.yaml`.
 2. **Configured stack** — native Discord plus four free bots (Sapphire, Wick,
    Statbot, Steamy). Section 3 of the runbook. Do not build what Sapphire
    already does for free.
@@ -105,7 +105,7 @@ reapplication once the app passes 10,000 users.
 The documentation is the deliverable, not the notes. Six files, written in the
 same sitting as the work, not reconstructed afterward. Three exist:
 
-- [x] `blueprint/giltgrave.yaml` — the machine-readable server spec
+- [x] `blueprint/default.yaml` — the machine-readable server spec
 - [x] `SETUP.md` — the runbook, including the manual steps and why they are manual
 - [ ] `onboarding-flow.md` — the questions, why each one, what each answer grants,
       and what changed when you changed them
@@ -129,12 +129,12 @@ ui\SETUP-UI.bat
 
 # or the command line
 cd provision
-python provision.py --blueprint ..\blueprint\giltgrave.yaml --validate
-python provision.py --blueprint ..\blueprint\giltgrave.yaml --manual
+python provision.py --blueprint ..\blueprint\default.yaml --validate
+python provision.py --blueprint ..\blueprint\default.yaml --manual
 
 $env:DISCORD_TOKEN = "..."
-python provision.py --guild SERVER_ID --blueprint ..\blueprint\giltgrave.yaml --dry-run
-python provision.py --guild SERVER_ID --blueprint ..\blueprint\giltgrave.yaml `
+python provision.py --guild SERVER_ID --blueprint ..\blueprint\default.yaml --dry-run
+python provision.py --guild SERVER_ID --blueprint ..\blueprint\default.yaml `
     --var game="One Trick" --server-name "One Trick"
 
 # the ledger
