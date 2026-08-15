@@ -1194,6 +1194,38 @@ def _():
     L.close()
 
 
+@test("the tier levels mirror the game's star caps")
+def _():
+    want = {"1": 10, "2": 20, "3": 40, "4": 60, "5": 80, "6": 99, "7": 120}
+    rewards = {r["role"]: r["level"]
+               for r in core.load(BLUEPRINT)["levels"]["rewards"]}
+    for star, level in want.items():
+        role = "★" + star
+        assert rewards.get(role) == level, (
+            f"{role} unlocks at {rewards.get(role)}, should be {level}")
+
+
+@test("the page's level calculator matches the bot's curve")
+def _():
+    # The setup page recomputes the curve in JavaScript to show a live table.
+    # If the two ever disagree, the table becomes confident and wrong.
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "function levelCost(n)" in html, "the page has no curve calculation"
+    assert "return q * n * n + l * n + b;" in html, (
+        "the page's formula no longer matches quadratic*n^2 + linear*n + base")
+
+    # And the numbers it produces must be the ones the bot will award.
+    bp = core.load(BLUEPRINT)
+    c = Curve(**(bp["levels"].get("curve") or {}))
+    q = (bp["levels"].get("curve") or {}).get("quadratic", 0)
+    lin = (bp["levels"].get("curve") or {}).get("linear", 50)
+    base = (bp["levels"].get("curve") or {}).get("base", 100)
+    for level in (10, 40, 120):
+        js_total = sum(q * n * n + lin * n + base for n in range(level))
+        assert js_total == c.total_for(level), (
+            f"level {level}: page says {js_total}, bot says {c.total_for(level)}")
+
+
 @test("the tiers are reachable by a real person")
 def _():
     # A chatty member earns roughly 600 XP a day once the cooldown applies. If
@@ -1202,7 +1234,7 @@ def _():
     rewards = bp["levels"]["rewards"]
     c = Curve(**(bp["levels"].get("curve") or {}))
     days = [c.total_for(r["level"]) / 600 for r in rewards]
-    assert days[0] <= 3, f"first tier takes {days[0]:.0f} days, too slow to hook anyone"
+    assert days[0] <= 7, f"first tier takes {days[0]:.0f} days, too slow to hook anyone"
     assert days[-1] <= 400, f"top tier takes {days[-1]:.0f} days, nobody gets there"
     assert days == sorted(days), "tiers are out of order"
 

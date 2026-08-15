@@ -861,18 +861,31 @@ levels:
 
   # Tiers. Each one replaces the one below it, so nobody ends up wearing five
   # at once. These are the star roles declared above.
-  # Pitched against a member who chats most days, which works out at roughly
-  # 600 XP a day once the cooldown is accounted for. First tier inside a day so
-  # the system announces itself early, last tier around eight months so the top
-  # of the board still means something. Anything steeper and nobody arrives.
+  # How much a level costs: `base` XP, plus `linear` more for every level
+  # already earned. Level 1 costs 75, level 50 costs 1,275, level 120 costs
+  # 2,931. Leave `quadratic` at 0 unless you want late levels to climb sharply;
+  # the usual chat-bot curve uses 5 there, which puts level 120 at over three
+  # million XP and therefore out of reach of anybody.
+  #
+  # The setup page shows what any curve works out to in days, so change these
+  # and read the table rather than guessing.
+  curve:
+    base: 75
+    linear: 24
+    quadratic: 0
+
+  # Star tiers mirror the level caps each star carries in the game: a 1-star
+  # tops out at 10, a 2-star at 20, and so on to 120 for the transcendent one.
+  # Against a member who chats most days that is roughly 3 days to the first
+  # and ten months to the last.
   rewards:
-    - { level: 2,  role: "★1" }     # about a day
-    - { level: 5,  role: "★2" }     # about a week
-    - { level: 10, role: "★3" }     # about a month
-    - { level: 15, role: "★4" }     # about three weeks after that
-    - { level: 22, role: "★5" }     # a couple of months
-    - { level: 30, role: "★6" }     # about four months
-    - { level: 40, role: "★7" }     # about eight months
+    - { level: 10,  role: "★1" }    # about 3 days
+    - { level: 20,  role: "★2" }    # about 10 days
+    - { level: 40,  role: "★3" }    # about 5 weeks
+    - { level: 60,  role: "★4" }    # about 11 weeks
+    - { level: 80,  role: "★5" }    # about 4.5 months
+    - { level: 99,  role: "★6" }    # about 7 months
+    - { level: 120, role: "★7" }    # about 10 months, transcendent
 
 # ---------------------------------------------------------------------------
 # The steps no API can perform.

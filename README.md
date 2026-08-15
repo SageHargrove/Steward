@@ -242,6 +242,14 @@ A server that installs a leveling bot, a stats bot and a logging bot ends up
 with three copies of its own activity sitting in three companies' databases.
 Steward already has the data, so it does those jobs too.
 
+**Levels, with the maths shown.** The setup page prints what your curve and
+thresholds actually cost, in XP and in days, for both a chatty member and a
+casual one, and warns when a tier has drifted out of anybody's reach. That
+table is the same arithmetic the bot runs, so it is what will happen rather
+than an estimate beside it. Worth having, because "level 120" means nothing
+until you know a level costs 75 XP plus 24 for each one already earned, and
+that the cooldown rather than the XP range is what sets the pace.
+
 **Levels.** XP per message with a cooldown so it cannot be farmed, XP for time
 in voice, `/rank` and `/leaderboard`, and role rewards wired to the star tiers.
 The word members see is set in the blueprint: call a level a Level, a Rank, or

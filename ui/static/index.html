@@ -153,6 +153,18 @@
     letter-spacing:.03em; font-weight:600; cursor:pointer}
   .pill.on{background:rgba(88,101,242,.18); border-color:var(--blue); color:#c3cafd}
 
+  .curve{padding:0 13px 13px}
+  .curve table{width:100%; border-collapse:collapse; font-size:12.5px}
+  .curve th{text-align:left; font-weight:600; color:var(--muted); padding:5px 8px;
+    border-bottom:1px solid var(--line); font-size:11px; text-transform:uppercase;
+    letter-spacing:.03em}
+  .curve td{padding:5px 8px; border-bottom:1px solid var(--line-soft); color:var(--text);
+    font-variant-numeric:tabular-nums}
+  .curve td:first-child{font-weight:600; color:var(--ink)}
+  .curve tr:last-child td{border-bottom:0}
+  .curve .slow{color:var(--yellow)}
+  .curve .never{color:var(--red)}
+
   .unlock{display:flex; align-items:center; gap:5px; flex:none; font-size:11.5px;
     color:var(--dimmer)}
   .unlock input{width:52px; padding:3px 6px; font-size:12.5px; text-align:center}
@@ -969,13 +981,119 @@ function levelsPanel(){
         <div class="hint">Every level gets noisy quickly on a busy server.</div>
       </div>
     </div>
+    <div class="lvlgrid" style="padding-top:0">
+      <div>
+        <label>A level costs</label>
+        <div class="pair">
+          <input type="number" min="1" max="5000" value="${(L.curve || {}).base ?? 100}"
+                 onchange="setCurve('base', this.value)">
+          <span style="color:var(--dimmer)">+</span>
+          <input type="number" min="0" max="500" value="${(L.curve || {}).linear ?? 50}"
+                 onchange="setCurve('linear', this.value)">
+          <span style="color:var(--dimmer)">per level</span>
+        </div>
+        <div class="hint">Raise either and everything below gets slower.</div>
+      </div>
+      <div>
+        <label>Steepness</label>
+        <input type="number" min="0" max="50" value="${(L.curve || {}).quadratic ?? 0}"
+               onchange="setCurve('quadratic', this.value)">
+        <div class="hint">Squared cost. Zero keeps late levels reachable; 5 is the
+          usual chat-bot value and puts level 120 out of anyone's reach.</div>
+      </div>
+    </div>
+    ${curveTable()}
     <div class="gone">Set which roles unlock, and when, using the
       <b>unlocks at</b> box on each role below. Any role can be a reward, not just the
       star ones, and leaving it blank means the role is never given out automatically.</div>
     </div>`;
 }
 
+/* The same curve the bot uses, so the table below is what will really happen
+   rather than a separate approximation that drifts. A level costs `base` XP
+   plus `linear` for every level already earned, plus `quadratic` squared. */
+function levelCost(n){
+  const c = SEL.levels.curve || {};
+  const q = c.quadratic ?? 0, l = c.linear ?? 50, b = c.base ?? 100;
+  return q * n * n + l * n + b;
+}
+
+function xpToReach(level){
+  let total = 0;
+  for(let n = 0; n < level; n++) total += levelCost(n);
+  return total;
+}
+
+/* Roughly what an active member earns in a day: the cooldown caps how often
+   XP can be awarded at all, so this is awards-per-day times the average. */
+function xpPerDay(){
+  const L = SEL.levels;
+  const avg = ((L.xp_per_message[0] + L.xp_per_message[1]) / 2) || 20;
+  const cd = Math.max(L.cooldown_seconds || 60, 1);
+  // About 30 awards a day for someone chatting on and off, capped by cooldown.
+  const awards = Math.min(30, Math.floor((6 * 3600) / cd));
+  return Math.max(1, Math.round(avg * awards));
+}
+
+function humanDays(days){
+  if(days < 1) return 'same day';
+  if(days < 14) return `${Math.round(days)} days`;
+  if(days < 70) return `${Math.round(days / 7)} weeks`;
+  if(days < 730) return `${(days / 30.4).toFixed(1)} months`;
+  return `${(days / 365).toFixed(1)} years`;
+}
+
+function curveTable(){
+  const rewards = Object.entries(SEL.levels.rewards || {})
+    .map(([role, level]) => ({role, level: +level}))
+    .sort((a, b) => a.level - b.level);
+  if(!rewards.length){
+    return `<div class="curve"><div class="hint">No roles have an
+      <b>unlocks at</b> level yet, so nothing is handed out. Set one on a role below
+      and this fills in with what it costs.</div></div>`;
+  }
+  const perDay = xpPerDay();
+  const rows = rewards.map(r => {
+    const xp = xpToReach(r.level);
+    const days = xp / perDay;
+    const cls = days > 730 ? 'never' : (days > 400 ? 'slow' : '');
+    return `<tr>
+      <td>${esc(r.role)}</td>
+      <td>${r.level}</td>
+      <td>${xp.toLocaleString()}</td>
+      <td class="${cls}">${humanDays(days)}</td>
+      <td class="${cls}">${humanDays(days * 4)}</td>
+    </tr>`;
+  }).join('');
+
+  const worst = xpToReach(rewards[rewards.length - 1].level) / perDay;
+  let verdict = '';
+  if(worst > 730) verdict = `<div class="msg err">The last tier needs
+    ${humanDays(worst)} of steady chatting. Nobody will reach it. Lower the
+    level, or lower the cost per level.</div>`;
+  else if(worst > 400) verdict = `<div class="msg warn">The last tier needs
+    ${humanDays(worst)}. That is a long haul; fine if you mean it.</div>`;
+
+  return `<div class="curve">
+    <table>
+      <tr><th>Role</th><th>${esc(SEL.levels.noun || 'Level')}</th><th>Total XP</th>
+          <th>Chatting daily</th><th>Casual</th></tr>
+      ${rows}
+    </table>
+    <div class="hint">Assumes about ${perDay.toLocaleString()} XP a day for someone
+      chatting on and off, and a quarter of that for someone dropping in. The
+      cooldown, not the XP range, is what really sets the pace.</div>
+    ${verdict}
+  </div>`;
+}
+
 function setLevel(key, value){ SEL.levels[key] = value; redraw(); }
+
+function setCurve(key, value){
+  SEL.levels.curve = SEL.levels.curve || {};
+  SEL.levels.curve[key] = Math.max(0, parseInt(value, 10) || 0);
+  redraw();
+}
 
 function setXp(i, value){
   const v = Math.max(1, parseInt(value, 10) || 1);
