@@ -739,6 +739,13 @@ def validate(bp: dict) -> dict:
             errors.append(
                 f"AutoMod: {n} {t} rules selected, Discord allows {AUTOMOD_LIMITS[t]}")
 
+    styled = [r["name"] for r in bp.get("roles", []) if r.get("colors")]
+    if styled:
+        warnings.append(
+            f"{len(styled)} role(s) use a fade or the animated style, which needs the "
+            f"server to have 3 boosts. Without them those roles use their plain colour "
+            f"and everything else is unaffected")
+
     if not bp.get("roles"):
         warnings.append("No roles selected")
     if not channels:
@@ -770,6 +777,7 @@ def validate(bp: dict) -> dict:
         "errors": errors,
         "warnings": warnings,
         "summary": {
+            "styled_roles": sum(1 for r in bp.get("roles", []) if r.get("colors")),
             "roles": len(bp.get("roles", [])),
             "channels": len(channels),
             "categories": len(bp.get("categories", [])),

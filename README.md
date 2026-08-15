@@ -212,20 +212,29 @@ silences the setup-tip nagging, sets an AFK channel and turns on the boost
 progress bar. All of those have endpoints that most guides tell you to click
 through by hand.
 
-## Colours, gradients and the holographic one
+## What a role colour can actually be
 
-Every role's colour is editable in the setup page, not just ones you add. Two
-extra styles sit behind Discord's enhanced role styles, which a server unlocks
-with three boosts:
+Worth knowing before designing a tier ramp, because the limits are lower than
+most people expect.
 
-**fade** blends a name between two colours you pick. **holo** applies Discord's
-animated sheen, whose three colours the API fixes, so it is a look you switch
-on rather than one you design. Discord enforces those exact values; there is no
-custom holographic.
+| | needs boosts |
+|---|---|
+| Any solid hex colour | no |
+| A fade between two hex colours you pick | 3 boosts |
+| Discord's animated sheen, in colours Discord fixes | 3 boosts |
 
-Without the boosts, roles asking for either just use their plain colour and the
-run says so. That is also exactly what Discord does on its own if a server's
-boosts lapse, so nothing breaks and nothing needs undoing.
+That is the whole list. **There is no glow, no halo, no drop shadow, and no
+custom animation at any boost level**, so an effect built in CSS elsewhere will
+not transfer. A role name is one colour, or a fade between two, or the one
+animated style Discord ships.
+
+The tiers in this blueprint are therefore exact solid colours that work on a
+server with zero boosts, and only the top one asks for the animated style. On a
+server without boosts it falls back to its plain colour, which is also what
+Discord does by itself if boosts later lapse.
+
+Every role's colour is editable in the setup page, not only ones you add, with
+the name drawn in its own colour so a ramp can be judged where it is set.
 
 ## One bot instead of four
 

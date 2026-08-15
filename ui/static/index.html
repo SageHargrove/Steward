@@ -848,10 +848,14 @@ function renderTree(){
     </div>
     <div class="gone">A role you add here carries no special permissions, which is right
       for a label. Give it powers in Discord's own role editor, where each permission
-      explains what it does. <b>fade</b> makes a name blend between two colours and
-      <b>holo</b> applies Discord's animated sheen, whose colours are fixed rather than
-      chosen. Both need the server to have three boosts, and quietly fall back to the
-      plain colour without them.</div></div>`;
+      explains what it does.
+      <br><br><b>Plain colours work on any server, with no boosts.</b> The two buttons
+      do not: <b>fade</b> blends a name between two colours you pick, and <b>holo</b>
+      applies Discord's animated sheen, whose colours are fixed by Discord rather than
+      chosen. Both need the server to have three boosts. Without them those roles just
+      use their plain colour, which is also what Discord falls back to on its own if a
+      server's boosts ever lapse. Discord has no glow, halo or custom animation at any
+      boost level.</div></div>`;
 
   h += simpleGroup('automod', 'Automatic moderation', INV.automod,
                    a => a.name, a => a.note);

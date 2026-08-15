@@ -202,67 +202,82 @@ roles:
   # players a floor, a level or a depth, reusing that word on Discord makes two
   # unrelated numbers look like the same one.
   #
-  # Colours climb the way rarity does. The last two use enhanced role styles:
+  # WHAT DISCORD CAN AND CANNOT DO WITH A ROLE COLOUR
   #
-  #   colors.primary + colors.secondary  -> the name fades between two colours
-  #   colors.holographic: true           -> Discord's animated sheen. The look
-  #                                         is fixed; you switch it on, you do
-  #                                         not design it.
+  #   solid colour   any hex you like        no boosts needed
+  #   colors.primary + colors.secondary      a fade between two hex values,
+  #                                          needs 3 server boosts
+  #   colors.holographic: true               Discord's animated sheen. Its
+  #                                          colours are fixed by the API and
+  #                                          cannot be chosen. Needs 3 boosts.
   #
-  # Both need the server to have three boosts. Without them these roles simply
-  # use the plain `color` below, which is also what Discord reverts to if the
-  # boosts ever lapse. Nothing breaks either way.
+  # There is no glow, no halo, no drop shadow, and no custom animation at any
+  # boost level. A role name is one colour, or a fade between two, or the one
+  # animated style Discord ships.
+  #
+  # Every colour below is exact and works on a server with ZERO boosts. Only
+  # the style on the top tier needs them, and without them that role simply
+  # uses its plain colour. Nothing else changes.
   #
   # Rename, recolour or delete any of these. They mean nothing to Discord and
   # only matter to the rewards list further down.
   - name: "★1"
-    note: "Level tier 1 (common). Awarded automatically."
-    color: 0x9BA3AF
+    note: "Level tier 1. White."
+    color: 0xFFFFFF
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★2"
-    note: "Level tier 2 (uncommon). Awarded automatically."
-    color: 0x3BA55D
+    note: "Level tier 2. Bright green."
+    color: 0x4DFF4D
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★3"
-    note: "Level tier 3 (rare). Awarded automatically."
-    color: 0x3B82F6
+    note: "Level tier 3. Dodger blue."
+    color: 0x1E90FF
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★4"
-    note: "Level tier 4 (epic). Awarded automatically."
-    color: 0x8B5CF6
+    note: "Level tier 4. Neon purple."
+    color: 0xB84DFF
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★5"
-    note: "Level tier 5 (legendary). Awarded automatically."
-    color: 0xF0862D
+    note: "Level tier 5. Radiant gold."
+    color: 0xFFB300
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★6"
-    note: "Level tier 6 (mythic, a gradient rather than one colour). Awarded automatically."
-    color: 0xE0403E
+    note: "Level tier 6. Crimson."
+    color: 0xFF3333
     hoist: false
     mentionable: false
     permissions: []
-    colors:
-      primary: 0xE0403E
-      secondary: 0xF0862D
 
+  # The top tier is the only one that moves, which is the property worth
+  # keeping. Discord cannot paint a scrolling rainbow across a role name, so
+  # holographic is the nearest thing it has: an animated sheen, in colours
+  # Discord fixes rather than ones you pick.
+  #
+  # Prefer a colour you chose over one that moves? Delete the `colors` block
+  # and it stays magenta. Prefer a fade? Swap it for:
+  #     colors:
+  #       primary: 0xFF2020
+  #       secondary: 0xB040FF
+  # which sweeps red to violet and is the closest a chosen palette gets to a
+  # spectrum. Both of those, and this, are one click in the setup page.
   - name: "★7"
-    note: "Level tier 7 (the animated holographic sheen). Awarded automatically."
-    color: 0xC9A227
+    note: "Level tier 7. The only one that animates. Falls back to magenta without boosts."
+    color: 0xFF30C0
     hoist: false
     mentionable: false
     permissions: []

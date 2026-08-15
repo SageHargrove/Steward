@@ -294,16 +294,28 @@ def _():
     assert prov.problems, "should have recorded the failures"
     assert fake.onboarding is not None, "run should have continued to onboarding"
 
-@test("gradient and holographic roles are described correctly")
+@test("the tier colours are exactly the ones asked for")
 def _():
-    bp = core.load(BLUEPRINT)
-    by = {r["name"]: r for r in bp["roles"]}
-    grad = core.role_colors(by["★" + "6"])
-    assert grad and "secondary_color" in grad and "tertiary_color" not in grad, grad
-    holo = core.role_colors(by["★" + "7"])
-    assert holo == core.HOLOGRAPHIC, "holographic colours are fixed by the API"
-    plain = core.role_colors(by["★" + "1"])
-    assert plain is None, "a single colour is not a gradient"
+    # Taken from the game's own star colours. A tier that does not match is
+    # worse than no colour at all, because it looks deliberate.
+    want = {"1": 0xFFFFFF, "2": 0x4DFF4D, "3": 0x1E90FF,
+            "4": 0xB84DFF, "5": 0xFFB300, "6": 0xFF3333}
+    by = {r["name"]: r for r in core.load(BLUEPRINT)["roles"]}
+    for n, colour in want.items():
+        role = by["★" + n]
+        assert role["color"] == colour, (
+            f"star{n} is #{role['color']:06X}, should be #{colour:06X}")
+        assert not role.get("colors"), f"star{n} should be a flat colour"
+
+
+@test("only the top tier animates, and it degrades to a plain colour")
+def _():
+    by = {r["name"]: r for r in core.load(BLUEPRINT)["roles"]}
+    top = by["★" + "7"]
+    assert core.role_colors(top) == core.HOLOGRAPHIC, "the top tier should animate"
+    assert top.get("color"), "it needs a plain colour for servers without boosts"
+    animated = [r["name"] for r in core.load(BLUEPRINT)["roles"] if r.get("colors")]
+    assert animated == ["★" + "7"], f"more than one tier animates: {animated}"
 
 
 @test("a server without the perk still gets its roles")
@@ -330,7 +342,7 @@ def _():
             if m == "POST" and q.endswith("/roles")}
     assert "colors" in sent["★" + "7"], "holographic never sent"
     assert sent["★" + "7"]["colors"] == core.HOLOGRAPHIC
-    assert "colors" in sent["★" + "6"], "gradient never sent"
+    assert "colors" not in sent["★" + "6"], "a flat tier carried a style"
     assert "colors" not in sent["Dev"], "a plain role should not carry a style"
 
 
