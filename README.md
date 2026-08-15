@@ -189,6 +189,35 @@ Discord's onboarding channel minimums (7 defaults, 5 of them fully open),
 AutoMod per-trigger limits, regex over 260 characters, and timeout actions on
 trigger types that do not support them.
 
+## Tests
+
+```powershell
+python testsun_tests.py
+```
+
+42 checks, no test framework to install. `tests/fake_discord.py` stands in for
+the REST API and records every call, so the suite can assert on ordering as
+well as on the result. The web-layer tests boot the real server on a spare port
+and drive it over HTTP rather than mocking it.
+
+Run it with the same interpreter that runs the app. Every check corresponds to
+something that either did break or would have broken silently against a live
+server, so a failure here is worth reading rather than deleting:
+
+- **Phase ordering.** Forum and announcement channels cannot be created before
+  Community mode is on, and Community mode needs its two channels to exist
+  first. Get this wrong and the run half-applies.
+- **Idempotency.** A second run must create nothing and duplicate nothing.
+- **Dry run sends no writes at all.**
+- **Every onboarding answer grants a role or a channel.** Discord rejects the
+  whole request otherwise. This one reached a live server before it was caught.
+- **Pruning never produces an answer that grants nothing**, which is how that
+  bug would come back.
+- **Deletion refuses @everyone, bot-managed roles, and anything the run just
+  created**, whatever the browser asks for.
+- **The token never appears in a response**, cross-origin posts are refused,
+  and the blueprint loader cannot be walked out of its folder.
+
 ## Backups
 
 `steward/data/steward.sqlite3` is the asset. Roughly 120 bytes per event
