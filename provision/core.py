@@ -1313,6 +1313,27 @@ class Provisioner:
         except Failed as e:
             self._warn(f"could not set server name/icon: {str(e)[:160]}")
 
+    def adopt_existing_channels(self):
+        """Fill in channel ids from the live server without building anything.
+
+        Lets the text be republished on its own, so fixing a wording mistake
+        does not mean re-running the whole setup.
+        """
+        try:
+            for ch in self.c.get(f"/guilds/{self.gid}/channels"):
+                self.channels.setdefault(ch["name"], ch["id"])
+            for r in self.c.get(f"/guilds/{self.gid}/roles"):
+                self.roles.setdefault(r["name"], r["id"])
+        except Failed as e:
+            raise Failed(f"could not read the server: {str(e)[:160]}")
+
+    def run_content_only(self, content_dir):
+        """Republish the posted text and nothing else."""
+        self.adopt_existing_channels()
+        self.sync_content(Path(content_dir))
+        self.sync_forum_posts(Path(content_dir))
+        return self.problems
+
     # -- channel content --------------------------------------------------
 
     def sync_content(self, base_dir: Path):
@@ -1449,7 +1470,15 @@ class Provisioner:
             existing = next((t for t in active
                              if t.get("parent_id") == cid and t.get("name") == title), None)
             if existing:
-                self.log(f"  = #{ch['name']}: \"{title}\" already there")
+                # A forum post's opening message shares the thread's id, so it
+                # can be rewritten in place. Without this, fixing a typo in a
+                # starter post would mean deleting the thread by hand.
+                try:
+                    self.c.patch(f"/channels/{existing['id']}/messages/{existing['id']}",
+                                 {"content": body, "allowed_mentions": {"parse": []}})
+                    self.log(f"  = #{ch['name']}: updated \"{title}\"")
+                except Failed as e:
+                    self._warn(f"{ch['name']}: could not update \"{title}\": {str(e)[:120]}")
                 continue
 
             payload = {"name": title,

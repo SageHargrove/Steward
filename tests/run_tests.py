@@ -441,7 +441,9 @@ def _():
     reposts = [p for m, p, b in fake.calls if m == "POST" and p.endswith("/messages")]
     edits = [p for m, p, b in fake.calls if m == "PATCH" and "/messages/" in p]
     assert not reposts, f"re-run posted {len(reposts)} duplicate message(s)"
-    assert len(edits) == first_count, f"expected {first_count} edits, got {len(edits)}"
+    # Every pinned message is rewritten, and so is each forum starter post,
+    # whose opening message shares its thread id.
+    assert len(edits) >= first_count, f"expected at least {first_count} edits, got {len(edits)}"
 
 
 @test("an oversized section is refused before anything is sent")
@@ -536,6 +538,72 @@ def _():
     again = [b["name"] for m, p, b in fake.calls
              if m == "POST" and p.endswith("/threads")]
     assert not again, f"re-run duplicated forum posts: {again}"
+
+
+@test("reworded text updates in place instead of posting again")
+def _():
+    # Discord will not let a human edit a bot's message, so the only way to fix
+    # a typo is for the bot to rewrite its own. Re-posting would leave the
+    # mistake sitting above the correction forever.
+    bp = load()
+    base = Path(bp["_base_dir"])
+    rules = base / "content" / "rules.md"
+    backup = rules.read_text(encoding="utf-8")
+    try:
+        fake, _ = run(bp, content_dir=base)
+        first = len([q for m, q, _ in fake.calls
+                     if m == "POST" and q.endswith("/messages")])
+        assert first, "nothing was posted the first time"
+
+        rules.write_text(backup.replace("Read once", "Read this once"), encoding="utf-8")
+        fake.calls.clear()
+        prov = core.Provisioner(core.Client("t", log=lambda *_: None),
+                                fake.guild_id, load(), log=lambda *_: None)
+        prov.run_content_only(base)
+
+        posts = [q for m, q, _ in fake.calls if m == "POST" and q.endswith("/messages")]
+        edits = [q for m, q, _ in fake.calls if m == "PATCH" and "/messages/" in q]
+        assert not posts, f"republish created {len(posts)} duplicate message(s)"
+        assert edits, "nothing was edited"
+        import json as _j
+        body = _j.dumps(fake.messages, ensure_ascii=False)
+        assert "Read this once" in body, "the new wording never reached Discord"
+    finally:
+        rules.write_text(backup, encoding="utf-8")
+
+
+@test("a forum starter post is rewritten, not duplicated")
+def _():
+    bp = load()
+    base = Path(bp["_base_dir"])
+    fake, _ = run(bp, content_dir=base)
+    fake.calls.clear()
+    prov = core.Provisioner(core.Client("t", log=lambda *_: None),
+                            fake.guild_id, load(), log=lambda *_: None)
+    prov.run_content_only(base)
+    threads = [q for m, q, _ in fake.calls if m == "POST" and q.endswith("/threads")]
+    assert not threads, "republish opened a second starter post"
+    edits = [q for m, q, _ in fake.calls if m == "PATCH" and "/messages/" in q]
+    assert any(q.split("/")[2] == q.split("/")[4] for q in edits), (
+        "a forum starter message was never rewritten")
+
+
+@test("content editing cannot reach outside the blueprint folder")
+def _():
+    try:
+        sys.path.insert(0, str(ROOT / "ui"))
+        import app as webapp
+    except Exception:                                      # noqa: BLE001
+        return                                             # ui deps missing
+    for bad in ("../../secrets.md", "giltgrave.yaml", "content/../../core.py"):
+        try:
+            webapp._content_path(bad)
+            raise AssertionError(f"accepted {bad!r}")
+        except AssertionError:
+            raise
+        except Exception:
+            pass
+    assert webapp._content_path("content/rules.md").name == "rules.md"
 
 
 @test("the welcome screen is set from the blueprint")

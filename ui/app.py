@@ -221,6 +221,51 @@ def disconnect(request: Request, response: Response):
     return {"ok": True}
 
 
+def _content_path(rel: str) -> Path:
+    """Resolve a content file, refusing anything outside the blueprint folder."""
+    path = (BLUEPRINTS / rel).resolve()
+    root = BLUEPRINTS.resolve()
+    if root not in path.parents or path.suffix.lower() != ".md":
+        raise HTTPException(400, "That is not a content file.")
+    return path
+
+
+@app.get("/api/content")
+def list_content(file: str):
+    """Every piece of text this blueprint posts, so it can be edited here
+    rather than by finding files on disk."""
+    bp = _load_named(file)
+    out = []
+    for cat in bp.get("categories", []):
+        for ch in cat.get("channels", []):
+            for rel, kind, title in (
+                    (ch.get("content_file"), "pinned message", None),
+                    ((ch.get("forum_post") or {}).get("content_file"), "forum post",
+                     (ch.get("forum_post") or {}).get("title"))):
+                if not rel:
+                    continue
+                try:
+                    text = _content_path(rel).read_text(encoding="utf-8")
+                except (OSError, HTTPException):
+                    continue
+                out.append({"channel": ch["name"], "path": rel, "kind": kind,
+                            "title": title, "text": text})
+    return out
+
+
+@app.post("/api/content")
+def save_content(payload: dict = Body(...)):
+    path = _content_path(payload.get("path", ""))
+    text = payload.get("text")
+    if not isinstance(text, str):
+        raise HTTPException(400, "Nothing to save.")
+    path.write_text(text, encoding="utf-8")
+    # Report what it will look like before it is sent anywhere.
+    blocks = core.split_content(text)
+    return {"ok": True, "sections": len(blocks),
+            "sizes": [len(b) for b in blocks]}
+
+
 @app.get("/api/manual")
 def manual(request: Request, file: str = "", variables: str = ""):
     """Read from the blueprint on every call, so editing the checklist or the
@@ -259,7 +304,13 @@ def apply(request: Request, payload: dict = Body(...)):
 
     bp = core.customize(_load_named(payload.get("file", "")), payload.get("selection") or {})
     report = core.validate(bp)
-    if report["errors"]:
+    content_errors = [e for e in report["errors"] if "content file" in e or "characters" in e]
+    if payload.get("content_only"):
+        # Republishing text only needs the text to be sendable. Blocking on an
+        # unrelated structural error would make a typo unfixable.
+        if content_errors:
+            raise HTTPException(400, "; ".join(content_errors[:3]))
+    elif report["errors"]:
         raise HTTPException(400, "Fix the errors before applying: "
                                  + "; ".join(report["errors"][:3]))
 
@@ -288,13 +339,20 @@ def apply(request: Request, payload: dict = Body(...)):
     del_channels = [str(x) for x in dele.get("channels", [])]
     del_roles = [str(x) for x in dele.get("roles", [])]
 
+    content_only = bool(payload.get("content_only"))
+
     def work():
         try:
             client = core.Client(session["token"], dry_run=dry, log=log)
             prov = core.Provisioner(client, guild_id, bp, log=log)
-            problems = prov.run(server_name=server_name, icon=icon, icon_name=icon_name,
-                                delete_channels=del_channels, delete_roles=del_roles,
-                                content_dir=BLUEPRINTS)
+            if content_only:
+                problems = prov.run_content_only(BLUEPRINTS)
+            else:
+                problems = prov.run(server_name=server_name, icon=icon,
+                                    icon_name=icon_name,
+                                    delete_channels=del_channels,
+                                    delete_roles=del_roles,
+                                    content_dir=BLUEPRINTS)
             q.put(("done", {"problems": problems, "dry_run": dry}))
         except core.Failed as e:
             q.put(("failed", str(e)[:1200]))

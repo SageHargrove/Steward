@@ -182,6 +182,21 @@
     white-space:pre-wrap; margin:14px 0 0; color:var(--muted)}
   pre.log .p{color:#7ee2a8} pre.log .w{color:#f5989a}
 
+  .edits{display:grid; gap:10px}
+  .edit{border:1px solid var(--line); border-radius:5px; overflow:hidden}
+  .edit > .eh{display:flex; align-items:center; gap:9px; padding:9px 13px;
+    background:var(--raised); font-size:13px; color:var(--ink); font-weight:600}
+  .edit > .eh .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;
+    padding:2px 7px; border-radius:3px; background:var(--ground); color:var(--dim);
+    font-weight:700}
+  .edit > .eh .st{margin-left:auto; font-size:12px; color:var(--dim); font-weight:400}
+  .edit textarea{width:100%; min-height:190px; resize:vertical; background:var(--input);
+    color:var(--ink); border:0; border-top:1px solid var(--line); padding:12px 13px;
+    font:13px/1.6 ui-monospace,Consolas,monospace}
+  .edit textarea:focus{outline:none}
+  .edit.dirty > .eh{background:#3a3320}
+  .edit.dirty > .eh .st{color:var(--yellow)}
+
   ol.manual{padding-left:0; list-style:none; margin:0}
   ol.manual li{border:1px solid var(--line); border-radius:5px; padding:13px 15px;
     display:flex; gap:12px; margin-bottom:9px; background:var(--raised)}
@@ -439,9 +454,27 @@
   </div>
 </section>
 
-<!-- 6. manual ----------------------------------------------------------- -->
-<section class="step" id="s6">
-  <div class="head"><div class="num"><span>6</span></div><h2>The rest, by hand</h2></div>
+<!-- 6. edit posted text ------------------------------------------------- -->
+<section class="step locked" id="s6">
+  <div class="head"><div class="num"><span>6</span></div><h2>Edit what the bot posted</h2>
+    <div style="margin-left:auto" class="row">
+      <button class="ghost small" onclick="loadEdits()">Reload from disk</button>
+      <button id="pubbtn" onclick="publishEdits()">Save and update Discord</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="callout"><b>Discord will not let you edit a message somebody else
+      wrote</b>, and the bot is the author, so these cannot be fixed by clicking in
+      Discord. Change the text here instead. Saving rewrites the messages already
+      posted rather than sending new ones, so a typo fix leaves no trace.</div>
+    <div class="edits" id="edits"></div>
+    <pre class="log" id="publog" style="display:none"></pre>
+  </div>
+</section>
+
+<!-- 7. manual ----------------------------------------------------------- -->
+<section class="step" id="s7">
+  <div class="head"><div class="num"><span>7</span></div><h2>The rest, by hand</h2></div>
   <div class="body">
     <div class="callout">None of this can be automated by any tool. Installing a bot needs
       a human to press Authorize, and the Discord settings below have no API at all. Every
@@ -620,6 +653,7 @@ async function loadBlueprint(){
   redraw();
   loadExisting();
   loadManual();
+  loadEdits();
 }
 
 /* What is already in the server, so leftovers from Discord's default template
@@ -1084,7 +1118,109 @@ function line(cls, text){
   $('#log').scrollTop = $('#log').scrollHeight;
 }
 
-/* ---------- 6. manual ---------- */
+/* ---------- 6. editing what was posted ---------- */
+let EDITS = [];
+
+async function loadEdits(){
+  if(!FILE) return;
+  try{ EDITS = await api('/api/content?file=' + encodeURIComponent(FILE)); }
+  catch(e){ return; }
+  renderEdits();
+  unlock('#s6', true);
+}
+
+function renderEdits(){
+  $('#edits').innerHTML = EDITS.map((e, i) => `
+    <div class="edit" id="edit${i}">
+      <div class="eh">#${esc(e.channel)}
+        <span class="k">${esc(e.kind)}</span>
+        ${e.title ? `<span class="k">${esc(e.title)}</span>` : ''}
+        <span class="st" id="st${i}">${esc(e.path)}</span>
+      </div>
+      <textarea spellcheck="true" oninput="markDirty(${i})"
+        id="ta${i}">${esc(e.text)}</textarea>
+    </div>`).join('');
+}
+
+function markDirty(i){
+  $('#edit' + i).classList.add('dirty');
+  $('#st' + i).textContent = 'unsaved';
+}
+
+async function publishEdits(){
+  if(BUSY || !EDITS.length) return;
+  BUSY = true;
+  const btn = $('#pubbtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const log = $('#publog'); log.style.display = ''; log.textContent = '';
+
+  // Save every file first, so what gets published is what is on screen.
+  for(let i = 0; i < EDITS.length; i++){
+    const text = $('#ta' + i).value;
+    if(text === EDITS[i].text) continue;
+    try{
+      const r = await api('/api/content', {method:'POST',
+        body: JSON.stringify({path: EDITS[i].path, text})});
+      EDITS[i].text = text;
+      $('#edit' + i).classList.remove('dirty');
+      $('#st' + i).textContent = `saved, ${r.sections} section(s)`;
+    }catch(err){
+      publine('w', EDITS[i].path + ': ' + err.message);
+      BUSY = false; btn.disabled = false; btn.textContent = 'Save and update Discord';
+      return;
+    }
+  }
+
+  btn.textContent = 'Updating Discord...';
+  let resp;
+  try{
+    resp = await fetch('/api/apply', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({file: FILE, selection: SEL, guild_id: GUILD,
+                            content_only: true})});
+  }catch(e){
+    publine('w', 'Could not reach the setup program.');
+    BUSY = false; btn.disabled = false; btn.textContent = 'Save and update Discord';
+    return;
+  }
+  if(!resp.ok){
+    let d; try{ d = (await resp.json()).detail; }catch(e){ d = resp.statusText; }
+    publine('w', d);
+    BUSY = false; btn.disabled = false; btn.textContent = 'Save and update Discord';
+    return;
+  }
+
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  while(true){
+    const {value, done:fin} = await reader.read();
+    if(fin) break;
+    buf += dec.decode(value, {stream:true});
+    const parts = buf.split('\n\n'); buf = parts.pop();
+    for(const p of parts){
+      const ev = (p.match(/^event: (.*)$/m) || [])[1];
+      const dm = (p.match(/^data: (.*)$/m) || [])[1];
+      if(!ev || dm === undefined) continue;
+      let data; try{ data = JSON.parse(dm); }catch(e){ continue; }
+      if(ev === 'log') publine('', data);
+      if(ev === 'failed') publine('w', 'Failed: ' + data);
+      if(ev === 'done') publine('p', data.problems.length
+        ? `\nDone, with ${data.problems.length} thing(s) to read above.`
+        : '\nDone. The messages in Discord now match what is above.');
+    }
+  }
+  BUSY = false; btn.disabled = false; btn.textContent = 'Save and update Discord';
+}
+
+function publine(cls, text){
+  const el = document.createElement('span');
+  if(cls) el.className = cls;
+  el.textContent = text + '\n';
+  $('#publog').appendChild(el);
+  $('#publog').scrollTop = $('#publog').scrollHeight;
+}
+
+/* ---------- 7. manual ---------- */
 let MANUAL = [];
 
 /* Ticks persist, because this list is worked through over days rather than in
