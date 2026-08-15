@@ -21,14 +21,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
 from discord.ext import tasks
 from dotenv import load_dotenv
 
+import calendar_engine
 import digest
 import modlog
 from ledger import Ledger
@@ -56,6 +58,24 @@ def find_blueprint() -> str:
 
 
 BLUEPRINT = find_blueprint()
+
+
+def find_calendar() -> str:
+    named = os.environ.get("STEWARD_CALENDAR")
+    if named and os.path.exists(named):
+        return named
+    for guess in ("../blueprint/content-calendar.yaml", "blueprint/content-calendar.yaml"):
+        if os.path.exists(guess):
+            return guess
+    return named or "../blueprint/content-calendar.yaml"
+
+
+CALENDAR = find_calendar()
+# Overrides meta.anchor, so the launch date can move without editing the file
+# that gets redeployed to the next project.
+LAUNCH_DATE = os.environ.get("LAUNCH_DATE") or None
+PLAYTEST_ROLE = os.environ.get("PLAYTEST_ROLE", "Ping Me For Playtests")
+BUG_FORUM = os.environ.get("BUG_FORUM", "bug-reports")
 
 # The status message identifies itself by its title, so restarts reuse the
 # same message instead of stacking up.
@@ -122,6 +142,82 @@ intents.voice_states = True
 intents.message_content = False
 
 
+def load_calendar(path: str, blueprint: dict):
+    """The content calendar, filled in with the blueprint's own variables so
+    one calendar file serves any game without its prose being edited."""
+    variables = {k: (v if v is not None else "")
+                 for k, v in (blueprint.get("variables") or {}).items()}
+    try:
+        cal = calendar_engine.load(path, variables, anchor_override=LAUNCH_DATE)
+    except FileNotFoundError:
+        log.info("no content calendar at %s; the calendar engine is off", path)
+        return calendar_engine.Calendar()
+    except Exception as e:                                   # noqa: BLE001
+        log.warning("could not read %s (%s); the calendar engine is off", path, e)
+        return calendar_engine.Calendar()
+
+    report = cal.validate()
+    for problem in report["errors"]:
+        log.warning("calendar: %s", problem)
+    if report["errors"]:
+        log.warning("calendar has errors and will not run until they are fixed")
+        return calendar_engine.Calendar()
+    if not cal.anchor:
+        log.info("calendar loaded but no launch date is set, so nothing will fire. "
+                 "Set meta.anchor in %s or LAUNCH_DATE in the environment.", path)
+    else:
+        log.info("calendar: %d beats and %d recurring, launch %s",
+                 report["beats"], report["recurring"], report["anchor"])
+    return cal
+
+
+class BeatApproval(discord.ui.View):
+    """Approve or skip a drafted beat.
+
+    The custom ids are fixed rather than carrying the beat in them, because a
+    custom id caps at 100 characters and a beat id is written by whoever edits
+    the calendar. The message id is the key instead, and it is already stored.
+    """
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def _decide(self, interaction: discord.Interaction, approve: bool):
+        client = interaction.client
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "Only someone who can manage the server can decide this.",
+                ephemeral=True)
+            return
+        run = client.ledger.calendar_by_draft(interaction.guild.id,
+                                              interaction.message.id)
+        if not run or run["status"] != "drafted":
+            await interaction.response.send_message(
+                "That beat has already been decided.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        if approve:
+            await client.publish_beat(interaction, run)
+        else:
+            client.ledger.calendar_decide(interaction.guild.id, run["beat_id"],
+                                          run["fire_date"], "skipped",
+                                          interaction.user.id)
+            await client.close_draft(interaction.message,
+                                     f"Skipped by {interaction.user.mention}.",
+                                     discord.Color.dark_grey())
+
+    @discord.ui.button(label="Approve and post", custom_id="cal:approve",
+                       style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button):
+        await self._decide(interaction, True)
+
+    @discord.ui.button(label="Skip", custom_id="cal:skip",
+                       style=discord.ButtonStyle.secondary)
+    async def skip(self, interaction: discord.Interaction, button):
+        await self._decide(interaction, False)
+
+
 class Steward(discord.Client):
     def __init__(self):
         super().__init__(intents=intents)
@@ -130,6 +226,7 @@ class Steward(discord.Client):
         self.ephemeral = ephemeral_roles(BLUEPRINT)
         self.blueprint = read_blueprint(BLUEPRINT)
         self.levels = Levels(self.ledger, self.blueprint.get("levels") or {})
+        self.calendar = load_calendar(CALENDAR, self.blueprint)
         self.started_at = int(time.time())
         # user id -> when they joined voice, for paying out on leave
         self.voice_since: dict[int, int] = {}
@@ -168,9 +265,13 @@ class Steward(discord.Client):
 
     async def setup_hook(self):
         await self.tree.sync()
+        # Registered before anything else so a draft posted last week still has
+        # working buttons after a restart.
+        self.add_view(BeatApproval())
         self.nightly_purge.start()
         self.heartbeat.start()
         self.weekly_digest.start()
+        self.calendar_tick.start()
         self.pulse.start()
 
     # -- backfill ---------------------------------------------------------
@@ -687,6 +788,244 @@ class Steward(discord.Client):
     async def _wait_digest(self):
         await self.wait_until_ready()
 
+    # -- the calendar -----------------------------------------------------
+
+    def beat_embed(self, beat: dict, when, colour=None) -> discord.Embed:
+        t = self.calendar.t_minus(when)
+        stamp = when.isoformat() + (f"  (T{t:+d})" if t is not None else "")
+        e = discord.Embed(
+            title=beat.get("title") or beat.get("id"),
+            description=beat.get("body", "")[:4000],
+            colour=colour or discord.Color.blurple())
+        e.set_footer(text=f"{beat.get('id')} · {stamp}")
+        return e
+
+    async def draft_beat(self, guild, occ) -> bool:
+        """Put a beat in front of a human. Nothing reaches members from here."""
+        beat = occ.beat
+        staff = discord.utils.get(guild.text_channels, name=REPORT_CHANNEL)
+        if staff is None:
+            log.warning("calendar: no #%s to draft %s into", REPORT_CHANNEL, occ.id)
+            return False
+
+        target_name = beat.get("channel")
+        target = discord.utils.get(guild.text_channels, name=target_name) \
+            or discord.utils.get(guild.forums, name=target_name)
+
+        # Reminders are the beat. They are for staff, they name a deadline or a
+        # task, and holding one for approval would mean approving your own
+        # to-do list.
+        if beat.get("kind") == "reminder":
+            if not self.ledger.calendar_record(guild.id, occ.id, occ.date.isoformat(),
+                                               "published"):
+                return False
+            e = self.beat_embed(beat, occ.date, discord.Color.dark_gold())
+            e.title = f"Reminder: {e.title}"
+            await staff.send(embed=e,
+                             allowed_mentions=discord.AllowedMentions.none())
+            log.info("calendar: reminder %s posted", occ.id)
+            return True
+
+        if target is None:
+            self.ledger.calendar_record(
+                guild.id, occ.id, occ.date.isoformat(), "failed",
+                note=f"no channel #{target_name}")
+            log.warning("calendar: %s wants #%s, which does not exist", occ.id,
+                        target_name)
+            return False
+
+        e = self.beat_embed(beat, occ.date)
+        mention = beat.get("mention")
+        lines = [f"Due today, for **#{target_name}**."]
+        if mention:
+            lines.append(f"It mentions **@{mention}**, so approving it pings people.")
+        if beat.get("event"):
+            lines.append(f"It also creates the scheduled event "
+                         f"**{beat['event'].get('name')}**.")
+
+        # Claim it before posting. If the send fails the row still exists and
+        # the beat is not retried forever against a channel that will not take it.
+        if not self.ledger.calendar_record(guild.id, occ.id, occ.date.isoformat(),
+                                           "drafted"):
+            return False
+        try:
+            msg = await staff.send(
+                content="\n".join(lines), embed=e, view=BeatApproval(),
+                allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException as ex:
+            self.ledger.calendar_decide(guild.id, occ.id, occ.date.isoformat(),
+                                        "failed", None, note=str(ex)[:200])
+            log.warning("calendar: could not draft %s: %s", occ.id, ex)
+            return False
+        self.ledger.db.execute(
+            "UPDATE calendar_runs SET draft_id = ? WHERE guild_id = ? "
+            "AND beat_id = ? AND fire_date = ?",
+            (msg.id, guild.id, occ.id, occ.date.isoformat()))
+        self.ledger.db.commit()
+        log.info("calendar: drafted %s for #%s", occ.id, target_name)
+        return True
+
+    def find_beat(self, beat_id: str, fire_date: str):
+        """Re-read the beat off the calendar at approval time rather than
+        storing a copy, so fixing a typo in the file fixes the pending draft."""
+        from datetime import date as _date
+        y, m, d = (int(x) for x in fire_date.split("-"))
+        for occ in self.calendar.occurrences(_date(y, m, d), _date(y, m, d)):
+            if occ.id == beat_id:
+                return occ
+        return None
+
+    async def close_draft(self, message, note: str, colour):
+        """Retire an approval message so it cannot be clicked twice."""
+        try:
+            embed = message.embeds[0] if message.embeds else discord.Embed()
+            embed.colour = colour
+            await message.edit(content=note, embed=embed, view=None,
+                               allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            pass
+
+    async def publish_beat(self, interaction, run: dict):
+        guild = interaction.guild
+        occ = self.find_beat(run["beat_id"], run["fire_date"])
+        if occ is None:
+            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+                                        "failed", interaction.user.id,
+                                        note="beat is no longer in the calendar")
+            await self.close_draft(interaction.message,
+                                   "That beat is no longer in the calendar file.",
+                                   discord.Color.dark_red())
+            return
+
+        beat = occ.beat
+        name = beat.get("channel")
+        channel = discord.utils.get(guild.text_channels, name=name) \
+            or discord.utils.get(guild.forums, name=name)
+        if channel is None:
+            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+                                        "failed", interaction.user.id,
+                                        note=f"no channel #{name}")
+            await self.close_draft(interaction.message,
+                                   f"There is no #{name} to post in.",
+                                   discord.Color.dark_red())
+            return
+
+        content, allowed = self.mention_for(guild, beat.get("mention"))
+        body = beat.get("body", "")
+        title = beat.get("title")
+
+        try:
+            if isinstance(channel, discord.ForumChannel):
+                thread = await channel.create_thread(
+                    name=(title or beat.get("id"))[:100], content=body[:2000],
+                    allowed_mentions=allowed)
+                posted = thread.message
+            else:
+                text = "\n".join(x for x in (content, f"## {title}" if title else "",
+                                             body) if x)
+                posted = await channel.send(text[:2000], allowed_mentions=allowed)
+                # Announcement channels can be followed by other servers, which
+                # is free reach and the reason #devlog is one. Publishing is
+                # capped at 10 an hour, so a failure here is not fatal.
+                if channel.is_news():
+                    try:
+                        await posted.publish()
+                    except discord.HTTPException as ex:
+                        log.info("calendar: %s posted but not published: %s",
+                                 occ.id, ex)
+        except discord.HTTPException as ex:
+            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+                                        "failed", interaction.user.id,
+                                        note=str(ex)[:200])
+            await self.close_draft(interaction.message,
+                                   f"Discord refused it: {ex}", discord.Color.dark_red())
+            return
+
+        event_note = await self.make_event(guild, beat, occ.date)
+        self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+                                    "published", interaction.user.id,
+                                    published_id=posted.id)
+        self.ledger.record(guild_id=guild.id, user_id=interaction.user.id,
+                           event_type="calendar_published", beat=occ.id)
+        await self.close_draft(
+            interaction.message,
+            f"Posted in {channel.mention} by {interaction.user.mention}.{event_note}",
+            discord.Color.green())
+        log.info("calendar: %s published in #%s", occ.id, name)
+
+    def mention_for(self, guild, mention):
+        """A role ping, or nothing. Never a DM: Discord's Developer Policy
+        prohibits unsolicited direct messages outright, so every proactive
+        reach in this bot goes through a role somebody opted into."""
+        if not mention:
+            return "", discord.AllowedMentions.none()
+        if mention == "everyone":
+            return "@everyone", discord.AllowedMentions(everyone=True)
+        role = discord.utils.get(guild.roles, name=mention)
+        if role is None:
+            log.warning("calendar: no @%s role, posting without the mention", mention)
+            return "", discord.AllowedMentions.none()
+        return role.mention, discord.AllowedMentions(roles=[role])
+
+    async def make_event(self, guild, beat: dict, when) -> str:
+        spec = beat.get("event")
+        if not spec:
+            return ""
+        # Discord caps a server at 100 scheduled events. Worth checking rather
+        # than letting the create fail with a bare 400.
+        try:
+            if len(await guild.fetch_scheduled_events()) >= 100:
+                return " (no room for the event: this server is at Discord's 100 limit)"
+        except discord.HTTPException:
+            pass
+
+        hh, mm = (spec.get("starts") or "18:00").split(":")[:2]
+        start = datetime(when.year, when.month, when.day, int(hh), int(mm),
+                         tzinfo=timezone.utc)
+        if start < datetime.now(timezone.utc):
+            start = datetime.now(timezone.utc) + timedelta(minutes=10)
+        end = start + timedelta(minutes=int(spec.get("minutes", 60)))
+        where = spec.get("location")
+        voice = discord.utils.get(guild.voice_channels, name=where) if where else None
+        try:
+            if voice is not None:
+                await guild.create_scheduled_event(
+                    name=spec["name"][:100], start_time=start, end_time=end,
+                    channel=voice, description=(spec.get("description") or "")[:1000])
+            else:
+                await guild.create_scheduled_event(
+                    name=spec["name"][:100], start_time=start, end_time=end,
+                    entity_type=discord.EntityType.external,
+                    location=where or "Online",
+                    description=(spec.get("description") or "")[:1000],
+                    privacy_level=discord.PrivacyLevel.guild_only)
+            return f" Scheduled event **{spec['name']}** created."
+        except discord.HTTPException as ex:
+            log.warning("calendar: could not create the event for %s: %s",
+                        beat.get("id"), ex)
+            return f" The event could not be created: {ex}"
+
+    @tasks.loop(hours=1)
+    async def calendar_tick(self):
+        if not self.calendar.anchor and not self.calendar.recurring:
+            return
+        now = datetime.now(timezone.utc)
+        if now.hour < self.calendar.post_hour:
+            return
+        today = now.date()
+        for guild in self.guilds:
+            for occ in self.calendar.due(today):
+                if self.ledger.calendar_seen(guild.id, occ.id, occ.date.isoformat()):
+                    continue
+                try:
+                    await self.draft_beat(guild, occ)
+                except Exception as e:                       # noqa: BLE001
+                    log.warning("calendar: %s failed: %s", occ.id, e)
+
+    @calendar_tick.before_loop
+    async def _wait_calendar(self):
+        await self.wait_until_ready()
+
     # -- retention --------------------------------------------------------
 
     @tasks.loop(hours=24)
@@ -898,6 +1237,308 @@ async def sweep_roles(interaction: discord.Interaction):
     await interaction.followup.send(
         f"Recorded and cleaned up {swept} member(s)." if swept
         else "Nothing to clean up. Every answer is already recorded.", ephemeral=True)
+
+
+# --------------------------------------------------------------------------
+# The calendar
+# --------------------------------------------------------------------------
+
+def blueprint_channels(bp: dict) -> list[str]:
+    """Every channel name the blueprint declares. They live one level down
+    inside `categories`, not at the top."""
+    return [c["name"] for cat in (bp.get("categories") or [])
+            for c in (cat.get("channels") or []) if c.get("name")]
+
+
+def staff_only(interaction) -> bool:
+    perms = interaction.user.guild_permissions if interaction.guild else None
+    return bool(perms and perms.manage_guild)
+
+
+@client.tree.command(name="calendar",
+                     description="What the content calendar has coming. Staff only.")
+@app_commands.describe(days="How far ahead to look. Default 60.")
+async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+
+    cal = client.calendar
+    today = datetime.now(timezone.utc).date()
+    if not cal.beats and not cal.recurring:
+        await interaction.response.send_message(
+            f"No content calendar loaded. Steward looked in `{CALENDAR}`.",
+            ephemeral=True)
+        return
+
+    lines = [f"**{cal.name}**"]
+    if cal.anchor:
+        t = cal.t_minus(today)
+        lines.append(f"Launch {cal.anchor.isoformat()}, which is T{t:+d} today.")
+    else:
+        lines.append("**No launch date set, so nothing will fire.** Set "
+                     "`meta.anchor` in the calendar file, or `LAUNCH_DATE` in "
+                     "steward\\.env.")
+
+    pending = client.ledger.calendar_pending(interaction.guild_id)
+    if pending:
+        lines += ["", f"**Waiting on you: {len(pending)}**"]
+        lines += [f"- `{p['beat_id']}` drafted {p['fire_date']}" for p in pending[:8]]
+
+    upcoming = cal.upcoming(today, max(1, min(days, 400)))
+    lines += ["", f"**Next {len(upcoming)} in {days} days**"]
+    if not upcoming:
+        lines.append("Nothing scheduled in that window.")
+    for occ in upcoming[:20]:
+        t = cal.t_minus(occ.date)
+        tag = "reminder" if occ.beat.get("kind") == "reminder" else \
+            f"#{occ.beat.get('channel')}"
+        stamp = f"T{t:+d}" if t is not None else occ.date.isoformat()
+        lines.append(f"- `{occ.date.isoformat()}` ({stamp}) **{occ.id}** into {tag}")
+    if len(upcoming) > 20:
+        lines.append(f"...and {len(upcoming) - 20} more.")
+
+    await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
+
+
+@client.tree.command(name="calendar-reload",
+                     description="Re-read the calendar file after editing it. Staff only.")
+async def calendar_reload(interaction: discord.Interaction):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    client.calendar = load_calendar(CALENDAR, client.blueprint)
+    report = client.calendar.validate(
+        channels=blueprint_channels(client.blueprint),
+        roles=[r["name"] for r in (client.blueprint.get("roles") or [])])
+    lines = [f"Reloaded `{CALENDAR}`: {report['beats']} beats, "
+             f"{report['recurring']} recurring."]
+    for e in report["errors"][:6]:
+        lines.append(f"ERROR  {e}")
+    for w in report["warnings"][:6]:
+        lines.append(f"warn   {w}")
+    await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
+
+
+# --------------------------------------------------------------------------
+# The playtest pipeline
+# --------------------------------------------------------------------------
+
+@client.tree.command(name="playtest-join",
+                     description="Put your name down for playtests.")
+async def playtest_join(interaction: discord.Interaction):
+    role = discord.utils.get(interaction.guild.roles, name=PLAYTEST_ROLE)
+    fresh = client.ledger.playtest_signup(interaction.guild_id, interaction.user.id)
+    client.ledger.record(guild_id=interaction.guild_id, user_id=interaction.user.id,
+                         event_type="playtest_signup")
+
+    note = ""
+    if role is not None:
+        try:
+            await interaction.user.add_roles(role, reason="playtest signup")
+        except discord.Forbidden:
+            note = (f"\n\nI could not give you **{PLAYTEST_ROLE}**; ask a "
+                    f"moderator to move my role above it. You are still on the list.")
+    else:
+        note = (f"\n\nThere is no **{PLAYTEST_ROLE}** role in this server, so you "
+                f"will not be pinged. You are on the list either way.")
+
+    await interaction.response.send_message(
+        ("You are on the playtest list." if fresh else "You are back on the list.")
+        + f" Announcements go to **@{PLAYTEST_ROLE}**, never to your DMs. "
+          f"Use `/playtest-leave` any time." + note, ephemeral=True)
+
+
+@client.tree.command(name="playtest-leave",
+                     description="Take your name off the playtest list.")
+async def playtest_leave(interaction: discord.Interaction):
+    client.ledger.playtest_leave(interaction.guild_id, interaction.user.id)
+    role = discord.utils.get(interaction.guild.roles, name=PLAYTEST_ROLE)
+    if role is not None and role in interaction.user.roles:
+        try:
+            await interaction.user.remove_roles(role, reason="playtest opt out")
+        except discord.Forbidden:
+            pass
+    await interaction.response.send_message(
+        "Taken off the list. Any key already issued to you still works; ask a "
+        "moderator if you want it revoked.", ephemeral=True)
+
+
+@client.tree.command(name="playtest-open",
+                     description="Open a playtest wave. Staff only.")
+@app_commands.describe(name="A short name for the wave, like 'wave-1'.",
+                       cap="Most keys to hand out. 0 for no cap.")
+async def playtest_open(interaction: discord.Interaction, name: str, cap: int = 0):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    if not client.ledger.wave_open(interaction.guild_id, name, max(0, cap)):
+        await interaction.response.send_message(
+            f"A wave called `{name}` already exists.", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"Wave `{name}` is open. Add keys with `/playtest-keys`, then issue them "
+        f"with `/playtest-issue`.\n\n"
+        f"Worth knowing before you buy the keys: **Steam caps Release State "
+        f"Override keys at 2,500 in total, ever.** Steam's native Playtest "
+        f"feature has no practical ceiling, lives on your existing store page, "
+        f"and does not cost you the wishlist, so use keys only for press and "
+        f"people who need a build outside Steam.", ephemeral=True)
+
+
+@client.tree.command(name="playtest-keys",
+                     description="Add keys to a wave. Staff only.")
+@app_commands.describe(wave="Which wave.",
+                       keys="Keys, separated by spaces, commas or new lines.")
+async def playtest_keys(interaction: discord.Interaction, wave: str, keys: str):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    if not any(w["name"] == wave for w in client.ledger.waves(interaction.guild_id)):
+        await interaction.response.send_message(
+            f"No wave called `{wave}`. Open it first with `/playtest-open`.",
+            ephemeral=True)
+        return
+
+    parts = [k for k in re.split(r"[\s,;]+", keys) if k]
+    result = client.ledger.add_keys(interaction.guild_id, wave, parts)
+    total = sum(w["keys_total"] for w in client.ledger.waves(interaction.guild_id))
+    lines = [f"Added {result['added']} key(s) to `{wave}`."
+             + (f" {result['skipped']} were already there." if result["skipped"] else "")]
+    if total > 2500:
+        lines.append(f"\n**{total} keys stored, which is past Steam's 2,500 "
+                     f"lifetime ceiling for override keys.** Check where these "
+                     f"came from.")
+    lines.append(f"\nThe keys are now in `{DB_PATH}`. That file is a secret: it "
+                 f"holds live keys and member activity. Do not commit it and do "
+                 f"not paste it anywhere, including into an AI assistant.")
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="playtest-issue",
+                     description="Send someone a key. Staff only.")
+@app_commands.describe(wave="Which wave.", member="Who to give it to.")
+async def playtest_issue(interaction: discord.Interaction, wave: str,
+                         member: discord.Member):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    row = client.ledger.issue_key(interaction.guild_id, wave, member.id,
+                                  interaction.user.id)
+    if row is None:
+        await interaction.followup.send(
+            f"`{wave}` has no unissued keys left.", ephemeral=True)
+        return
+
+    # A DM here is solicited: they signed up, and this is the thing they signed
+    # up for. Unsolicited DMs are what the Developer Policy prohibits, which is
+    # why nothing else in this bot ever opens one.
+    try:
+        await member.send(
+            f"Your key for the **{wave}** playtest in **{interaction.guild.name}**:\n"
+            f"```\n{row['key']}\n```\n"
+            f"Redeem it in Steam under Games, then Activate a Product on Steam. "
+            f"Report anything broken with `/playtest-report` in the server.")
+        sent = "sent by DM"
+    except discord.Forbidden:
+        client.ledger.return_key(interaction.guild_id, member.id, wave)
+        await interaction.followup.send(
+            f"{member.mention} has DMs closed, so the key was put back in the "
+            f"pool rather than posted where everyone can see it. Ask them to "
+            f"allow DMs from server members and try again.", ephemeral=True)
+        return
+
+    client.ledger.record(guild_id=interaction.guild_id, user_id=member.id,
+                         event_type="playtest_key_issued", wave=wave)
+    await client.mod_log(interaction.guild, discord.Embed(
+        title="Playtest key issued",
+        description=f"{member.mention} received a key for **{wave}**.",
+        colour=discord.Color.blurple()).set_footer(
+            text=f"issued by {interaction.user}"))
+    await interaction.followup.send(
+        f"Key {'reissued and ' if row.get('reissued') else ''}{sent} to "
+        f"{member.mention}.", ephemeral=True)
+
+
+@client.tree.command(name="playtest-status",
+                     description="Waves, keys and signups. Staff only.")
+async def playtest_status(interaction: discord.Interaction):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    waves = client.ledger.waves(interaction.guild_id)
+    roster = client.ledger.playtest_roster(interaction.guild_id)
+    played = sum(1 for r in roster if r["played_at"])
+
+    lines = [f"**Signed up:** {len(roster)}",
+             f"**Reported at least once:** {played}"
+             + (f" ({played / len(roster) * 100:.0f}%)" if roster else "")]
+    if not waves:
+        lines.append("\nNo waves yet. `/playtest-open` starts one.")
+    for w in waves:
+        state = "closed" if w["closed_at"] else "open"
+        left = w["keys_available"]
+        lines.append(f"\n**{w['name']}** ({state}) - {w['keys_issued']} issued, "
+                     f"{left} left"
+                     + (f", cap {w['cap']}" if w["cap"] else ""))
+    audit = client.ledger.key_audit(interaction.guild_id, limit=8)
+    if audit:
+        lines.append("\n**Most recent keys**")
+        for a in audit:
+            lines.append(f"- <@{a['issued_to']}> got `{a['wave']}` "
+                         f"<t:{a['issued_at']}:R>"
+                         + (" (revoked)" if a["revoked_at"] else ""))
+    await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
+
+
+@client.tree.command(name="playtest-close",
+                     description="Close a wave. Staff only.")
+async def playtest_close(interaction: discord.Interaction, wave: str):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    ok = client.ledger.wave_close(interaction.guild_id, wave)
+    await interaction.response.send_message(
+        f"`{wave}` is closed." if ok else f"No open wave called `{wave}`.",
+        ephemeral=True)
+
+
+@client.tree.command(name="playtest-report",
+                     description="File a bug from the playtest.")
+@app_commands.describe(summary="One line: what went wrong.",
+                       build="The build number or version you were on.",
+                       steps="What you did just before it happened.")
+async def playtest_report(interaction: discord.Interaction, summary: str,
+                          build: str, steps: str):
+    forum = discord.utils.get(interaction.guild.forums, name=BUG_FORUM)
+    if forum is None:
+        await interaction.response.send_message(
+            f"There is no #{BUG_FORUM} forum channel in this server, so there is "
+            f"nowhere to file this. Tell a moderator.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    body = (f"**Reported by** {interaction.user.mention}\n"
+            f"**Build** {build}\n\n"
+            f"**What happened**\n{summary}\n\n"
+            f"**Steps**\n{steps}")
+    try:
+        thread = await forum.create_thread(
+            name=summary[:100], content=body[:2000],
+            allowed_mentions=discord.AllowedMentions.none())
+    except discord.HTTPException as e:
+        await interaction.followup.send(
+            f"Discord refused the post: {e}", ephemeral=True)
+        return
+
+    client.ledger.playtest_played(interaction.guild_id, interaction.user.id)
+    client.ledger.record(guild_id=interaction.guild_id, user_id=interaction.user.id,
+                         event_type="playtest_report")
+    await interaction.followup.send(
+        f"Filed as {thread.thread.mention}. Add screenshots or a log to the "
+        f"thread if you have them.", ephemeral=True)
 
 
 def explain(title: str, lines: list[str]):

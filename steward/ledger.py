@@ -82,6 +82,59 @@ CREATE TABLE IF NOT EXISTS xp (
     PRIMARY KEY (guild_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS ix_xp_board ON xp (guild_id, xp DESC);
+
+-- One row per calendar beat per day it was due. The primary key is what stops
+-- a beat firing twice, which matters more than it sounds: the alternative is a
+-- last-checked timestamp, and any bot that was off over a weekend then either
+-- replays everything or silently drops it.
+CREATE TABLE IF NOT EXISTS calendar_runs (
+    guild_id     INTEGER NOT NULL,
+    beat_id      TEXT    NOT NULL,
+    fire_date    TEXT    NOT NULL,          -- ISO date, the day it came due
+    status       TEXT    NOT NULL,          -- drafted | published | skipped | failed
+    draft_id     INTEGER,                   -- the approval message in staff
+    published_id INTEGER,                   -- what members actually saw
+    decided_by   INTEGER,
+    decided_at   INTEGER,
+    note         TEXT,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, beat_id, fire_date)
+);
+CREATE INDEX IF NOT EXISTS ix_cal_status ON calendar_runs (guild_id, status);
+
+-- The playtest pipeline. Keys are held here because issuing one requires
+-- having it, so this table is a secret and the database file is the boundary.
+CREATE TABLE IF NOT EXISTS playtest_waves (
+    guild_id   INTEGER NOT NULL,
+    name       TEXT    NOT NULL,
+    opened_at  INTEGER NOT NULL,
+    closed_at  INTEGER,
+    cap        INTEGER NOT NULL DEFAULT 0,  -- 0 means no cap
+    notes      TEXT,
+    PRIMARY KEY (guild_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS playtest_keys (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   INTEGER NOT NULL,
+    wave       TEXT    NOT NULL,
+    key        TEXT    NOT NULL,
+    issued_to  INTEGER,                     -- null while unissued
+    issued_at  INTEGER,
+    issued_by  INTEGER,
+    revoked_at INTEGER,
+    UNIQUE (guild_id, key)
+);
+CREATE INDEX IF NOT EXISTS ix_keys_wave ON playtest_keys (guild_id, wave, issued_to);
+
+CREATE TABLE IF NOT EXISTS playtest_signups (
+    guild_id   INTEGER NOT NULL,
+    user_id    INTEGER NOT NULL,
+    joined_at  INTEGER NOT NULL,
+    left_at    INTEGER,
+    played_at  INTEGER,                     -- first time they reported anything
+    PRIMARY KEY (guild_id, user_id)
+);
 """
 
 
@@ -209,6 +262,225 @@ class Ledger:
             "SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > 0",
             (guild_id,)).fetchone()["n"]
 
+    # -- the calendar -----------------------------------------------------
+
+    def calendar_seen(self, guild_id: int, beat_id: str, fire_date: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT * FROM calendar_runs WHERE guild_id = ? AND beat_id = ? "
+            "AND fire_date = ?", (guild_id, beat_id, fire_date)).fetchone()
+        return dict(row) if row else None
+
+    def calendar_record(self, guild_id: int, beat_id: str, fire_date: str,
+                        status: str, **fields) -> bool:
+        """Claim a beat. Returns False if it was already claimed, which is how
+        two ticks racing each other still only post once."""
+        now = int(time.time())
+        try:
+            self.db.execute(
+                "INSERT INTO calendar_runs (guild_id, beat_id, fire_date, status, "
+                "  draft_id, published_id, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (guild_id, beat_id, fire_date, status, fields.get("draft_id"),
+                 fields.get("published_id"), fields.get("note"), now))
+            self.db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def calendar_decide(self, guild_id: int, beat_id: str, fire_date: str,
+                        status: str, user_id: int | None = None, **fields) -> bool:
+        """Approve, skip, or mark failed. Only moves a beat that is still
+        drafted, so two moderators clicking at once cannot double-post."""
+        now = int(time.time())
+        sets = ["status = ?", "decided_by = ?", "decided_at = ?"]
+        args: list = [status, user_id, now]
+        for column in ("published_id", "note"):
+            if column in fields:
+                sets.append(f"{column} = ?")
+                args.append(fields[column])
+        args += [guild_id, beat_id, fire_date]
+        cur = self.db.execute(
+            f"UPDATE calendar_runs SET {', '.join(sets)} "
+            f"WHERE guild_id = ? AND beat_id = ? AND fire_date = ? "
+            f"AND status = 'drafted'", args)
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def calendar_by_draft(self, guild_id: int, draft_id: int) -> dict | None:
+        """Which beat a given approval message belongs to.
+
+        Looking it up by message id is why the buttons can carry fixed custom
+        ids. Encoding the beat into the id instead would cap at 100 characters
+        and break the moment somebody names a beat something long.
+        """
+        row = self.db.execute(
+            "SELECT * FROM calendar_runs WHERE guild_id = ? AND draft_id = ?",
+            (guild_id, draft_id)).fetchone()
+        return dict(row) if row else None
+
+    def calendar_pending(self, guild_id: int) -> list[dict]:
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM calendar_runs WHERE guild_id = ? AND status = 'drafted' "
+            "ORDER BY fire_date", (guild_id,))]
+
+    def calendar_history(self, guild_id: int, limit: int = 20) -> list[dict]:
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM calendar_runs WHERE guild_id = ? "
+            "ORDER BY created_at DESC LIMIT ?", (guild_id, limit))]
+
+    # -- the playtest pipeline --------------------------------------------
+
+    def playtest_signup(self, guild_id: int, user_id: int) -> bool:
+        """Returns whether this was a new signup rather than someone rejoining,
+        so the command can say the right thing back."""
+        if user_id in self._opted_out:
+            return False
+        row = self.db.execute(
+            "SELECT left_at FROM playtest_signups WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)).fetchone()
+        fresh = row is None
+        self.db.execute(
+            "INSERT INTO playtest_signups (guild_id, user_id, joined_at) "
+            "VALUES (?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET "
+            "  left_at = NULL", (guild_id, user_id, int(time.time())))
+        self.db.commit()
+        return fresh
+
+    def playtest_leave(self, guild_id: int, user_id: int):
+        self.db.execute(
+            "UPDATE playtest_signups SET left_at = ? WHERE guild_id = ? AND user_id = ?",
+            (int(time.time()), guild_id, user_id))
+        self.db.commit()
+
+    def playtest_roster(self, guild_id: int, active_only=True) -> list[dict]:
+        sql = "SELECT * FROM playtest_signups WHERE guild_id = ?"
+        if active_only:
+            sql += " AND left_at IS NULL"
+        return [dict(r) for r in self.db.execute(sql + " ORDER BY joined_at", (guild_id,))]
+
+    def playtest_played(self, guild_id: int, user_id: int):
+        self.db.execute(
+            "UPDATE playtest_signups SET played_at = ? WHERE guild_id = ? "
+            "AND user_id = ? AND played_at IS NULL",
+            (int(time.time()), guild_id, user_id))
+        self.db.commit()
+
+    def wave_open(self, guild_id: int, name: str, cap: int = 0) -> bool:
+        try:
+            self.db.execute(
+                "INSERT INTO playtest_waves (guild_id, name, opened_at, cap) "
+                "VALUES (?, ?, ?, ?)", (guild_id, name, int(time.time()), cap))
+            self.db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def wave_close(self, guild_id: int, name: str) -> bool:
+        cur = self.db.execute(
+            "UPDATE playtest_waves SET closed_at = ? WHERE guild_id = ? AND name = ? "
+            "AND closed_at IS NULL", (int(time.time()), guild_id, name))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def waves(self, guild_id: int) -> list[dict]:
+        return [dict(r) for r in self.db.execute(
+            "SELECT w.*, "
+            "  (SELECT COUNT(*) FROM playtest_keys k WHERE k.guild_id = w.guild_id "
+            "     AND k.wave = w.name) AS keys_total, "
+            "  (SELECT COUNT(*) FROM playtest_keys k WHERE k.guild_id = w.guild_id "
+            "     AND k.wave = w.name AND k.issued_to IS NOT NULL "
+            "     AND k.revoked_at IS NULL) AS keys_issued, "
+            "  (SELECT COUNT(*) FROM playtest_keys k WHERE k.guild_id = w.guild_id "
+            "     AND k.wave = w.name AND k.issued_to IS NULL "
+            "     AND k.revoked_at IS NULL) AS keys_available "
+            "FROM playtest_waves w WHERE w.guild_id = ? ORDER BY w.opened_at DESC",
+            (guild_id,))]
+
+    def add_keys(self, guild_id: int, wave: str, keys: list[str]) -> dict:
+        """Store keys for a wave. Duplicates are ignored rather than rejected,
+        because pasting the same block twice is the likeliest mistake here."""
+        added = 0
+        for key in keys:
+            key = key.strip()
+            if not key:
+                continue
+            try:
+                self.db.execute(
+                    "INSERT INTO playtest_keys (guild_id, wave, key) VALUES (?, ?, ?)",
+                    (guild_id, wave, key))
+                added += 1
+            except sqlite3.IntegrityError:
+                pass
+        self.db.commit()
+        return {"added": added, "skipped": len(keys) - added}
+
+    def key_for(self, guild_id: int, user_id: int, wave: str) -> dict | None:
+        """The key this person already holds for this wave, if any. Reissuing
+        the same key beats burning a second one when somebody loses a DM."""
+        row = self.db.execute(
+            "SELECT * FROM playtest_keys WHERE guild_id = ? AND wave = ? "
+            "AND issued_to = ? AND revoked_at IS NULL", (guild_id, wave, user_id)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def issue_key(self, guild_id: int, wave: str, user_id: int,
+                  issued_by: int) -> dict | None:
+        """Claim the next unissued key. Returns None when the wave is empty.
+
+        The UPDATE picks the row itself rather than reading then writing, so two
+        moderators issuing at the same moment cannot hand out the same key.
+        """
+        existing = self.key_for(guild_id, user_id, wave)
+        if existing:
+            return {**existing, "reissued": True}
+        now = int(time.time())
+        cur = self.db.execute(
+            "UPDATE playtest_keys SET issued_to = ?, issued_at = ?, issued_by = ? "
+            "WHERE id = (SELECT id FROM playtest_keys WHERE guild_id = ? AND wave = ? "
+            "  AND issued_to IS NULL AND revoked_at IS NULL ORDER BY id LIMIT 1)",
+            (user_id, now, issued_by, guild_id, wave))
+        self.db.commit()
+        if not cur.rowcount:
+            return None
+        row = self.db.execute(
+            "SELECT * FROM playtest_keys WHERE guild_id = ? AND wave = ? "
+            "AND issued_to = ? AND issued_at = ?", (guild_id, wave, user_id, now)
+        ).fetchone()
+        return {**dict(row), "reissued": False} if row else None
+
+    def return_key(self, guild_id: int, user_id: int, wave: str) -> bool:
+        """Un-issue a key so somebody else can have it. This is the DM-bounced
+        case, where the key was never actually delivered. Revoking instead
+        would burn a key that nobody ever saw."""
+        cur = self.db.execute(
+            "UPDATE playtest_keys SET issued_to = NULL, issued_at = NULL, "
+            "issued_by = NULL WHERE guild_id = ? AND wave = ? AND issued_to = ? "
+            "AND revoked_at IS NULL", (guild_id, wave, user_id))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def revoke_key(self, guild_id: int, user_id: int, wave: str) -> bool:
+        """Kill a key for good. It does not go back in the pool: whoever held
+        it has seen it, so handing it to somebody else hands out a key two
+        people know."""
+        cur = self.db.execute(
+            "UPDATE playtest_keys SET revoked_at = ? WHERE guild_id = ? AND wave = ? "
+            "AND issued_to = ? AND revoked_at IS NULL",
+            (int(time.time()), guild_id, wave, user_id))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def key_audit(self, guild_id: int, wave: str | None = None,
+                  limit: int = 50) -> list[dict]:
+        sql = ("SELECT wave, issued_to, issued_at, issued_by, revoked_at "
+               "FROM playtest_keys WHERE guild_id = ? AND issued_to IS NOT NULL")
+        args: list = [guild_id]
+        if wave:
+            sql += " AND wave = ?"
+            args.append(wave)
+        args.append(limit)
+        return [dict(r) for r in self.db.execute(
+            sql + " ORDER BY issued_at DESC LIMIT ?", args)]
+
     # -- opt-out ----------------------------------------------------------
 
     def is_opted_out(self, user_id: int) -> bool:
@@ -225,6 +497,14 @@ class Ledger:
         # Levels are personal data too, and leaving them would put a deleted
         # member back on the leaderboard.
         self.db.execute("DELETE FROM xp WHERE user_id = ?", (user_id,))
+        self.db.execute("DELETE FROM playtest_signups WHERE user_id = ?", (user_id,))
+        # The key itself is not personal data and the wave still needs to know
+        # it is spent, so the row survives with the person scrubbed off it.
+        # Deleting it outright would put a live key back in the pool.
+        self.db.execute(
+            "UPDATE playtest_keys SET issued_to = NULL, issued_by = NULL, "
+            "revoked_at = COALESCE(revoked_at, ?) WHERE issued_to = ?",
+            (now, user_id))
         self.db.execute(
             "INSERT OR REPLACE INTO opt_outs (user_id, created_at) VALUES (?, ?)",
             (user_id, now))

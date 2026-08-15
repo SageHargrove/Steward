@@ -1,0 +1,286 @@
+# Content calendar
+#
+# Beats are dated as offsets from launch day rather than as calendar dates.
+# `T-42` means forty-two days before you ship and redeploys to any launch;
+# `2026-09-14` describes exactly one. That difference is the whole reason this
+# file is worth keeping.
+#
+# A few beats are deliberately absolute anyway. Steam Next Fest registration
+# closes when Valve says it closes, not when your launch happens to be, so
+# those are written as real dates and will need changing for a later fest.
+#
+# Two kinds of beat:
+#
+#   kind: post       drafted into your staff channel with Approve and Skip
+#                    buttons, and only reaches members when somebody clicks.
+#                    This is the default.
+#   kind: reminder   goes straight to the staff channel and stops there. It is
+#                    a thing for you to do, not a thing to publish.
+#
+# Nothing fires at all until meta.anchor is set.
+
+meta:
+  name: Default content calendar
+
+  # Launch day. T-0. Everything relative hangs off this one line.
+  anchor: 2027-03-01
+
+  # Beats are checked hourly and go out on or after this hour, local to the
+  # timezone below. Late afternoon beats most alternatives: it catches people
+  # after work in Europe and before work in the Americas.
+  timezone: UTC
+  post_hour: 17
+
+# ---------------------------------------------------------------------------
+# The rhythm. Recurring beats are the ones that make a server feel inhabited,
+# and they are also the ones nobody keeps up by hand past week three.
+
+recurring:
+  - id: screenshot-saturday
+    kind: post
+    every: saturday
+    channel: screenshots
+    body: |
+      **Screenshot Saturday.** Post something you have seen in {{game}} this week.
+      No rules about it being impressive. The odd ones are usually better.
+    until: T+30
+
+  - id: devlog-reminder
+    kind: reminder
+    every: monday
+    channel: steward-reports
+    body: |
+      **Devlog Monday.** Write up what changed last week and post it in #devlog.
+
+      It does not need to be long or finished. A screenshot and three sentences
+      about one problem you solved is a devlog. Announcement channels can be
+      followed by other servers, so this is also the cheapest reach you have.
+    until: T+30
+
+  - id: weekly-question
+    kind: post
+    every: wednesday
+    channel: general
+    body: |
+      Midweek question: what is the last thing in a game that made you stop and
+      look at it properly?
+    until: T+30
+
+# ---------------------------------------------------------------------------
+# The one-offs, in the order they arrive.
+
+beats:
+
+  # -- opening up ----------------------------------------------------------
+
+  - id: server-open
+    when: T-180
+    channel: announcements
+    title: "The server is open"
+    body: |
+      This is the {{game}} server. It is small on purpose right now.
+
+      Everyone here before the public announcement keeps the **Founding Member**
+      role permanently. It does nothing mechanical. It is a record of having
+      been early, which turns out to be the thing people actually want.
+
+      Have a look at the channels, say something in #general, and tell us what
+      you want to see.
+
+  - id: founding-window-closing
+    when: T-150
+    channel: announcements
+    title: "Founding Member closes soon"
+    body: |
+      The **Founding Member** role stops being handed out when the public
+      announcement goes up, which is about a month away. If you know someone
+      who would want it, now is the time.
+
+  # -- Steam ---------------------------------------------------------------
+
+  - id: steam-direct-reminder
+    kind: reminder
+    when: T-170
+    channel: steward-reports
+    body: |
+      **Steam Direct has a 30-day clock.** There is a mandatory thirty days
+      between paying the $100 and being allowed to release, plus a two-week
+      minimum for the Coming Soon page. Tax onboarding takes another two to
+      seven business days on top.
+
+      If the store page is not started yet, it is now the thing blocking the
+      launch date rather than the game.
+
+  - id: steam-page-live
+    when: T-160
+    channel: announcements
+    title: "{{game}} has a Steam page"
+    body: |
+      The store page is up. Wishlisting genuinely helps: it is the number
+      Valve uses to decide whether to show the game to anyone, and it does not
+      decay, so an early wishlist is worth the same as one on launch day.
+
+      That is the whole ask. Nothing else to do.
+    mention: everyone
+
+  - id: personal-calendar-note
+    kind: reminder
+    when: T-155
+    channel: steward-reports
+    body: |
+      **Check the release date is set on the store page.** Steam's Personal
+      Calendar only shows games with a date roughly two months out, and its
+      click-through is in a different league to the old widgets. Popular
+      Upcoming is effectively out of reach now, so the calendar is the path,
+      and the calendar needs a date.
+
+  # -- the rhythm starts ---------------------------------------------------
+
+  - id: first-devlog
+    when: T-150
+    channel: devlog
+    title: "Devlog 1"
+    body: |
+      First devlog. These will land most weeks from here.
+
+      The format is deliberately low effort: what changed, what broke, what is
+      next. If a post is ever interesting enough to be worth more than that,
+      it will get more than that.
+
+  - id: ask-me-anything
+    when: T-120
+    channel: ask-the-dev
+    title: "Ask me anything, this week"
+    body: |
+      Open question thread. Anything about {{game}}, how it is built, why
+      something works the way it does, or what is not working yet.
+
+      Answers will be honest about the parts that are not finished.
+    event:
+      name: "Ask the dev"
+      starts: "18:00"
+      minutes: 60
+      location: "General Voice"
+
+  # -- playtesting ---------------------------------------------------------
+
+  - id: playtest-signup-open
+    when: T-140
+    channel: announcements
+    title: "Playtest signups are open"
+    body: |
+      Signups are open for the first proper playtest of {{game}}.
+
+      Use **/playtest-join** to put your name down. That gives you the
+      **Ping Me For Playtests** role, which is the only way you will hear about
+      a wave going out, and you can drop it any time with /playtest-leave.
+
+      Expect things to be broken. That is the point of you being there.
+
+  - id: playtest-wave-one
+    when: T-112
+    channel: announcements
+    title: "First playtest wave"
+    body: |
+      The first wave is going out today to everyone who signed up.
+
+      Bug reports go in #bug-reports as a forum post, one per bug, with your
+      build number and what you did just before it happened. **/playtest-report**
+      fills that in for you if you would rather not do it by hand.
+    mention: Ping Me For Playtests
+
+  - id: wider-playtest
+    when: T-84
+    channel: announcements
+    title: "Playtest opens up"
+    body: |
+      The playtest is open to everybody in the server now, not just the first
+      wave. Same rules: /playtest-join, and report what breaks.
+
+  # -- outreach ------------------------------------------------------------
+
+  - id: creator-outreach-start
+    kind: reminder
+    when: T-112
+    channel: steward-reports
+    body: |
+      **Start creator outreach now, not later.** The lead times here are longer
+      than they look: one dev's thirty emails got zero replies, and the first
+      response arrived two months later and produced a thousand wishlists in
+      two days.
+
+      Aim for a list of forty. Track who, when, and what happened in
+      `docs/outreach-tracker.csv`.
+
+      Do not do this over Discord DMs. Discord's Developer Policy prohibits
+      unsolicited direct messages and there is an undocumented quota that gets
+      you quarantined without warning.
+
+  # -- Next Fest, on Valve's clock rather than yours ------------------------
+
+  - id: next-fest-registration
+    kind: reminder
+    when: 2027-01-10
+    channel: steward-reports
+    body: |
+      **Steam Next Fest registration closes today**, 11:59 PM PDT.
+
+      A game may participate in exactly one Next Fest, ever. Entering with
+      fewer than a thousand wishlists earns a median of about three hundred
+      more, so if the audience is not there yet, the right move is to skip it
+      and take a later fest rather than spend the one slot.
+
+  - id: velocity-window
+    kind: reminder
+    when: 2027-02-08
+    channel: steward-reports
+    body: |
+      **The two weeks before the fest are the ones that matter.** Wishlist
+      velocity going in predicts the outcome better than the raw total does.
+      Anything you were saving, spend it now.
+
+  - id: next-fest-live
+    when: 2027-02-22
+    channel: announcements
+    title: "{{game}} is in Steam Next Fest"
+    body: |
+      The demo is live for the next week as part of Steam Next Fest.
+
+      If you play it, tell us what you thought in #suggestions, and wishlist
+      it if you want to know when it is out. Both of those help more than they
+      look like they should.
+    mention: everyone
+
+  # -- launch --------------------------------------------------------------
+
+  - id: launch-week
+    kind: reminder
+    when: T-7
+    channel: steward-reports
+    body: |
+      **Launch week.** Nothing new goes in from here. The only jobs left are
+      patching fast and answering people.
+
+  - id: launch-day
+    when: T-0
+    channel: announcements
+    title: "{{game}} is out"
+    body: |
+      It is out.
+
+      Thank you to everyone who has been in here since it was three channels
+      and a bug list. You are the reason the launch has anyone at it.
+    mention: everyone
+
+  - id: case-study
+    kind: reminder
+    when: T+45
+    channel: steward-reports
+    body: |
+      **Write the case study now, while it is still fresh.**
+
+      Run /digest for the numbers. What you have that almost nobody else does
+      is a clean before-and-after on community work against wishlists, because
+      the ledger has been recording since day one. Small honest numbers with a
+      clear methodology are worth more than big vague ones, and being straight
+      about what did not work is the part a studio will believe.

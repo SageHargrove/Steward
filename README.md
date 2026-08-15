@@ -7,17 +7,20 @@ Planning lives one level up in [docs/build-plan.md](docs/build-plan.md) and
 [docs/roadmap.md](docs/roadmap.md). The rest of this repo is the implementation.
 
 ```
-blueprint/default.yaml    the server spec. Channels, roles, permissions,
+blueprint/default.yaml      the server spec. Channels, roles, permissions,
                             forum tags, onboarding prompts, AutoMod rules
+blueprint/content-calendar.yaml   what gets posted and when, dated relative
+                            to launch rather than to the calendar
 provision/core.py           load, template, customize, validate, apply.
                             The CLI and the UI both import this
 provision/provision.py      command-line wrapper
 ui/app.py                   Server Setup for Discord, the local UI
-steward/                    the bot. Stage one: the activity ledger only
+steward/                    the bot. Ledger, levels, digest, moderation log,
+                            calendar engine, playtest pipeline
 SETUP.md                    the runbook. Start there
 ```
 
-**Server Setup for Discord is the easy path.** Run `ui/SETUP-UI.bat`. Six
+**Server Setup for Discord is the easy path.** Run `ui/SETUP-UI.bat`. Nine
 numbered steps, with the Developer Portal walkthrough built in so it assumes
 you have never made a bot before, and it generates your invite link once you
 paste a token. The CLI does the same job with flags.
@@ -30,6 +33,8 @@ paste a token. The CLI does the same job with flags.
 | Core | verified against a stubbed Discord API: phase ordering, idempotency (second run makes 0 creates, 45 updates), dry-run writes nothing |
 | UI | boots and serves; connect / invite / refresh / customize / apply / cleanup all exercised against a stubbed API |
 | Ledger | logic smoke-tested against a temp database |
+| Calendar | 20 beats resolve against a 2027-03-01 launch and validate against the blueprint's own channels and roles |
+| Playtest | key issuance, reissue, revoke and forget-me exercised against a temp database |
 | Server | **not created.** Nothing here has touched real Discord |
 
 Section 0 of [SETUP.md](SETUP.md) is the first thing that does.
@@ -109,8 +114,8 @@ same sitting as the work, not reconstructed afterward. Three exist:
 - [x] `SETUP.md` — the runbook, including the manual steps and why they are manual
 - [ ] `onboarding-flow.md` — the questions, why each one, what each answer grants,
       and what changed when you changed them
-- [ ] `content-calendar.yaml` — T-minus-relative beats. The single most reusable
-      artifact in the set, and the one the calendar engine reads
+- [x] `blueprint/content-calendar.yaml` — T-minus-relative beats. The single
+      most reusable artifact in the set, and the one the calendar engine reads
 - [ ] `moderation.md` — escalation ladder and what you actually had to intervene on
 - [ ] `playtest-pipeline.md` — recruitment, gating, key handling, feedback routing
 - [ ] `outreach-tracker.csv` — creators and press. A tracking artifact, not an
@@ -137,7 +142,7 @@ python provision.py --guild SERVER_ID --blueprint ..\blueprint\default.yaml --dr
 python provision.py --guild SERVER_ID --blueprint ..\blueprint\default.yaml `
     --var game="One Trick" --server-name "One Trick"
 
-# the ledger
+# the ledger, the calendar and the playtest pipeline: all one process
 cd ..\steward
 python bot.py
 ```
@@ -278,6 +283,75 @@ the log says so rather than leaving a moderator wondering.
 What is deliberately left to Wick: anti-nuke and CAPTCHA verification. Those
 are security-critical and hard, and a half-built version is worse than none.
 
+## The calendar, and why it drafts instead of posts
+
+`blueprint/content-calendar.yaml` says what gets posted and when. Dates are
+offsets from launch (`T-140`, `T+45`) rather than calendar dates, which is the
+difference between a product and a config file: `T-42` redeploys to any launch,
+`2026-09-14` describes exactly one. A handful of beats are absolute anyway,
+because Steam Next Fest registration closes when Valve says it closes.
+
+**Nothing reaches members without a human clicking.** When a beat comes due
+Steward drafts it into the staff channel with Approve and Skip buttons, showing
+which channel it is bound for and warning when approving it will ping a role.
+An announcement that has already gone out cannot be unsent, so the last check is
+a person.
+
+Beats are of two kinds. A `post` is drafted for approval. A `reminder` goes
+straight to staff and stops there, because approving your own to-do list is
+theatre. The Steam Direct 30-day clock, the Next Fest deadline and the
+two-weeks-of-velocity window are reminders.
+
+Three things that took a second pass to get right:
+
+- **A beat is claimed in the database before it is posted**, not after. The
+  primary key is `(guild, beat, date)`, so two ticks racing each other or a
+  crash mid-send cannot produce the same post twice.
+- **Due-checking looks back seven days, not forever.** Otherwise installing the
+  bot in November fires every beat since September at once. Anything older is
+  treated as missed rather than late, which is what a person would have wanted.
+- **The buttons carry fixed custom ids** and the beat is looked up by message
+  id. Encoding the beat into the id caps at 100 characters and breaks the moment
+  someone names a beat something long. A draft from last week still works after
+  a restart.
+
+The launch date lives in `steward/.env` as `LAUNCH_DATE`, not in the calendar
+file, so the file stays the part you redeploy. Step 8 of the setup page sets it
+and shows the resulting schedule. With no date set, every relative beat is
+dormant rather than fired against a guess.
+
+## The playtest pipeline
+
+`/playtest-join` puts someone on the list and gives them the opt-in role.
+`/playtest-open`, `/playtest-keys` and `/playtest-issue` run a wave;
+`/playtest-status` shows what is left and who has what; `/playtest-report` files
+a bug into the forum with the build number and repro steps already in it, and
+records that the person actually played, which is the conversion number the
+whole pipeline exists to produce.
+
+The key DM is the only direct message this bot ever sends, and it is solicited:
+they signed up, and this is the thing they signed up for. Everything else routes
+through a role, because Discord's Developer Policy prohibits unsolicited DMs
+outright and there is an undocumented quota that quarantines an app without
+warning. A test asserts there is at most one `member.send` in the whole file.
+
+Three behaviours worth knowing:
+
+- **If the DM bounces the key goes back in the pool** rather than being posted
+  where everyone can read it. A closed-DMs member costs you nothing.
+- **Asking twice returns the same key** instead of burning a second one.
+- **A revoked key is dead, not returned.** Whoever held it has seen it.
+  `/forget-me` scrubs the member off the row but leaves it spent, because
+  deleting it outright would hand a live Steam key to the next person in line.
+  That one was caught by a test rather than by reading the code.
+
+`/playtest-open` prints the constraint people get wrong: **Steam caps Release
+State Override keys at 2,500 in total, ever.** Steam's own Playtest feature has
+no practical ceiling, lives on the existing store page, and does not cost you
+the wishlist, so keys are for press and for builds that live outside Steam.
+Opening a Playtest does not notify wishlisters, though, so driving signups is
+work Discord has to do.
+
 ## Attribution without cluttering profiles
 
 "How did you find us?" is the one number Discord will not give you: Server
@@ -314,11 +388,10 @@ to someone who never opened a terminal.
 ## Tests
 
 ```powershell
-python tests
-un_tests.py
+python testsun_tests.py
 ```
 
-42 checks, no test framework to install. `tests/fake_discord.py` stands in for
+151 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

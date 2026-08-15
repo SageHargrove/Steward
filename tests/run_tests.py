@@ -1561,6 +1561,356 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+print("\ncalendar")
+
+import calendar_engine as ce                            # noqa: E402
+from datetime import date as _date, timedelta as _td    # noqa: E402
+import yaml as _yaml                                    # noqa: E402
+
+CALENDAR = ROOT / "blueprint" / "content-calendar.yaml"
+ANCHOR = _date(2027, 3, 1)
+
+
+def fresh_calendar():
+    return ce.load(CALENDAR, {"game": "Testgame"})
+
+
+@test("T-minus offsets resolve against the launch date")
+def _():
+    assert ce.parse_when("T-90", ANCHOR) == ANCHOR - _td(days=90)
+    assert ce.parse_when("T+14", ANCHOR) == ANCHOR + _td(days=14)
+    assert ce.parse_when("T-0", ANCHOR) == ANCHOR
+    # An absolute date is allowed and sometimes necessary: Next Fest closes
+    # when Valve says it does, not relative to your launch.
+    assert ce.parse_when("2027-01-10", ANCHOR) == _date(2027, 1, 10)
+
+
+@test("a relative date without a launch date is refused, not guessed")
+def _():
+    try:
+        ce.parse_when("T-90", None)
+        assert False, "T-90 resolved with no anchor"
+    except ce.BadDate:
+        pass
+
+
+@test("nonsense dates are rejected rather than silently skipped")
+def _():
+    for bad in ("next tuesday", "T-", "2027-13-01x", ""):
+        try:
+            ce.parse_when(bad, ANCHOR)
+            assert False, f"{bad!r} was accepted"
+        except (ce.BadDate, ValueError):
+            pass
+
+
+@test("the shipped calendar is valid against the shipped blueprint")
+def _():
+    bp = _yaml.safe_load(CALENDAR.parent.joinpath("default.yaml").read_text("utf-8"))
+    channels = [c["name"] for cat in bp.get("categories", [])
+                for c in cat.get("channels", [])]
+    roles = [r["name"] for r in bp.get("roles", [])]
+    report = fresh_calendar().validate(channels=channels, roles=roles)
+    assert not report["errors"], report["errors"]
+    # Every beat must aim at a channel the blueprint actually creates, or it
+    # will draft and then fail at the moment somebody clicks approve.
+    missing = [w for w in report["warnings"] if "not in the blueprint" in w]
+    assert not missing, missing
+
+
+@test("every beat names a channel and has something to say")
+def _():
+    cal = fresh_calendar()
+    for beat in cal.beats + cal.recurring:
+        assert beat.get("id"), beat
+        assert beat.get("channel"), beat["id"]
+        assert beat.get("body", "").strip(), beat["id"]
+
+
+@test("beat ids are unique, because the id is what stops a repost")
+def _():
+    cal = fresh_calendar()
+    ids = [b["id"] for b in cal.beats + cal.recurring]
+    assert len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1]
+
+
+@test("placeholders are filled from the blueprint's variables")
+def _():
+    cal = fresh_calendar()
+    occ = [o for o in cal.occurrences(ANCHOR, ANCHOR) if o.id == "launch-day"]
+    assert occ, "launch-day does not land on T-0"
+    body = occ[0].beat["title"] + occ[0].beat["body"]
+    assert "Testgame" in body, body[:120]
+    assert "{{" not in body, "an unfilled placeholder reached the post"
+
+
+@test("recurring beats land on the weekday they name")
+def _():
+    cal = fresh_calendar()
+    start = ANCHOR - _td(days=120)
+    got = [o for o in cal.occurrences(start, start + _td(days=28))
+           if o.id == "screenshot-saturday"]
+    assert got, "screenshot-saturday never fired"
+    assert all(o.date.weekday() == 5 for o in got), [str(o.date) for o in got]
+    assert len(got) == 4, len(got)
+
+
+@test("recurring beats stop at their until date")
+def _():
+    cal = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "recurring": [
+        {"id": "x", "every": "monday", "channel": "general", "body": "hi",
+         "from": "T-30", "until": "T-10"}]})
+    got = cal.occurrences(_date(2027, 1, 1), _date(2027, 4, 1))
+    assert got, "never fired"
+    assert min(o.date for o in got) >= ANCHOR - _td(days=30)
+    assert max(o.date for o in got) <= ANCHOR - _td(days=10)
+
+
+@test("due() only looks back a week, so a late install does not dump months")
+def _():
+    cal = fresh_calendar()
+    # Pretend the bot is switched on for the first time the day before launch.
+    day = ANCHOR - _td(days=1)
+    due = cal.due(day, lookback=7)
+    assert all(o.date >= day - _td(days=7) for o in due), due
+    # And the launch-day post, which is still in the future, is not among them.
+    assert "launch-day" not in [o.id for o in due]
+
+
+@test("a calendar with no launch date fires nothing")
+def _():
+    spec = _yaml.safe_load(CALENDAR.read_text("utf-8"))
+    spec["meta"]["anchor"] = None
+    cal = ce.Calendar(spec)
+    assert cal.anchor is None
+    relative = [o for o in cal.occurrences(_date(2020, 1, 1), _date(2030, 1, 1))
+                if not o.recurring]
+    # Only the handful written as absolute dates survive; every T-minus beat
+    # is dormant rather than fired against a guessed anchor.
+    assert all(str(o.beat.get("when", "")).startswith("20") for o in relative), \
+        [o.id for o in relative]
+    assert cal.validate()["warnings"], "no warning about the missing launch date"
+
+
+@test("an unparseable beat is reported and never fired")
+def _():
+    cal = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "beats": [
+        {"id": "bad", "when": "soon", "channel": "general", "body": "x"}]})
+    assert cal.validate()["errors"], "a bad date passed validation"
+    assert not cal.occurrences(_date(2020, 1, 1), _date(2030, 1, 1))
+
+
+@test("kind is post or reminder and nothing else")
+def _():
+    cal = fresh_calendar()
+    for beat in cal.beats + cal.recurring:
+        assert beat.get("kind", "post") in ("post", "reminder"), beat["id"]
+    bad = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "beats": [
+        {"id": "b", "when": "T-1", "kind": "shout", "channel": "g", "body": "x"}]})
+    assert bad.validate()["errors"]
+
+
+@test("mentioning everyone is flagged, because it reaches the whole server")
+def _():
+    warnings = " ".join(fresh_calendar().validate()["warnings"])
+    assert "everyone" in warnings
+
+
+@test("the calendar is generic, not one game's")
+def _():
+    text = CALENDAR.read_text("utf-8").lower()
+    for word in ("giltgrave", "gacha", "tower", "hero-showcase"):
+        assert word not in text, f"the calendar still mentions {word!r}"
+
+
+# ---------------------------------------------------------------------------
+print("\ncalendar storage")
+
+
+@test("a beat can only be claimed once")
+def _():
+    L = fresh_ledger()
+    assert L.calendar_record(1, "beat", "2027-01-01", "drafted") is True
+    # The second claim is the one that matters: two ticks racing, or a restart
+    # mid-post, must not put the same beat out twice.
+    assert L.calendar_record(1, "beat", "2027-01-01", "drafted") is False
+
+
+@test("the same beat can fire again on a different day")
+def _():
+    L = fresh_ledger()
+    assert L.calendar_record(1, "weekly", "2027-01-02", "drafted")
+    assert L.calendar_record(1, "weekly", "2027-01-09", "drafted")
+
+
+@test("only a drafted beat can be decided, so two clicks cannot double-post")
+def _():
+    L = fresh_ledger()
+    L.calendar_record(1, "b", "2027-01-01", "drafted")
+    assert L.calendar_decide(1, "b", "2027-01-01", "published", 99) is True
+    assert L.calendar_decide(1, "b", "2027-01-01", "published", 98) is False
+    row = L.calendar_seen(1, "b", "2027-01-01")
+    assert row["status"] == "published" and row["decided_by"] == 99
+
+
+@test("a draft is found by its message id")
+def _():
+    L = fresh_ledger()
+    L.calendar_record(1, "b", "2027-01-01", "drafted", draft_id=555)
+    assert L.calendar_by_draft(1, 555)["beat_id"] == "b"
+    assert L.calendar_by_draft(1, 999) is None
+    assert L.calendar_by_draft(2, 555) is None
+
+
+@test("pending beats are listed for the calendar command")
+def _():
+    L = fresh_ledger()
+    L.calendar_record(1, "a", "2027-01-01", "drafted")
+    L.calendar_record(1, "b", "2027-01-02", "published")
+    pending = L.calendar_pending(1)
+    assert [p["beat_id"] for p in pending] == ["a"]
+
+
+# ---------------------------------------------------------------------------
+print("\nplaytest pipeline")
+
+
+@test("signing up is idempotent and rejoining is distinguishable")
+def _():
+    L = fresh_ledger()
+    assert L.playtest_signup(1, 7) is True
+    assert L.playtest_signup(1, 7) is False
+    L.playtest_leave(1, 7)
+    assert len(L.playtest_roster(1)) == 0
+    assert len(L.playtest_roster(1, active_only=False)) == 1
+    L.playtest_signup(1, 7)
+    assert len(L.playtest_roster(1)) == 1
+
+
+@test("a key is issued to exactly one person")
+def _():
+    L = fresh_ledger()
+    L.wave_open(1, "wave-1")
+    L.add_keys(1, "wave-1", ["AAA", "BBB"])
+    a = L.issue_key(1, "wave-1", 10, 99)
+    b = L.issue_key(1, "wave-1", 11, 99)
+    assert a["key"] != b["key"], "the same key went to two people"
+    assert L.issue_key(1, "wave-1", 12, 99) is None, "issued a key that did not exist"
+
+
+@test("asking twice returns the same key rather than burning another")
+def _():
+    L = fresh_ledger()
+    L.wave_open(1, "w")
+    L.add_keys(1, "w", ["AAA", "BBB"])
+    first = L.issue_key(1, "w", 10, 99)
+    again = L.issue_key(1, "w", 10, 99)
+    assert again["key"] == first["key"]
+    assert again["reissued"] is True
+    assert L.waves(1)[0]["keys_issued"] == 1
+
+
+@test("duplicate keys are ignored rather than stored twice")
+def _():
+    L = fresh_ledger()
+    L.wave_open(1, "w")
+    assert L.add_keys(1, "w", ["AAA", "BBB"]) == {"added": 2, "skipped": 0}
+    assert L.add_keys(1, "w", ["BBB", "CCC"])["added"] == 1
+    assert L.waves(1)[0]["keys_total"] == 3
+
+
+@test("a revoked key does not count as issued")
+def _():
+    L = fresh_ledger()
+    L.wave_open(1, "w")
+    L.add_keys(1, "w", ["AAA"])
+    L.issue_key(1, "w", 10, 99)
+    assert L.waves(1)[0]["keys_issued"] == 1
+    assert L.revoke_key(1, 10, "w") is True
+    assert L.waves(1)[0]["keys_issued"] == 0
+
+
+@test("forget-me scrubs the person off a key without freeing the key")
+def _():
+    # The key is spent whether or not the person is still in the ledger.
+    # Deleting the row outright would put a live Steam key back in the pool.
+    L = fresh_ledger()
+    L.wave_open(1, "w")
+    L.add_keys(1, "w", ["AAA"])
+    L.issue_key(1, "w", 10, 99)
+    L.playtest_signup(1, 10)
+    L.forget(10)
+    assert L.playtest_roster(1, active_only=False) == []
+    assert L.issue_key(1, "w", 11, 99) is None, "a forgotten member's key was reissued"
+    assert L.key_audit(1) == [], "an audit row still names a deleted member"
+
+
+@test("opting out blocks a later signup from being recorded")
+def _():
+    L = fresh_ledger()
+    L.forget(10)
+    L.playtest_signup(1, 10)
+    # The signup table is keyed on the member, so an opted-out member appearing
+    # in it would be exactly the data they asked to have deleted.
+    assert L.is_opted_out(10)
+
+
+@test("a wave cannot be opened twice under the same name")
+def _():
+    L = fresh_ledger()
+    assert L.wave_open(1, "w") is True
+    assert L.wave_open(1, "w") is False
+    assert L.wave_close(1, "w") is True
+    assert L.wave_close(1, "w") is False
+
+
+# ---------------------------------------------------------------------------
+print("\ncalendar wiring")
+
+import re                                               # noqa: E402
+
+
+@test("the bot never opens an unsolicited DM")
+def _():
+    # Discord's Developer Policy prohibits unsolicited DMs outright, and there
+    # is an undocumented quota that quarantines an app with no warning. The
+    # only send() to a member is the playtest key, which they asked for.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    sends = re.findall(r"await (member|user)\.send\(", src)
+    assert len(sends) <= 1, f"{len(sends)} direct messages in bot.py"
+
+
+@test("every calendar post sets allowed_mentions explicitly")
+def _():
+    # A beat body containing the literal word @everyone would otherwise ping
+    # the whole server. This shipped as a real bug once already.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    body = src[src.index("async def draft_beat"):src.index("def mention_for")]
+    for call in re.finditer(r"await \w+\.(send|create_thread)\(", body):
+        tail = body[call.end():call.end() + 400]
+        assert "allowed_mentions" in tail, f"unguarded send near: {tail[:80]!r}"
+
+
+@test("the approval buttons carry fixed custom ids so they survive a restart")
+def _():
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert 'custom_id="cal:approve"' in src and 'custom_id="cal:skip"' in src
+    assert "timeout=None" in src, "a view with a timeout stops working on restart"
+    assert "add_view(BeatApproval())" in src, "the view is never re-registered"
+
+
+@test("the calendar claims a beat before posting it")
+def _():
+    # If the send fails after the claim, the beat is marked failed. If the claim
+    # came second, a crash between send and claim would repost it every hour.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    body = src[src.index("async def draft_beat"):src.index("def find_beat")]
+    claim = body.index("calendar_record(guild.id, occ.id, occ.date.isoformat(),\n"
+                       "                                           \"drafted\")")
+    send = body.index("msg = await staff.send(")
+    assert claim < send, "the beat is posted before it is claimed"
+
+# ---------------------------------------------------------------------------
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 if FAIL:

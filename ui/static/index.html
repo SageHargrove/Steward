@@ -224,6 +224,19 @@
     white-space:pre-wrap; margin:14px 0 0; color:var(--muted)}
   pre.log .p{color:#7ee2a8} pre.log .w{color:#f5989a}
 
+  .calrow{display:grid; grid-template-columns:96px 52px 1fr auto; gap:10px;
+    align-items:baseline; padding:7px 0; border-top:1px solid var(--line-soft);
+    font-size:13px}
+  .calrow .d{color:var(--dimmer); font-variant-numeric:tabular-nums}
+  .calrow .t{color:var(--dim); font-variant-numeric:tabular-nums; font-size:12px}
+  .calrow .who{color:var(--dim); font-size:12px}
+  .calrow.rem{opacity:.72}
+  .calanchor{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
+    margin-bottom:14px}
+  .calanchor input{width:150px; padding:5px 8px}
+  .caltag{font-size:11px; padding:1px 6px; border-radius:3px; border:1px solid var(--line);
+    color:var(--dimmer)}
+  .caltag.ping{border-color:#a3612f; color:#e2a76a}
   .edits{display:grid; gap:10px}
   .edit{border:1px solid var(--line); border-radius:5px; overflow:hidden}
   .edit > .eh{display:flex; align-items:center; gap:9px; padding:9px 13px;
@@ -542,9 +555,25 @@
   </div>
 </section>
 
-<!-- 8. manual ----------------------------------------------------------- -->
+<!-- 8. the calendar ------------------------------------------------------- -->
 <section class="step" id="s8">
-  <div class="head"><div class="num"><span>8</span></div><h2>The rest, by hand</h2></div>
+  <div class="head"><div class="num"><span>8</span></div><h2>The content calendar</h2>
+    <div style="margin-left:auto" class="row">
+      <button class="ghost small" onclick="loadCalendar()">Reload</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="callout">Beats are dated <b>relative to your launch</b>, not as
+      calendar dates, which is what lets the same file be reused on the next
+      project. Nothing is ever posted without you approving it: when a beat comes
+      due, the bot drafts it into your staff channel with Approve and Skip buttons.</div>
+    <div id="calbody"></div>
+  </div>
+</section>
+
+<!-- 9. manual ----------------------------------------------------------- -->
+<section class="step" id="s9">
+  <div class="head"><div class="num"><span>9</span></div><h2>The rest, by hand</h2></div>
   <div class="body">
     <div class="callout">None of this can be automated by any tool. Installing a bot needs
       a human to press Authorize, and the Discord settings below have no API at all. Every
@@ -1533,6 +1562,93 @@ function line(cls, text){
 /* ---------- 6. editing what was posted ---------- */
 let EDITS = [];
 
+/* ---- the content calendar ------------------------------------------- */
+
+let CAL = null;
+
+async function loadCalendar(){
+  try{ CAL = await api('/api/calendar?days=180'); }
+  catch(e){ $('#calbody').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
+  renderCalendar();
+}
+
+function renderCalendar(){
+  if(!CAL || !CAL.present){
+    $('#calbody').innerHTML = `<div class="hint">No calendar file found at
+      <b>blueprint/content-calendar.yaml</b>, so nothing is scheduled.</div>`;
+    return;
+  }
+  if(CAL.error){
+    $('#calbody').innerHTML = `<div class="msg err">The calendar file could not be
+      read: ${esc(CAL.error)}</div>`;
+    return;
+  }
+
+  const anchor = CAL.anchor || '';
+  const head = `
+    <div class="calanchor">
+      <div>
+        <label>Launch day</label>
+        <input type="text" id="calanchor" value="${esc(anchor)}" placeholder="2027-03-01">
+      </div>
+      <button class="ghost small" onclick="saveAnchor()">Set</button>
+      <div class="hint" style="flex:1 1 220px; margin:0">
+        ${anchor
+          ? `Everything below is counted from here. Today is
+             <b>T${CAL.t_minus >= 0 ? '+' : ''}${CAL.t_minus}</b>.`
+          : `<b>Not set, so nothing will ever fire.</b> Every beat written as
+             T-minus stays dormant until this has a date in it.`}
+        ${CAL.override ? ' Stored in steward\\.env, so the calendar file itself'
+                       + ' stays reusable.' : ''}
+      </div>
+    </div>`;
+
+  const problems = (CAL.errors || []).map(e =>
+      `<div class="msg err">${esc(e)}</div>`).join('')
+    + (CAL.warnings || []).map(w =>
+      `<div class="msg warn">${esc(w)}</div>`).join('');
+
+  const rows = (CAL.upcoming || []).map(u => {
+    const tags = [];
+    if(u.recurring) tags.push('<span class="caltag">repeats</span>');
+    if(u.event) tags.push('<span class="caltag">event</span>');
+    if(u.mention) tags.push(`<span class="caltag ping">pings @${esc(u.mention)}</span>`);
+    const where = u.kind === 'reminder'
+      ? 'reminder, staff only'
+      : 'into #' + esc(u.channel);
+    return `<div class="calrow ${u.kind === 'reminder' ? 'rem' : ''}">
+      <span class="d">${esc(u.date)}</span>
+      <span class="t">${u.t === null ? '' : 'T' + (u.t >= 0 ? '+' : '') + u.t}</span>
+      <span>${esc(u.title)}<br><span class="who">${where}</span></span>
+      <span>${tags.join(' ')}</span>
+    </div>`;
+  }).join('');
+
+  $('#calbody').innerHTML = head + problems + `
+    <div class="hint" style="margin-bottom:2px">
+      <b>${CAL.counts.beats}</b> one-off beats and <b>${CAL.counts.recurring}</b>
+      recurring, from <b>${esc(CAL.name)}</b>.
+      ${rows ? 'Next ' + CAL.upcoming.length + ' in the coming 180 days:' :
+               'Nothing falls in the next 180 days.'}
+    </div>` + rows;
+}
+
+async function saveAnchor(){
+  const date = $('#calanchor').value.trim();
+  try{
+    await api('/api/calendar/anchor',
+              {method:'POST', body: JSON.stringify({date})});
+  }catch(e){
+    $('#calbody').insertAdjacentHTML('afterbegin',
+      `<div class="msg err">${esc(e.message)}</div>`);
+    return;
+  }
+  await loadCalendar();
+  $('#calbody').insertAdjacentHTML('afterbegin',
+    `<div class="msg ok">Saved. Steward picks it up when it restarts, or right
+      away if you run <b>/calendar-reload</b> in Discord.</div>`);
+}
+
 async function loadEdits(){
   if(!FILE) return;
   try{ EDITS = await api('/api/content?file=' + encodeURIComponent(FILE)); }
@@ -1776,6 +1892,7 @@ function copyStep(i, btn){
 }
 
 loadManual();
+loadCalendar();
 </script>
 </body>
 </html>

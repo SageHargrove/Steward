@@ -19,6 +19,7 @@ import base64
 import json
 import os
 import queue
+import re
 import secrets
 import socket
 import subprocess
@@ -432,6 +433,104 @@ def ledger_install():
     tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
     return {"ok": proc.returncode == 0, "log": "\n".join(tail)}
 
+
+# --------------------------------------------------------------------------
+# The content calendar
+# --------------------------------------------------------------------------
+
+CALENDAR_FILE = HERE.parent / "blueprint" / "content-calendar.yaml"
+
+
+def read_env() -> dict:
+    out = {}
+    envfile = STEWARD / ".env"
+    if envfile.exists():
+        for line in envfile.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip()
+    return out
+
+
+def write_env(key: str, value: str | None):
+    """Set or clear one key, leaving every other line exactly as it was. The
+    token lives in this file, so it is never rewritten wholesale."""
+    envfile = STEWARD / ".env"
+    if not envfile.exists():
+        raise HTTPException(400, "No steward/.env yet. Add the bot token first.")
+    lines = envfile.read_text(encoding="utf-8").splitlines()
+    out, done = [], False
+    for line in lines:
+        if line.split("=", 1)[0].strip() == key and not line.strip().startswith("#"):
+            if value:
+                out.append(f"{key}={value}")
+            done = True
+            continue
+        out.append(line)
+    if value and not done:
+        out.append(f"{key}={value}")
+    envfile.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+@app.get("/api/calendar")
+def calendar_view(days: int = 120):
+    sys.path.insert(0, str(STEWARD))
+    import calendar_engine
+    from datetime import date
+
+    if not CALENDAR_FILE.exists():
+        return {"present": False}
+
+    bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() \
+        else {}
+    variables = {k: (v if v is not None else "")
+                 for k, v in (bp.get("variables") or {}).items()}
+    anchor = read_env().get("LAUNCH_DATE") or None
+    try:
+        cal = calendar_engine.load(CALENDAR_FILE, variables, anchor_override=anchor)
+    except Exception as e:                                   # noqa: BLE001
+        return {"present": True, "error": str(e)}
+
+    channels = [c["name"] for cat in (bp.get("categories") or [])
+                for c in (cat.get("channels") or [])]
+    roles = [r["name"] for r in (bp.get("roles") or [])]
+    report = cal.validate(channels=channels, roles=roles)
+
+    today = date.today()
+    upcoming = cal.upcoming(today, max(1, min(days, 400)))
+    return {
+        "present": True,
+        "name": cal.name,
+        "anchor": report["anchor"],
+        "override": bool(anchor),
+        "t_minus": cal.t_minus(today),
+        "counts": {"beats": report["beats"], "recurring": report["recurring"]},
+        "errors": report["errors"],
+        "warnings": report["warnings"],
+        "upcoming": [{
+            "date": o.date.isoformat(),
+            "t": cal.t_minus(o.date),
+            "id": o.id,
+            "kind": o.beat.get("kind", "post"),
+            "channel": o.beat.get("channel"),
+            "title": o.beat.get("title") or o.id,
+            "mention": o.beat.get("mention"),
+            "event": bool(o.beat.get("event")),
+            "recurring": o.recurring,
+        } for o in upcoming[:60]],
+    }
+
+
+@app.post("/api/calendar/anchor")
+def calendar_anchor(payload: dict = Body(...)):
+    """Set the launch date without editing the calendar file, so the file stays
+    the reusable artifact and the date stays this deployment's business."""
+    value = (payload.get("date") or "").strip()
+    if value and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise HTTPException(400, "Use a date like 2027-03-01.")
+    write_env("LAUNCH_DATE", value or None)
+    return {"ok": True, "anchor": value or None,
+            "note": "Steward picks this up on restart, or with /calendar-reload."}
 
 
 # --------------------------------------------------------------------------
