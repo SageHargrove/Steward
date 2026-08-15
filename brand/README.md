@@ -48,6 +48,8 @@ Two things this settled, both of which cost a round of drawing to find out:
                              with piers under them read as an arch
     wordmarks-sheet.png    twelve OFL faces setting STEWARD at real banner size
     colourways-sheet.png   eight two-colour schemes, banner and avatar together
+    in-context-sheet.png   the four finalists in a fake member list, which is
+                             the only test of whether you can find it
 
 ## Regenerating
 
@@ -55,6 +57,7 @@ Two things this settled, both of which cost a round of drawing to find out:
     python keystones.py     the mark variants + their sheet
     python wordmarks.py     the typeface comparison
     python final.py         colourways and the delivery files
+    python incontext.py     the member-list mock
 
 All plain Pillow, no design tool involved. To change the colour, edit
 `PALETTES` at the top of `final.py`; to change the mark, edit `gate3` in
