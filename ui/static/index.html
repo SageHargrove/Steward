@@ -224,6 +224,16 @@
     white-space:pre-wrap; margin:14px 0 0; color:var(--muted)}
   pre.log .p{color:#7ee2a8} pre.log .w{color:#f5989a}
 
+  .ver{display:flex; align-items:center; gap:10px; margin-top:11px;
+    font-size:12px; color:var(--dimmer)}
+  .ver #verstate{font-size:12px}
+  .ver .up{color:#8fd6a0}
+  .ver .warn{color:#e2a76a}
+  .updbox{border:1px solid var(--line); border-radius:5px; padding:12px 14px;
+    margin-top:12px; background:var(--panel)}
+  .updbox h4{margin:0 0 7px; font-size:13.5px; color:var(--fg)}
+  .updbox ul{margin:6px 0 0 16px; padding:0; font-size:12.5px; color:var(--dim)}
+  .updbox li{margin:2px 0}
   .calrow{display:grid; grid-template-columns:96px 52px 1fr auto; gap:10px;
     align-items:baseline; padding:7px 0; border-top:1px solid var(--line-soft);
     font-size:13px}
@@ -295,6 +305,11 @@
 <header>
   <h1>Server Setup for Discord</h1>
   <div class="sub">Build a server from a blueprint, without clicking through a hundred settings</div>
+  <div class="ver">
+    <span id="verlabel">version ...</span>
+    <button class="ghost small" onclick="checkUpdate()" id="updbtn">Check for updates</button>
+    <span id="verstate"></span>
+  </div>
 </header>
 
 <!-- 1. create the bot --------------------------------------------------- -->
@@ -673,9 +688,10 @@ function setStale(files){
    port, so the only thing to do here is poll until the page answers again. */
 let RESTARTING = false;
 
-async function restartApp(){
+async function restartApp(skipConfirm){
   if(RESTARTING) return;
-  if(!confirm('Restart the setup program?\n\n'
+  // An update has already asked. Prompting twice reads as the button failing.
+  if(!skipConfirm && !confirm('Restart the setup program?\n\n'
     + 'The bot token is held in that program\'s memory and never written to '
     + 'disk, so restarting forgets it and you will paste it again on step 1. '
     + 'Nothing already built in Discord is affected.')) return;
@@ -1594,6 +1610,96 @@ function line(cls, text){
 /* ---------- 6. editing what was posted ---------- */
 let EDITS = [];
 
+/* ---- version and updates ---------------------------------------------
+   The check reaches the network, so it only ever runs when somebody presses
+   the button. A setup page that phones home on load is not what anyone asked
+   for when they ran a local tool. */
+
+async function showVersion(){
+  try{
+    const v = await api('/api/version');
+    $('#verlabel').textContent = 'version ' + v.version
+      + (v.git ? '' : ' (not a git checkout)');
+  }catch(e){ $('#verlabel').textContent = ''; }
+}
+
+async function checkUpdate(){
+  const b = $('#updbtn'), st = $('#verstate');
+  b.disabled = true; b.textContent = 'Checking...';
+  st.textContent = ''; st.className = '';
+  let r;
+  try{ r = await api('/api/update/check'); }
+  catch(e){
+    st.textContent = e.message; st.className = 'warn';
+    b.disabled = false; b.textContent = 'Check for updates'; return;
+  }
+  b.disabled = false; b.textContent = 'Check for updates';
+
+  if(!r.ok){
+    st.textContent = r.error || 'Could not check.'; st.className = 'warn';
+    return;
+  }
+  if(!r.behind){
+    st.textContent = r.ahead
+      ? `Up to date (and ${r.ahead} change${r.ahead > 1 ? 's' : ''} here that `
+        + 'have not been pushed).'
+      : 'Up to date.';
+    st.className = 'up';
+    $('#stale').style.display = 'none';
+    return;
+  }
+
+  st.textContent = '';
+  const banner = $('#stale');
+  banner.style.display = '';
+  const changes = (r.changes || []).slice(0, 8)
+    .map(c => `<li>${esc(c)}</li>`).join('');
+  const dirty = (r.dirty || []).length
+    ? `<div style="margin-top:8px" class="warn">You have edited
+        ${r.dirty.map(d => '<b>' + esc(d) + '</b>').join(', ')}. Updating copies
+        those into <b>backups/</b> first, so nothing is lost either way.</div>`
+    : '';
+  banner.innerHTML = `<div class="updbox">
+      <h4>Version ${esc(r.latest)} is available. You are on ${esc(r.current)}.</h4>
+      ${r.behind} change${r.behind > 1 ? 's' : ''} to pull.
+      ${changes ? `<ul>${changes}</ul>` : ''}
+      ${dirty}
+      <div class="row" style="margin-top:11px">
+        <button onclick="applyUpdate(${(r.dirty || []).length ? 'true' : 'false'})"
+                id="applybtn">Update now</button>
+        <button class="ghost small" onclick="$('#stale').style.display='none'">Later</button>
+      </div>
+      <pre class="log" id="updlog" style="display:none; margin-top:10px"></pre>
+    </div>`;
+}
+
+async function applyUpdate(hasDirty){
+  if(hasDirty && !confirm('Your edited files will be copied into backups/ and '
+      + 'then replaced with the new versions.\n\nCarry on?')) return;
+  const b = $('#applybtn'), log = $('#updlog');
+  b.disabled = true; b.textContent = 'Updating...';
+  let r;
+  try{ r = await api('/api/update/apply',
+                     {method:'POST', body: JSON.stringify({discard_local: !!hasDirty})}); }
+  catch(e){
+    log.style.display = ''; log.textContent = e.message;
+    b.disabled = false; b.textContent = 'Update now'; return;
+  }
+  log.style.display = '';
+  log.textContent = (r.log || []).join('\n');
+  b.disabled = false; b.textContent = 'Update now';
+
+  if(r.needs_confirm){ b.setAttribute('onclick', 'applyUpdate(true)'); return; }
+  if(!r.ok) return;
+  if(!r.restart){ b.textContent = 'Up to date'; b.disabled = true; return; }
+
+  b.textContent = 'Restarting...';
+  b.disabled = true;
+  log.textContent += '\n\nRestarting so the new code is actually running. '
+    + 'Restart the bot too, from step 7, once the page is back.';
+  setTimeout(() => restartApp(true), 1500);
+}
+
 /* ---- the content calendar ------------------------------------------- */
 
 let CAL = null;
@@ -1945,6 +2051,7 @@ function copyStep(i, btn){
 
 loadManual();
 loadCalendar();
+showVersion();
 </script>
 </body>
 </html>

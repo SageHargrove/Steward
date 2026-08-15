@@ -1966,6 +1966,94 @@ def _():
     assert claim < send, "the beat is posted before it is claimed"
 
 # ---------------------------------------------------------------------------
+print("\nversions and updates")
+
+import updates                                          # noqa: E402
+
+
+@test("version numbers compare in the right direction")
+def _():
+    assert updates.newer("0.2.1", "0.2.0")
+    assert updates.newer("1.0.0", "0.9.9")
+    assert updates.newer("v1.2.0", "1.1.9")
+    assert not updates.newer("0.2.0", "0.2.0")
+    assert not updates.newer("0.1.0", "0.2.0")
+    # 10 is later than 9, which string comparison gets backwards.
+    assert updates.newer("0.10.0", "0.9.0")
+
+
+@test("an unreadable version sorts lowest instead of raising")
+def _():
+    # A bad tag upstream must not break the check on this machine.
+    assert updates.parse("not-a-version") == (0, 0, 0)
+    assert updates.parse("") == (0, 0, 0)
+    assert not updates.newer("garbage", "0.0.1")
+
+
+@test("VERSION is a single line, and it is the one that is read")
+def _():
+    raw = (ROOT / "VERSION").read_text(encoding="utf-8")
+    assert re.fullmatch(r"\d+\.\d+\.\d+\s*", raw), f"VERSION holds {raw!r}"
+    # Reading the whole file would return a multi-line string that then gets
+    # compared, displayed, and written into a git tag. This happened.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "VERSION"
+        f.write_text("1.2.3\nsomebody's note\n", encoding="utf-8")
+        was = updates.VERSION_FILE
+        try:
+            updates.VERSION_FILE = f
+            assert updates.version() == "1.2.3", updates.version()
+        finally:
+            updates.VERSION_FILE = was
+
+
+@test("an update never counts protected paths as overwritable")
+def _():
+    # These hold a live bot token and an activity history Discord cannot
+    # rebuild. Neither may ever be listed as a file an update can replace.
+    for p in ("steward/.env", "steward/data", "backups"):
+        assert p in updates.PROTECTED, f"{p} is not protected"
+    assert not any(d.startswith(("steward/.env", "steward/data", "backups"))
+                   for d in updates.dirty_files())
+
+
+@test("this checkout can see its own update channel")
+def _():
+    assert updates.is_git_checkout(), "the repo is not a git checkout"
+    slug = updates.remote_slug()
+    assert slug and "/" in slug, f"cannot read owner/repo from the remote: {slug}"
+
+
+@test("the release tool refuses a version that is not newer")
+def _():
+    # Version numbers only go up. If one ever went down, the update check could
+    # not tell which way forward was.
+    import subprocess
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "release.py"),
+                        "0.0.1", "--dry-run"],
+                       capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+    assert r.returncode != 0, "release.py accepted an older version"
+    assert "not newer" in (r.stdout + r.stderr)
+
+
+@test("the release tool refuses a version that is not three numbers")
+def _():
+    import subprocess
+    for bad in ("banana", "1.2", "v1.2.3.4.5"):
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "release.py"),
+                            bad, "--dry-run"],
+                           capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        assert r.returncode != 0, f"release.py accepted {bad!r}"
+
+
+@test("backups are gitignored, or the next update sees them as edits")
+def _():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "backups/" in ignored
+
+
+# ---------------------------------------------------------------------------
 print("\nlaunchers and shortcuts")
 
 

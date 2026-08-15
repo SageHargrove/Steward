@@ -19,6 +19,8 @@ steward/                    the bot. Ledger, levels, digest, moderation log,
                             calendar engine, playtest pipeline
 install/                    Start Menu shortcuts, and an Inno Setup script
                             for a real installer later
+tools/release.py            cut a version: bump, tag, push, publish
+VERSION                     the single source of truth for what you are on
 SETUP.md                    the runbook. Start there
 ```
 
@@ -393,6 +395,45 @@ without a checkout: one .exe, a Programs and Features entry, no terminal. It is
 written but **not compiled or tested**, and it still needs Python on the target
 machine. `install/README.md` covers the three ways to fix that and recommends
 shipping the embeddable Python.
+
+### Updating
+
+The page shows its version in the header with a **Check for updates** button.
+The check only runs when you press it: a local tool that phones home on load is
+not what anyone signed up for.
+
+Updating from a git checkout is a fetch and a fast-forward, and it works whether
+the repository is public or private. Two things it does that a bare `git pull`
+does not:
+
+- **It backs up before it overwrites.** The blueprint and the calendar are files
+  you are meant to edit, and they are tracked, so an update would replace them.
+  Anything modified is copied into `backups/<timestamp>/` first and the page
+  says so before doing it. Nothing is ever destroyed.
+- **It installs new dependencies.** A requirement added in an update is
+  otherwise invisible until something imports it and fails at startup, which
+  reads as the update having broken the program.
+
+`steward/.env` and `steward/data/` are never touched by any of this. They hold a
+live bot token and an activity history Discord cannot rebuild.
+
+### Publishing a version
+
+```powershell
+python tools\release.py 0.2.1 --notes "Fixed the calendar double-posting"
+```
+
+Bumps `VERSION`, commits, tags `v0.2.1`, pushes both, and publishes a GitHub
+release if the `gh` CLI is there. It refuses to run against a dirty tree, refuses
+a version that is not newer than the current one, and refuses a tag that already
+exists. A tagged version has to match what is actually in the repository, and a
+tag that moves is worse than no tag.
+
+**Other people can only be updated from a public repository.** This one is
+private, so the release channel is dormant: the check reports "no public
+releases" rather than pretending to work. Making the repo public switches it on
+with no code change. Until then the only machines that can update are ones with
+a checkout and access.
 
 `START.bat` is the only thing you ever double-click. Everything else is a
 button on the page:

@@ -449,6 +449,28 @@ def ledger_restart():
     return ledger_start()
 
 
+@app.get("/api/update/check")
+def update_check():
+    """Talks to the network, so it is never called on page load. The page asks
+    when it is opened by a click and otherwise leaves it alone."""
+    import updates
+    return updates.check()
+
+
+@app.get("/api/version")
+def version_info():
+    import updates
+    return {"version": updates.version(), "git": updates.is_git_checkout(),
+            "repo": updates.remote_slug()}
+
+
+@app.post("/api/update/apply")
+def update_apply(payload: dict = Body(default={})):
+    import updates
+    result = updates.apply(discard_local=bool(payload.get("discard_local")))
+    return result
+
+
 @app.post("/api/restart")
 def restart_self():
     """Restart the setup program itself.
