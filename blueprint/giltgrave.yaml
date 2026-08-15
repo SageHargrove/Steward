@@ -794,6 +794,54 @@ automod:
     exempt_roles: [Dev, Admin, Mod]
 
 # ---------------------------------------------------------------------------
+# Levels
+#
+# Steward handles these itself rather than leaning on a second bot, so the
+# words members see are set here alongside everything else about the server.
+#
+# The curve is the one most people already have a feel for: getting from level
+# n to n+1 costs 5n^2 + 50n + 100 XP. Fast enough to feel responsive in the
+# first week, slow enough that the top of the board still means something a
+# year in.
+# ---------------------------------------------------------------------------
+levels:
+  enabled: true
+
+  # What a level is called where members can see it. "Level" is the safe
+  # default. Avoid reusing a word your game already shows players, or two
+  # unrelated numbers start looking like the same one.
+  noun: "Level"
+
+  xp_per_message: [15, 25]     # random, so it cannot be counted exactly
+  cooldown_seconds: 60         # one award a minute, which is what stops farming
+  voice_xp_per_minute: 5       # paid when someone leaves the channel
+
+  # reply  - answer the message that levelled them up. Quietest, and the default.
+  # channel - post every level-up to one channel. Gets old quickly.
+  # off    - award silently.
+  announce: reply
+  announce_only_rewards: true  # only speak up when a level actually unlocks a role
+
+  # Channels that earn nothing. Somewhere like an off-topic dumping ground, or
+  # a channel where one-word replies are the norm, will otherwise dominate.
+  no_xp_channels: []
+
+  # Tiers. Each one replaces the one below it, so nobody ends up wearing five
+  # at once. These are the star roles declared above.
+  # Pitched against a member who chats most days, which works out at roughly
+  # 600 XP a day once the cooldown is accounted for. First tier inside a day so
+  # the system announces itself early, last tier around eight months so the top
+  # of the board still means something. Anything steeper and nobody arrives.
+  rewards:
+    - { level: 2,  role: "★1" }     # about a day
+    - { level: 5,  role: "★2" }     # about a week
+    - { level: 10, role: "★3" }     # about a month
+    - { level: 15, role: "★4" }     # about three weeks after that
+    - { level: 22, role: "★5" }     # a couple of months
+    - { level: 30, role: "★6" }     # about four months
+    - { level: 40, role: "★7" }     # about eight months
+
+# ---------------------------------------------------------------------------
 # The steps no API can perform.
 #
 # Everything that Discord exposes an endpoint for is done automatically. What
@@ -885,27 +933,6 @@ manual_steps:
     after: >-
       Point its logging at your mod channel. Skip its join-role feature, the
       new-member questions already handle roles.
-
-  - kind: bot
-    title: "Lurkr"
-    why: >-
-      Levels and XP. Members expect a server to count something, and this is
-      the one members actually see. Free where most charge: message XP, voice
-      XP, role rewards and leaderboards are all outside the paywall, and rank
-      card styling is free too.
-    where:
-      - "Click your server name at the top left"
-      - "App Directory"
-      - "Search for Lurkr"
-      - "Add to Server, pick your server, Authorize"
-      - "Open its dashboard and add role rewards, one star role per tier"
-    after: >-
-      Two settings worth changing straight away. Point the role rewards at the
-      star roles rather than inventing new ones, so the tier a member holds and
-      the level the bot tracks stay the same thing. Then set which levels get
-      announced, because an announcement on every single level is the most
-      irritating thing a Discord bot does. Announcing only the levels that grant
-      a star is usually right.
 
   - kind: bot
     title: "Statbot"

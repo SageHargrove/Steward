@@ -977,6 +977,161 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+print("\nlevels")
+
+sys.path.insert(0, str(ROOT / "steward"))
+from levels import Curve, Levels                          # noqa: E402
+import digest as digestmod                                # noqa: E402
+
+
+@test("the curve rises and never stalls")
+def _():
+    c = Curve()
+    totals = [c.total_for(n) for n in range(0, 30)]
+    assert totals == sorted(totals), "levels must get more expensive, not less"
+    assert all(b > a for a, b in zip(totals, totals[1:])), "a level costs nothing"
+    for xp in (0, 99, 100, 254, 255, 10_000):
+        lv = c.level_at(xp)
+        assert c.total_for(lv) <= xp < c.total_for(lv + 1), (xp, lv)
+
+
+@test("the cooldown is what stops level farming")
+def _():
+    L = fresh_ledger()
+    lv = Levels(L, {"xp_per_message": [20, 20], "cooldown_seconds": 60})
+    for _ in range(20):
+        lv.award_message(1, 100)
+    assert L.xp_of(1, 100)["xp"] == 20, "twenty messages in a row should pay once"
+    L.close()
+
+
+@test("crossing several levels at once collects every reward passed")
+def _():
+    # A long voice session can jump two or three levels, and skipping the tiers
+    # in between would leave someone permanently missing a role.
+    L = fresh_ledger()
+    lv = Levels(L, {"voice_xp_per_minute": 50,
+                    "rewards": [{"level": 1, "role": "A"}, {"level": 2, "role": "B"},
+                                {"level": 3, "role": "C"}]})
+    r = lv.award_voice(1, 100, 60 * 20)
+    assert r["previous"] == 0 and r["level"] >= 3, r
+    assert r["roles_passed"] == ["A", "B", "C"], r["roles_passed"]
+    L.close()
+
+
+@test("opting out earns nothing and clears any level")
+def _():
+    L = fresh_ledger()
+    lv = Levels(L, {"xp_per_message": [50, 50], "cooldown_seconds": 0})
+    for _ in range(10):
+        lv.award_message(1, 100)
+    assert L.xp_of(1, 100)["xp"] > 0
+    L.forget(100)
+    assert L.xp_of(1, 100)["xp"] == 0, "forget-me left them on the leaderboard"
+    assert lv.award_message(1, 100) is None
+    L.close()
+
+
+@test("the leaderboard ranks by xp and numbers the positions")
+def _():
+    L = fresh_ledger()
+    lv = Levels(L, {"cooldown_seconds": 0})
+    for uid, amount in ((1, 500), (2, 900), (3, 100)):
+        L.add_xp(1, uid, amount)
+    board = lv.board(1)
+    assert [r["user_id"] for r in board] == [2, 1, 3], board
+    assert [r["position"] for r in board] == [1, 2, 3]
+    assert lv.rank(1, 2)["rank"] == 1
+    L.close()
+
+
+@test("the tiers are reachable by a real person")
+def _():
+    # A chatty member earns roughly 600 XP a day once the cooldown applies. If
+    # the top tier needs years, nobody ever sees it.
+    bp = core.load(BLUEPRINT)
+    rewards = bp["levels"]["rewards"]
+    c = Curve(**(bp["levels"].get("curve") or {}))
+    days = [c.total_for(r["level"]) / 600 for r in rewards]
+    assert days[0] <= 3, f"first tier takes {days[0]:.0f} days, too slow to hook anyone"
+    assert days[-1] <= 400, f"top tier takes {days[-1]:.0f} days, nobody gets there"
+    assert days == sorted(days), "tiers are out of order"
+
+
+# ---------------------------------------------------------------------------
+print("\ndigest")
+
+@test("a digest comes out of an empty server without falling over")
+def _():
+    L = fresh_ledger()
+    out = digestmod.build(L, 1)
+    assert out["week"]["this_week"]["joined"] == 0
+    assert out["chart"] is None, "should not draw a chart with no data"
+    L.close()
+
+
+@test("no chart is drawn until there is enough to show")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    for d in range(3):
+        L.record(guild_id=1, user_id=1, event_type="message", ts=now - d * 86400)
+    assert digestmod.build(L, 1)["chart"] is None, "three days is not a trend"
+    L.close()
+
+
+@test("cohort retention counts only posts made after that cohort joined")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    joined = now - 14 * 86400
+    L.touch_member(1, 100, joined)
+    # a message from before they joined must not count as coming back
+    L.record(guild_id=1, user_id=100, event_type="message", ts=joined - 86400)
+    rows = {c["week"]: c for c in digestmod.cohort_retention(L, 1)}
+    assert rows[2]["joined"] == 1 and rows[2]["retained"] == 0, rows[2]
+    L.record(guild_id=1, user_id=100, event_type="message", ts=now - 86400)
+    rows = {c["week"]: c for c in digestmod.cohort_retention(L, 1)}
+    assert rows[2]["retained"] == 1, rows[2]
+    L.close()
+
+
+@test("week-on-week deltas read correctly at the edges")
+def _():
+    assert "first week" in digestmod.delta(3, 0)
+    assert digestmod.delta(0, 0) == ""
+    assert "+50%" in digestmod.delta(3, 2)
+    assert "level with" in digestmod.delta(4, 4)
+
+
+# ---------------------------------------------------------------------------
+print("\nmoderation log")
+
+@test("the mod log never asks to read message content")
+def _():
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "intents.message_content = False" in src
+    # and it says so where a moderator would otherwise wonder
+    assert "Content is not recorded" in src
+
+
+@test("it works out who did it, not just what happened")
+def _():
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    for event in ("on_member_ban", "on_member_unban", "on_message_delete",
+                  "on_guild_channel_delete"):
+        assert f"async def {event}" in src, f"missing {event}"
+    assert "actor_for" in src, "no audit-log lookup, so every entry says 'someone'"
+
+
+@test("attribution roles are kept out of the role-change log")
+def _():
+    # They appear and vanish within a second, and would bury everything else.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "r.name not in self.ephemeral" in src
+
+
 print("\nweb layer")
 
 # The real server on a spare port, driven over real HTTP. This needs no test

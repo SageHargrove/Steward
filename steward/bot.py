@@ -1,18 +1,19 @@
-"""
-Steward, stage one: the activity ledger and nothing else.
+"""Steward: the ledger, levels, the weekly digest and the moderation log.
 
-It records events and offers three commands. It posts no digests, runs no
-calendar, detects no decay. Those are built later on top of the history this
-accumulates, and they are only worth building once there is history.
+One bot rather than four. A server that would otherwise install a leveling bot,
+a stats bot and a logging bot ends up with three copies of its own activity in
+three companies' databases, and this already has the data.
 
-Notably it does NOT request the MESSAGE_CONTENT intent. on_message fires
-without it; only the content field comes back empty, and the ledger records
-who posted where and when rather than what was said. That means less to
-protect, no annual reapplication once the bot passes 10,000 users, and an
-honest answer when a member asks what is stored.
+It does NOT request the MESSAGE_CONTENT intent, and that is a deliberate limit
+rather than an oversight. on_message fires without it; only the content field
+comes back empty. So the ledger records who posted where and when, levels come
+from the fact of posting rather than what was posted, and the moderation log
+reports that a message was deleted without quoting it. Less to protect, no
+annual reapplication past 10,000 users, and an honest answer when a member asks
+what is stored.
 
 Run:
-    python bot.py
+    python bot.py          (or START-LEDGER.bat, which installs what it needs)
 """
 
 from __future__ import annotations
@@ -28,7 +29,10 @@ from discord import app_commands
 from discord.ext import tasks
 from dotenv import load_dotenv
 
+import digest
+import modlog
 from ledger import Ledger
+from levels import Levels
 
 load_dotenv()
 
@@ -36,6 +40,7 @@ TOKEN = os.environ.get("DISCORD_TOKEN")
 DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
 REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
+MOD_CHANNEL = os.environ.get("MOD_CHANNEL", "mod-log")
 BLUEPRINT = os.environ.get("STEWARD_BLUEPRINT", "../blueprint/giltgrave.yaml")
 
 # The status message identifies itself by its title, so restarts reuse the
@@ -48,6 +53,19 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
 log = logging.getLogger("steward")
+
+
+def read_blueprint(path: str) -> dict:
+    """The blueprint, so the bot and the server agree on names and rewards."""
+    try:
+        import yaml
+        with open(path, encoding="utf-8") as fh:
+            return yaml.safe_load(fh) or {}
+    except FileNotFoundError:
+        log.warning("no blueprint at %s; levels and attribution roles are off", path)
+    except Exception as e:                                   # noqa: BLE001
+        log.warning("could not read %s (%s)", path, e)
+    return {}
 
 
 def ephemeral_roles(path: str) -> dict[str, str]:
@@ -96,7 +114,11 @@ class Steward(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.ledger = Ledger(DB_PATH)
         self.ephemeral = ephemeral_roles(BLUEPRINT)
+        self.blueprint = read_blueprint(BLUEPRINT)
+        self.levels = Levels(self.ledger, self.blueprint.get("levels") or {})
         self.started_at = int(time.time())
+        # user id -> when they joined voice, for paying out on leave
+        self.voice_since: dict[int, int] = {}
 
     async def absorb_attribution(self, member: discord.Member) -> bool:
         """Write down how someone said they found us, then take the role back
@@ -132,6 +154,7 @@ class Steward(discord.Client):
         await self.tree.sync()
         self.nightly_purge.start()
         self.heartbeat.start()
+        self.weekly_digest.start()
 
     # -- backfill ---------------------------------------------------------
 
@@ -184,6 +207,12 @@ class Steward(discord.Client):
         )
         self.ledger.mark(message.guild.id, message.author.id, "first_message_at", now)
 
+        result = self.levels.award_message(
+            message.guild.id, message.author.id, getattr(message.channel, "name", None))
+        if result:
+            await self.grant_level_roles(message.author, result["roles_passed"])
+            await self.announce_level(message, message.author, result)
+
     async def on_thread_create(self, thread: discord.Thread):
         # Forum posts arrive here. Bug reports and suggestions are threads, so
         # without this the two channels that matter most look silent.
@@ -219,6 +248,17 @@ class Steward(discord.Client):
                            event_type="leave", ts=now)
         self.ledger.mark(member.guild.id, member.id, "last_left_at", now, first_only=False)
 
+        # Discord fires the same event for leaving and being kicked, so the
+        # audit log is the only way to tell them apart.
+        record = await modlog.actor_for(member.guild, discord.AuditLogAction.kick,
+                                        member.id)
+        if record and (now - int(record.created_at.timestamp())) < 10:
+            await self.mod_log(member.guild, modlog.entry(
+                "kick", "Member kicked",
+                [f"**By:** {record.user}",
+                 f"**Reason:** {record.reason}" if record.reason else None],
+                who=member))
+
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         # There is no onboarding-completed event. The member flag flipping is
         # the only signal, so watch for the transition.
@@ -233,8 +273,46 @@ class Steward(discord.Client):
         # The attribution answer arrives as a role appearing. Write it down and
         # take it straight back off; only compare when something actually
         # changed, since this event also fires for nicknames and avatars.
-        if self.ephemeral and {r.id for r in before.roles} != {r.id for r in after.roles}:
+        roles_changed = {r.id for r in before.roles} != {r.id for r in after.roles}
+        if self.ephemeral and roles_changed:
             await self.absorb_attribution(after)
+
+        if roles_changed:
+            gained, lost = modlog.describe_roles(before, after)
+            # Ignore the attribution roles, which appear and vanish within a
+            # second and would otherwise bury the log in noise.
+            gained = [r for r in gained if r.name not in self.ephemeral]
+            lost = [r for r in lost if r.name not in self.ephemeral]
+            if gained or lost:
+                record = await modlog.actor_for(
+                    after.guild, discord.AuditLogAction.member_role_update, after.id)
+                await self.mod_log(after.guild, modlog.entry(
+                    "roles", "Roles changed",
+                    ["**Added:** " + ", ".join(r.name for r in gained) if gained else None,
+                     "**Removed:** " + ", ".join(r.name for r in lost) if lost else None,
+                     f"**By:** {record.user}" if record else None],
+                    who=after))
+
+        if before.nick != after.nick:
+            await self.mod_log(after.guild, modlog.entry(
+                "nickname", "Nickname changed",
+                [f"**From:** {before.nick or before.name}",
+                 f"**To:** {after.nick or after.name}"], who=after))
+
+        if before.timed_out_until != after.timed_out_until:
+            if after.timed_out_until:
+                record = await modlog.actor_for(
+                    after.guild, discord.AuditLogAction.member_update, after.id)
+                until = int(after.timed_out_until.timestamp())
+                await self.mod_log(after.guild, modlog.entry(
+                    "timeout", "Member timed out",
+                    [f"**Until:** <t:{until}:f> (<t:{until}:R>)",
+                     f"**By:** {record.user}" if record else None,
+                     f"**Reason:** {record.reason}" if record and record.reason else None],
+                    who=after))
+            else:
+                await self.mod_log(after.guild, modlog.entry(
+                    "timeout_over", "Timeout lifted", [], who=after))
 
     async def on_voice_state_update(self, member, before, after):
         if member.bot:
@@ -243,13 +321,137 @@ class Steward(discord.Client):
         if before.channel is None and after.channel is not None:
             self.ledger.record(guild_id=gid, user_id=member.id,
                                channel_id=after.channel.id, event_type="voice_join")
+            self.voice_since[member.id] = int(time.time())
         elif before.channel is not None and after.channel is None:
             self.ledger.record(guild_id=gid, user_id=member.id,
                                channel_id=before.channel.id, event_type="voice_leave")
+            # Paid on the way out, so time in an empty channel with a muted mic
+            # still counts but cannot be collected repeatedly.
+            since = self.voice_since.pop(member.id, None)
+            if since:
+                result = self.levels.award_voice(gid, member.id, int(time.time()) - since)
+                if result:
+                    await self.grant_level_roles(member, result["roles_passed"])
         elif before.channel and after.channel and before.channel.id != after.channel.id:
             self.ledger.record(guild_id=gid, user_id=member.id,
                                channel_id=after.channel.id, event_type="voice_move",
                                **{"from": before.channel.id})
+
+    # -- moderation log ---------------------------------------------------
+
+    async def mod_log(self, guild, embed):
+        channel = discord.utils.get(guild.text_channels, name=MOD_CHANNEL)
+        if channel is None:
+            return
+        try:
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except discord.Forbidden:
+            log.warning("cannot post in #%s; moderation logging is off", MOD_CHANNEL)
+        except discord.HTTPException:
+            pass
+
+    async def on_member_ban(self, guild, user):
+        record = await modlog.actor_for(guild, discord.AuditLogAction.ban, user.id)
+        await self.mod_log(guild, modlog.entry(
+            "ban", "Member banned",
+            [f"**By:** {record.user}" if record else None,
+             f"**Reason:** {record.reason}" if record and record.reason else None],
+            who=user))
+
+    async def on_member_unban(self, guild, user):
+        record = await modlog.actor_for(guild, discord.AuditLogAction.unban, user.id)
+        await self.mod_log(guild, modlog.entry(
+            "unban", "Member unbanned",
+            [f"**By:** {record.user}" if record else None], who=user))
+
+    async def on_guild_channel_create(self, channel):
+        record = await modlog.actor_for(channel.guild,
+                                        discord.AuditLogAction.channel_create)
+        await self.mod_log(channel.guild, modlog.entry(
+            "channel", "Channel created",
+            [f"**Channel:** #{channel.name}",
+             f"**By:** {record.user}" if record else None]))
+
+    async def on_guild_channel_delete(self, channel):
+        record = await modlog.actor_for(channel.guild,
+                                        discord.AuditLogAction.channel_delete)
+        await self.mod_log(channel.guild, modlog.entry(
+            "channel", "Channel deleted",
+            [f"**Channel:** #{channel.name}",
+             f"**By:** {record.user}" if record else None]))
+
+    async def on_guild_role_delete(self, role):
+        record = await modlog.actor_for(role.guild, discord.AuditLogAction.role_delete)
+        await self.mod_log(role.guild, modlog.entry(
+            "role", "Role deleted",
+            [f"**Role:** {role.name}", f"**By:** {record.user}" if record else None]))
+
+    async def on_message_delete(self, message):
+        # Metadata only. The content is not read, so it cannot be quoted here,
+        # which is the deliberate trade for never asking to read messages.
+        if message.guild is None or message.author.bot:
+            return
+        record = await modlog.actor_for(message.guild,
+                                        discord.AuditLogAction.message_delete,
+                                        message.author.id)
+        by = record.user if record else None
+        await self.mod_log(message.guild, modlog.entry(
+            "message", "Message deleted",
+            [f"**In:** #{getattr(message.channel, 'name', 'unknown')}",
+             f"**Deleted by:** {by}" if by and by.id != message.author.id
+             else "**Deleted by:** the author",
+             f"**Attachments:** {len(message.attachments)}" if message.attachments else None,
+             "_Content is not recorded, by design._"],
+            who=message.author))
+
+    # -- levels -----------------------------------------------------------
+
+    async def grant_level_roles(self, member, names):
+        """Give the roles a level unlocked, and take back the tier below it.
+
+        Tiers replace each other; holding ★1 through ★5 at once would be a
+        member list full of noise.
+        """
+        if not names:
+            return
+        tiers = set(self.levels.rewards.values())
+        add = [discord.utils.get(member.guild.roles, name=n) for n in names]
+        add = [r for r in add if r and r not in member.roles]
+        drop = [r for r in member.roles if r.name in tiers and r not in add]
+        try:
+            if add:
+                await member.add_roles(*add, reason="level reward")
+            if drop:
+                await member.remove_roles(*drop, reason="replaced by a higher tier")
+        except discord.Forbidden:
+            log.warning("cannot manage level roles for %s. The bot needs Manage Roles "
+                        "and its own role above them.", member.id)
+        except discord.HTTPException as e:
+            log.warning("could not update level roles: %s", e)
+
+    async def announce_level(self, message, member, result):
+        if self.levels.announce == "off":
+            return
+        if self.levels.only_announce_rewards and not result["roles_passed"]:
+            return
+        noun = self.levels.noun
+        earned = result["roles_passed"]
+        text = f"**{member.display_name}** reached {noun} {result['level']}"
+        text += f" and unlocked **{earned[-1]}**." if earned else "."
+        try:
+            if self.levels.announce == "channel" and self.levels.announce_channel:
+                ch = discord.utils.get(member.guild.text_channels,
+                                       name=self.levels.announce_channel)
+                if ch:
+                    await ch.send(text, allowed_mentions=discord.AllowedMentions.none())
+                    return
+            if message is not None:
+                # Replying in place rather than announcing to a channel: a
+                # level-up firehose is the most irritating thing a bot does.
+                await message.reply(text, mention_author=False,
+                                    allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            pass
 
     # -- visible proof of life --------------------------------------------
 
@@ -329,6 +531,96 @@ class Steward(discord.Client):
         except Exception:                                    # noqa: BLE001
             pass
         await super().close()
+
+    # -- weekly digest ----------------------------------------------------
+
+    async def build_digest(self, guild):
+        data = digest.build(self.ledger, guild.id)
+        w, last = data["week"]["this_week"], data["week"]["last_week"]
+        f = data["funnel"]
+        joined = f["joined"] or 0
+        pct = lambda n: f"{n / joined * 100:.0f}%" if joined else "n/a"
+
+        e = discord.Embed(
+            title="This week",
+            colour=0xC9A227,
+            description="\n".join([
+                f"**{w['joined']}** joined{digest.delta(w['joined'], last['joined'])}",
+                f"**{w['posted']}** people posted"
+                f"{digest.delta(w['posted'], last['posted'])}",
+                f"**{w['messages']:,}** messages"
+                f"{digest.delta(w['messages'], last['messages'])}",
+            ]))
+
+        e.add_field(
+            name="Of this week's arrivals",
+            value=("\n".join([
+                f"{f['onboarded']} finished the questions ({pct(f['onboarded'])})",
+                f"{f['posted']} posted at least once ({pct(f['posted'])})",
+                f"{f['left_server']} already left ({pct(f['left_server'])})"])
+                if joined else "Nobody joined this week."), inline=False)
+
+        kept = [c for c in data["cohorts"] if c["rate"] is not None]
+        if kept:
+            e.add_field(
+                name="Did earlier arrivals come back",
+                value="\n".join(
+                    f"{c['week']} week{'s' if c['week'] != 1 else ''} ago: "
+                    f"**{c['retained']}/{c['joined']}** ({c['rate'] * 100:.0f}%)"
+                    for c in kept[-4:]), inline=False)
+
+        if data["attribution"]:
+            total = sum(data["attribution"].values())
+            e.add_field(
+                name="How they found you",
+                value="\n".join(f"{k}: **{v}** ({v / total * 100:.0f}%)"
+                                for k, v in data["attribution"].items()), inline=False)
+
+        if data["chart"] is None:
+            # Not enough shape to plot yet, so show it in text rather than
+            # drawing a line through three points.
+            e.add_field(
+                name="Last 4 weeks",
+                value="\n".join([
+                    f"`joins    {digest.spark(data['series']['joins'])}`",
+                    f"`posters  {digest.spark(data['series']['posters'])}`"]),
+                inline=False)
+
+        e.set_footer(text=f"{data['counts']['events']:,} events recorded")
+        return e, data["chart"]
+
+    async def post_digest(self, guild):
+        channel = discord.utils.get(guild.text_channels, name=REPORT_CHANNEL)
+        if channel is None:
+            return False
+        embed, chart = await self.build_digest(guild)
+        files = [discord.File(chart, filename="week.png")] if chart else []
+        if chart:
+            embed.set_image(url="attachment://week.png")
+        try:
+            await channel.send(embed=embed, files=files,
+                               allowed_mentions=discord.AllowedMentions.none())
+            return True
+        except discord.HTTPException as e:
+            log.warning("could not post the digest: %s", e)
+            return False
+
+    @tasks.loop(hours=6)
+    async def weekly_digest(self):
+        # Checked against a stored timestamp rather than a weekday, so a
+        # restart never double-posts and a bot that was off for a fortnight
+        # still catches up exactly once.
+        last = int(self.ledger.get_meta("last_digest_at", 0) or 0)
+        if int(time.time()) - last < 7 * 86400:
+            return
+        for guild in self.guilds:
+            if await self.post_digest(guild):
+                log.info("weekly digest posted in %s", guild.name)
+        self.ledger.set_meta("last_digest_at", int(time.time()))
+
+    @weekly_digest.before_loop
+    async def _wait_digest(self):
+        await self.wait_until_ready()
 
     # -- retention --------------------------------------------------------
 
@@ -438,6 +730,86 @@ async def ledger_status(interaction: discord.Interaction):
         lines += [f"{k}: {v} ({v / total * 100:.0f}%)" for k, v in attribution.items()]
     lines += ["", *[f"- {k}: {v}" for k, v in c["by_type"].items()]]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="rank", description="See your level and how far into the next one you are.")
+@app_commands.describe(member="Whose rank to look up. Yours if left blank.")
+async def rank(interaction: discord.Interaction, member: discord.Member | None = None):
+    if not client.levels.enabled:
+        await interaction.response.send_message("Levels are switched off here.",
+                                                ephemeral=True)
+        return
+    who = member or interaction.user
+    r = client.levels.rank(interaction.guild_id, who.id)
+    noun = client.levels.noun
+
+    if not r["xp"]:
+        await interaction.response.send_message(
+            f"{who.display_name} has not earned any {noun.lower()}s yet."
+            if member else f"You have not earned any {noun.lower()}s yet. Post something.",
+            ephemeral=True)
+        return
+
+    e = discord.Embed(title=f"{who.display_name}", colour=who.colour or discord.Colour.default())
+    e.add_field(name=noun, value=str(r["level"]))
+    e.add_field(name="Rank", value=f"#{r['rank']} of {r['total_ranked']}")
+    e.add_field(name="Total XP", value=f"{r['xp']:,}")
+    e.add_field(
+        name=f"Progress to {noun} {r['level'] + 1}",
+        value=f"`{client.levels.bar(r['into'], r['needed'])}`  "
+              f"{r['into']:,} / {r['needed']:,}",
+        inline=False)
+    if r["voice_seconds"] >= 3600:
+        e.add_field(name="In voice", value=f"{r['voice_seconds'] // 3600} hours",
+                    inline=False)
+    e.set_thumbnail(url=who.display_avatar.url)
+    await interaction.response.send_message(embed=e)
+
+
+@client.tree.command(name="leaderboard", description="The top of the server by level.")
+@app_commands.describe(page="Which page, ten at a time.")
+async def leaderboard(interaction: discord.Interaction, page: int = 1):
+    if not client.levels.enabled:
+        await interaction.response.send_message("Levels are switched off here.",
+                                                ephemeral=True)
+        return
+    page = max(1, page)
+    rows = client.levels.board(interaction.guild_id, limit=10, offset=(page - 1) * 10)
+    if not rows:
+        await interaction.response.send_message(
+            "Nobody has earned anything yet." if page == 1 else "No such page.",
+            ephemeral=True)
+        return
+
+    noun = client.levels.noun
+    lines = []
+    for row in rows:
+        member = interaction.guild.get_member(row["user_id"])
+        # Somebody who has left still holds their place; showing the raw id
+        # would be worse than saying so.
+        name = member.display_name if member else "(left the server)"
+        lines.append(f"`{row['position']:>2}.` **{name}** — {noun} {row['level']} "
+                     f"({row['xp']:,} XP)")
+
+    total = client.ledger.ranked_count(interaction.guild_id)
+    e = discord.Embed(title=f"Leaderboard", description="\n".join(lines),
+                      colour=0xC9A227)
+    e.set_footer(text=f"Page {page} of {max(1, (total + 9) // 10)}  ·  {total} ranked")
+    await interaction.response.send_message(embed=e)
+
+
+@client.tree.command(name="digest", description="Post this week's numbers now. Staff only.")
+async def digest_now(interaction: discord.Interaction):
+    perms = interaction.user.guild_permissions if interaction.guild else None
+    if not perms or not perms.manage_guild:
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    ok = await client.post_digest(interaction.guild)
+    await interaction.followup.send(
+        f"Posted in #{REPORT_CHANNEL}." if ok
+        else f"Could not post. Is there a #{REPORT_CHANNEL} the bot can write to?",
+        ephemeral=True)
 
 
 @client.tree.command(name="sweep-roles",

@@ -212,6 +212,40 @@ silences the setup-tip nagging, sets an AFK channel and turns on the boost
 progress bar. All of those have endpoints that most guides tell you to click
 through by hand.
 
+## One bot instead of four
+
+A server that installs a leveling bot, a stats bot and a logging bot ends up
+with three copies of its own activity sitting in three companies' databases.
+Steward already has the data, so it does those jobs too.
+
+**Levels.** XP per message with a cooldown so it cannot be farmed, XP for time
+in voice, `/rank` and `/leaderboard`, and role rewards wired to the star tiers.
+The word members see is set in the blueprint: call a level a Level, a Rank, or
+anything that does not collide with a number your game already shows players.
+Level-ups reply to the message that caused them rather than announcing into a
+channel, because a level-up firehose is the fastest way to make people mute you.
+
+**The weekly digest.** Joins, posters and messages against last week, this
+week's join funnel, and how many of each earlier week's arrivals came back.
+That last one is the number the whole project is about, and it needs a history
+nobody else kept. `/digest` posts it on demand.
+
+**Charts**, when there is enough to plot. Two stacked panels rather than one
+chart with two y-axes: joins and active posters live on different scales, and
+twin axes would let the drawing imply a relationship the data does not have.
+Below ten days of activity it prints numbers and a text sparkline instead,
+because a line through three points says less than the three numbers.
+matplotlib is optional; without it the digest still posts.
+
+**The moderation log.** Bans, kicks, timeouts, role changes, nickname changes,
+channel and role deletions, each with who did it, read from the audit log.
+Message deletions are logged as metadata only. Steward never asks Discord for
+permission to read message content, so it cannot quote a deleted message, and
+the log says so rather than leaving a moderator wondering.
+
+What is deliberately left to Wick: anti-nuke and CAPTCHA verification. Those
+are security-critical and hard, and a half-built version is worse than none.
+
 ## Attribution without cluttering profiles
 
 "How did you find us?" is the one number Discord will not give you: Server

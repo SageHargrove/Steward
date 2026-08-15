@@ -69,6 +69,19 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Experience, kept apart from the event stream on purpose. Events expire under
+-- the retention policy; somebody's level must not quietly fall when they do.
+CREATE TABLE IF NOT EXISTS xp (
+    guild_id      INTEGER NOT NULL,
+    user_id       INTEGER NOT NULL,
+    xp            INTEGER NOT NULL DEFAULT 0,
+    level         INTEGER NOT NULL DEFAULT 0,
+    last_award_at INTEGER NOT NULL DEFAULT 0,   -- for the anti-spam cooldown
+    voice_seconds INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS ix_xp_board ON xp (guild_id, xp DESC);
 """
 
 
@@ -93,6 +106,23 @@ class Ledger:
         for column, decl in (("attribution", "TEXT"),):
             if column not in have:
                 self.db.execute(f"ALTER TABLE members ADD COLUMN {column} {decl}")
+        have_xp = {r["name"] for r in self.db.execute("PRAGMA table_info(xp)")}
+        for column, decl in (("voice_seconds", "INTEGER NOT NULL DEFAULT 0"),):
+            if have_xp and column not in have_xp:
+                self.db.execute(f"ALTER TABLE xp ADD COLUMN {column} {decl}")
+
+    # -- small key/value bookkeeping --------------------------------------
+
+    def get_meta(self, key: str, default=None):
+        row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_meta(self, key: str, value):
+        self.db.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, str(value)))
+        self.db.commit()
 
     # -- attribution ------------------------------------------------------
 
@@ -114,6 +144,71 @@ class Ledger:
             "WHERE guild_id = ? AND attribution IS NOT NULL "
             "GROUP BY attribution ORDER BY n DESC", (guild_id,))}
 
+    # -- experience -------------------------------------------------------
+
+    def add_xp(self, guild_id: int, user_id: int, amount: int,
+               cooldown: int = 0, now: int | None = None) -> int | None:
+        """Add XP, honouring a per-user cooldown.
+
+        Returns the new total, or None if the cooldown blocked it. The cooldown
+        is what stops someone farming levels by posting "a" fifty times.
+        """
+        if user_id in self._opted_out or amount <= 0:
+            return None
+        now = now or int(time.time())
+        row = self.db.execute(
+            "SELECT xp, last_award_at FROM xp WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)).fetchone()
+        if row and cooldown and now - row["last_award_at"] < cooldown:
+            return None
+
+        total = (row["xp"] if row else 0) + amount
+        self.db.execute(
+            "INSERT INTO xp (guild_id, user_id, xp, last_award_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (guild_id, user_id) DO UPDATE SET "
+            "  xp = excluded.xp, last_award_at = excluded.last_award_at",
+            (guild_id, user_id, total, now))
+        self.db.commit()
+        return total
+
+    def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int):
+        if user_id in self._opted_out or seconds <= 0:
+            return
+        self.db.execute(
+            "INSERT INTO xp (guild_id, user_id, voice_seconds) VALUES (?, ?, ?) "
+            "ON CONFLICT (guild_id, user_id) DO UPDATE SET "
+            "  voice_seconds = voice_seconds + excluded.voice_seconds",
+            (guild_id, user_id, seconds))
+        self.db.commit()
+
+    def set_level(self, guild_id: int, user_id: int, level: int):
+        self.db.execute("UPDATE xp SET level = ? WHERE guild_id = ? AND user_id = ?",
+                        (level, guild_id, user_id))
+        self.db.commit()
+
+    def xp_of(self, guild_id: int, user_id: int) -> dict:
+        row = self.db.execute(
+            "SELECT xp, level, voice_seconds FROM xp WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)).fetchone()
+        if not row:
+            return {"xp": 0, "level": 0, "voice_seconds": 0, "rank": None}
+        rank = self.db.execute(
+            "SELECT COUNT(*) + 1 AS n FROM xp WHERE guild_id = ? AND xp > ?",
+            (guild_id, row["xp"])).fetchone()["n"]
+        return {"xp": row["xp"], "level": row["level"],
+                "voice_seconds": row["voice_seconds"], "rank": rank}
+
+    def leaderboard(self, guild_id: int, limit: int = 10, offset: int = 0) -> list[dict]:
+        return [dict(r) for r in self.db.execute(
+            "SELECT user_id, xp, level FROM xp WHERE guild_id = ? AND xp > 0 "
+            "ORDER BY xp DESC, user_id ASC LIMIT ? OFFSET ?",
+            (guild_id, limit, offset))]
+
+    def ranked_count(self, guild_id: int) -> int:
+        return self.db.execute(
+            "SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > 0",
+            (guild_id,)).fetchone()["n"]
+
     # -- opt-out ----------------------------------------------------------
 
     def is_opted_out(self, user_id: int) -> bool:
@@ -127,6 +222,9 @@ class Ledger:
         events = cur.rowcount
         cur = self.db.execute("DELETE FROM members WHERE user_id = ?", (user_id,))
         members = cur.rowcount
+        # Levels are personal data too, and leaving them would put a deleted
+        # member back on the leaderboard.
+        self.db.execute("DELETE FROM xp WHERE user_id = ?", (user_id,))
         self.db.execute(
             "INSERT OR REPLACE INTO opt_outs (user_id, created_at) VALUES (?, ?)",
             (user_id, now))

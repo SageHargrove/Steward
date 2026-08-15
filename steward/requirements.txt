@@ -1,4 +1,7 @@
 discord.py>=2.4.0
 python-dotenv>=1.0.1
-# Steward reads the blueprint to learn which roles are ephemeral.
+# Steward reads the blueprint to learn role rewards and which roles are ephemeral.
 PyYAML>=6.0.2
+# Charts in the weekly digest. Optional: without it the digest still posts, with
+# the numbers and a text sparkline instead of an image.
+matplotlib>=3.8
