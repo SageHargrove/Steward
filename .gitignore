@@ -15,3 +15,6 @@ venv/
 # The working copy of the font, converted from the game's bundled woff2.
 # Regenerate it rather than committing a binary nobody diffs.
 brand/cinzel.ttf
+
+# Downloaded OFL faces. brand/getfonts.py fetches them.
+brand/fonts/
