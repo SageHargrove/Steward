@@ -20,6 +20,8 @@ variables:
   game: Giltgrave
   # What the community calls itself. Used in channel topics.
   players: climbers
+  # One line describing the game, used in the welcome post.
+  tagline: "A tower that remembers the nameless. Climb it, or be forgotten in it."
 
 guild:
   # Community mode. The provisioner enables this for you.
@@ -705,3 +707,148 @@ automod:
     actions:
       - block_member_interaction: true
     exempt_roles: [Dev, Admin, Mod]
+
+# ---------------------------------------------------------------------------
+# The steps no API can perform.
+#
+# Everything that Discord exposes an endpoint for is done automatically. What
+# is left is genuinely client-only, plus installing other bots, which is a
+# permission flow needing a human to press Authorize.
+#
+# This lives here rather than in code so you can edit it, and so a blueprint
+# for a different community can carry its own list. The setup page reads it
+# fresh every time, so changes show up without restarting anything.
+# ---------------------------------------------------------------------------
+manual_steps:
+
+  - kind: setting
+    title: "Rules Screening"
+    why: >-
+      Makes every new member tick a box agreeing to the rules before they can
+      post. The long version is already posted and pinned in your rules
+      channel; this is the short version Discord shows at the door. There is no
+      endpoint for it, so this is the one piece with real typing.
+    where:
+      - "Click your server name at the top left"
+      - "Server Settings, then Safety Setup"
+      - "Rules Screening, then Set Up Rules Screening"
+      - "Paste one rule per box. Each block below is a title on the first line and its description underneath."
+      - "Save. 16 is Discord's maximum and there are exactly 16 here."
+    copy_file: content/rules-screening.md
+    copy_label: "Copy all 16 rules"
+    after: >-
+      Edit content/rules-screening.md to change these, and content/rules.md for
+      the long version in the channel. Keep the two in step.
+
+  - kind: setting
+    title: "Server Guide"
+    why: >-
+      The checklist a new member sees on their first visit. Different from the
+      welcome screen, which is already set for you. Worth five minutes: it is
+      the difference between someone posting and someone lurking.
+    where:
+      - "Server name at the top left, Server Settings"
+      - "Onboarding, then the Server Guide tab"
+      - "Under New Member To-Dos, add your welcome channel, your general chat, and your bug channel"
+      - "Give each one a line saying what to DO there, not what it is"
+      - "Under Resources, add your rules and announcements channels"
+      - "Save Changes"
+    after: "Keep the to-dos to three. A checklist of ten reads as homework."
+
+  - kind: setting
+    title: "Raid Protection and DM filtering"
+    why: >-
+      Raid protection spots join floods and makes new arrivals solve a CAPTCHA
+      for an hour. The DM filter scans direct messages from other members for
+      scams, which is the most common way a small server gets hurt. Neither has
+      an endpoint.
+    where:
+      - "Server name at the top left, Server Settings, Safety Setup"
+      - "Turn on Raid Protection"
+      - "Set Direct Message Spam Filter to Filter All Messages"
+      - "Check the alerts channel is pointed at your mod channel"
+    after: "Turn these on before you invite anyone, not after the first raid."
+
+  - kind: setting
+    title: "Give yourself the top role"
+    why: >-
+      The roles exist but Discord will not assign one to you. Until you do
+      this, nothing marks you as staff and your name shows in the default
+      colour.
+    where:
+      - "Server name at the top left, Server Settings, Members"
+      - "Find yourself in the list"
+      - "Press the + next to your name and pick your staff role"
+      - "While you are here, drag the bot's own role to just underneath it"
+    after: >-
+      Moving the bot's role up is what lets this tool order the rest of the
+      roles for you. A bot cannot move anything above itself, so if the run
+      said it skipped ordering, this is the fix.
+
+  - kind: setting
+    title: "Make an invite link that does not expire"
+    why: >-
+      Discord's default invite dies after 7 days, which is how servers end up
+      with a dead link on their store page and no idea why nobody joins.
+    where:
+      - "Right-click your general channel, then Invite People"
+      - "Click Edit invite link"
+      - "Set Expire After to Never and Max Number of Uses to No Limit"
+      - "Generate a New Link and keep it somewhere you will find it again"
+
+  - kind: bot
+    title: "Wick"
+    why: >-
+      Security. Anti-nuke, CAPTCHA verification, and a join gate that filters
+      brand-new and avatarless accounts. The one bot worth installing before
+      you have members rather than after.
+    where:
+      - "Click your server name at the top left"
+      - "App Directory"
+      - "Search for Wick"
+      - "Add to Server, pick your server, Authorize"
+    after: >-
+      Set its join gate to reject accounts under 7 days old and point its
+      logging at your mod channel. Leave its automod off; yours is already
+      configured and two filters fighting is worse than one.
+
+  - kind: bot
+    title: "Sapphire"
+    why: >-
+      Moderation, reaction roles and logging. Genuinely free, and it covers
+      what MEE6 charges for.
+    where:
+      - "Server name at the top left"
+      - "App Directory"
+      - "Search for Sapphire"
+      - "Add to Server, pick your server, Authorize"
+    after: >-
+      Point its logging at your mod channel. Skip its join-role feature, the
+      new-member questions already handle roles.
+
+  - kind: bot
+    title: "Statbot"
+    optional: true
+    why: >-
+      Charts and member counters. Its free tier keeps only 30 days of history,
+      which is exactly why the ledger exists alongside it.
+    where:
+      - "Server name at the top left"
+      - "App Directory"
+      - "Search for Statbot"
+      - "Add to Server, pick your server, Authorize"
+
+  - kind: bot
+    title: "Steamy"
+    optional: true
+    why: >-
+      Posts new Steam reviews and weekly rating digests into Discord. Install
+      it the day {{game}} has a Steam page, and not before.
+    where:
+      - "Server name at the top left"
+      - "App Directory"
+      - "Search for Steamy"
+      - "Add to Server, pick your server, Authorize"
+    after: >-
+      Point it at your patch notes channel rather than announcements. Reviews
+      are a steady drip and announcements should stay rare enough to matter.

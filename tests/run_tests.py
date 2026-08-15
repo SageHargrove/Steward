@@ -487,17 +487,73 @@ print("\nmanual steps")
 
 @test("every step says where to click")
 def _():
-    steps = core.manual_steps("123", game="Giltgrave")
+    steps = core.manual_steps("123", core.load(BLUEPRINT))
     assert len(steps) >= 8
     assert all(s.get("where") for s in steps), "a step with no click path is useless"
-    assert any(s.get("copy") for s in steps), "the rules draft should be copyable"
+    assert all(s.get("why") for s in steps), "a step with no reason is an order"
+
+@test("the screening rules come from a file, not from code")
+def _():
+    # Baked into a function, fixing a typo meant editing Python and restarting
+    # the setup page, which silently served the old text for a while.
+    bp = core.load(BLUEPRINT)
+    step = next(s for s in core.manual_steps(None, bp) if s.get("copy"))
+    entries = [e for e in step["copy"].split(chr(10) + chr(10)) if e.strip()]
+    assert len(entries) == 16, f"Discord allows 16 rules, file has {len(entries)}"
+    for e in entries:
+        lines = e.strip().split(chr(10))
+        assert len(lines) >= 2, f"rule needs a title and a description: {e!r}"
+        assert len(lines[0]) <= 100, f"title too long: {lines[0]!r}"
+    # and editing the file changes the output without touching code
+    path = Path(bp["_base_dir"]) / "content" / "rules-screening.md"
+    assert path.is_file(), path
+
+@test("the checklist lives in the blueprint and is read fresh")
+def _():
+    bp = core.load(BLUEPRINT)
+    assert bp.get("manual_steps"), "the checklist should be blueprint data"
+    edited = {**bp, "manual_steps": [{"kind": "setting", "title": "Only step",
+                                      "why": "because", "where": ["click"]}]}
+    out = core.manual_steps(None, edited)
+    assert [s["title"] for s in out] == ["Only step"], out
+
+@test("checklist text gets variables filled in")
+def _():
+    bp = core.load(BLUEPRINT)
+    bp = {**bp, "variables": {**bp.get("variables", {}), "game": "One Trick"}}
+    text = " ".join(s["why"] + " ".join(s.get("where", []))
+                    for s in core.manual_steps(None, bp))
+    assert "{{game}}" not in text, "a placeholder reached the checklist"
 
 @test("no invented invite URLs for third-party bots")
 def _():
     # A wrong invite link sends someone's server to the wrong application.
-    for s in core.manual_steps("123"):
+    for s in core.manual_steps("123", core.load(BLUEPRINT)):
         if s.get("url"):
             assert "client_id=123" in s["url"], f"unexpected url: {s['url']}"
+
+@test("nothing published to Discord uses an em dash")
+def _():
+    # A house style rule, and the content files are the one place text goes
+    # out under someone else's name.
+    bp = core.load(BLUEPRINT)
+    base = Path(bp["_base_dir"])
+    for f in sorted(base.glob("content/*.md")):
+        body = " ".join(core.split_content(f.read_text(encoding="utf-8")))
+        assert "—" not in body, f"{f.name} contains an em dash"
+
+@test("the rules are generic enough to reuse")
+def _():
+    # The blueprint is a template. Rules naming one game's mechanics make it
+    # someone else's editing job before they can use it.
+    bp = core.load(BLUEPRINT)
+    base = Path(bp["_base_dir"])
+    for name in ("content/rules.md", "content/rules-screening.md"):
+        body = (base / name).read_text(encoding="utf-8")
+        posted = core.split_content(body)
+        text = " ".join(posted).lower()
+        for word in ("giltgrave", "gacha", "tower", "floor 40", "hero-showcase"):
+            assert word not in text, f"{name} still mentions {word!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -856,7 +912,8 @@ if _started:
     @test("health reports whether a session exists")
     def _():
         w = Web(BASE)
-        assert _json.loads(w.get("/api/health")[1]) == {"ok": True, "connected": False}
+        h = _json.loads(w.get("/api/health")[1])
+        assert h["ok"] is True and h["connected"] is False, h
         w.post("/api/connect", {"token": "t"})
         assert _json.loads(w.get("/api/health")[1])["connected"] is True
 

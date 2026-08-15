@@ -28,6 +28,9 @@
   .wrap{max-width:1180px; margin:0 auto; padding:24px 20px 90px}
   .offline{position:sticky; top:0; z-index:20; margin:-24px -20px 20px;
     background:var(--red); color:#fff; padding:12px 20px; font-size:14px; font-weight:500}
+  .stale{position:sticky; top:0; z-index:19; margin:-24px -20px 20px;
+    background:var(--yellow); color:#1e1f22; padding:12px 20px; font-size:14px;
+    font-weight:500}
   header{margin-bottom:4px}
   header .sub{color:var(--dim); font-size:14px; margin-top:2px}
 
@@ -210,6 +213,7 @@
 <div class="wrap">
 
 <div id="offline" class="offline" style="display:none"></div>
+<div id="stale" class="stale" style="display:none"></div>
 
 <header>
   <h1>Server Setup for Discord</h1>
@@ -510,8 +514,24 @@ setInterval(async () => {
   try{
     const r = await fetch('/api/health', {cache:'no-store'});
     setOffline(!r.ok);
+    if(r.ok){
+      const h = await r.json();
+      setStale(h.stale || []);
+    }
   }catch(e){ setOffline(true); }
 }, 5000);
+
+/* Python loads code once at startup, so editing a file and refreshing the page
+   silently keeps the old behaviour. Say so rather than letting someone wonder
+   why their change did nothing. */
+function setStale(files){
+  const b = $('#stale');
+  if(!files.length){ b.style.display = 'none'; return; }
+  b.style.display = '';
+  b.textContent = 'This program is running older code than the files on disk ('
+    + files.join(', ') + '). Close the SETUP-UI window and run it again, '
+    + 'or your edits will not show up here.';
+}
 
 /* ---------- 1. connect ---------- */
 async function connect(){
@@ -1080,8 +1100,10 @@ function tick(title, on){
 }
 
 async function loadManual(){
-  const game = (SEL && SEL.variables && SEL.variables.game) || 'the game';
-  try{ MANUAL = await api('/api/manual?game=' + encodeURIComponent(game)); }
+  const q = new URLSearchParams();
+  if(FILE) q.set('file', FILE);
+  if(SEL && SEL.variables) q.set('variables', JSON.stringify(SEL.variables));
+  try{ MANUAL = await api('/api/manual?' + q.toString()); }
   catch(e){ return; }
   renderManual();
 }

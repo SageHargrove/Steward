@@ -71,13 +71,35 @@ def index():
     return FileResponse(HERE / "static" / "index.html")
 
 
+WATCHED = [Path(__file__), Path(core.__file__), HERE / "static" / "index.html"]
+LOADED_AT = {p: p.stat().st_mtime for p in WATCHED if p.exists()}
+
+
+def stale_files() -> list[str]:
+    """Files that changed on disk after this process imported them.
+
+    Python does not reload modules, so editing core.py and refreshing the page
+    silently keeps serving the old behaviour. That has caused real confusion,
+    so the page asks about it and says to restart.
+    """
+    out = []
+    for p, was in LOADED_AT.items():
+        try:
+            if p.stat().st_mtime > was + 1:
+                out.append(p.name)
+        except OSError:
+            pass
+    return out
+
+
 @app.get("/api/health")
 def health(request: Request):
     """The page polls this so it can tell "the program stopped" apart from
     "something went wrong", which the browser reports identically as the
     unhelpful "Failed to fetch"."""
     sid = request.cookies.get("cops_session")
-    return {"ok": True, "connected": bool(sid and sid in SESSIONS)}
+    return {"ok": True, "connected": bool(sid and sid in SESSIONS),
+            "stale": stale_files()}
 
 
 # --------------------------------------------------------------------------
@@ -200,12 +222,24 @@ def disconnect(request: Request, response: Response):
 
 
 @app.get("/api/manual")
-def manual(request: Request, game: str = "the game", mod_channel: str = "mod-log"):
+def manual(request: Request, file: str = "", variables: str = ""):
+    """Read from the blueprint on every call, so editing the checklist or the
+    rules file shows up without restarting this program."""
     app_id = None
     sid = request.cookies.get("cops_session")
     if sid and sid in SESSIONS:
         app_id = SESSIONS[sid]["bot"].get("id")
-    return core.manual_steps(app_id, game=game, mod_channel=mod_channel)
+    try:
+        bp = _load_named(file) if file else {}
+    except HTTPException:
+        bp = {}
+    if bp and variables:
+        try:
+            bp = {**bp, "variables": {**bp.get("variables", {}),
+                                      **json.loads(variables)}}
+        except ValueError:
+            pass
+    return core.manual_steps(app_id, bp)
 
 
 # --------------------------------------------------------------------------

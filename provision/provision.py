@@ -61,13 +61,20 @@ def main():
     args = ap.parse_args()
 
     if args.manual:
-        for step in core.manual_steps():
+        bp = core.load(args.blueprint) if args.blueprint.exists() else {}
+        for step in core.manual_steps(bp=bp):
             print(f"\n[{step['kind']}] {step['title']}")
-            if step.get("where"):
-                print(f"  where: {step['where']}")
+            for i, w in enumerate(step.get("where", []), 1):
+                print(f"  {i}. {w}")
             print(f"  why:   {step['why']}")
+            if step.get("after"):
+                print(f"  then:  {step['after']}")
             if step.get("url"):
                 print(f"  link:  {step['url']}")
+            if step.get("copy"):
+                print()
+                print(step["copy"])
+                print()
         return
 
     if not args.blueprint.exists():

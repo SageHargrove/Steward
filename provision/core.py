@@ -1403,141 +1403,57 @@ class Provisioner:
 # The steps no API can do
 # --------------------------------------------------------------------------
 
-def manual_steps(app_id: str | None = None, game: str = "the game",
-                 mod_channel: str = "mod-log") -> list[dict]:
+def load_screening_rules(base_dir, rel: str) -> str:
+    """The short rules, as one pasteable block.
+
+    Kept in a file rather than in this function so that fixing a typo does not
+    mean editing Python and restarting the setup page.
+    """
+    if not base_dir or not rel:
+        return ""
+    path = Path(base_dir) / rel
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    text = re.sub(r"\A\s*<!--.*?-->\s*", "", text, flags=re.S)
+    return text.strip()
+
+
+def manual_steps(app_id: str | None = None, bp: dict | None = None) -> list[dict]:
     """The steps with no endpoint behind them, with the exact clicks.
 
-    This list is deliberately short. Anything that could be automated has
-    been: the rules and welcome text are posted and pinned, the welcome screen
-    is set, join notices are pointed at a channel and the setup-tip nagging is
-    silenced. What is left is genuinely client-only, plus installing other
-    bots, which is a permission flow needing a human to press Authorize.
+    The list lives in the blueprint under `manual_steps:` so it can be edited
+    without touching code, and so a blueprint for a different community can
+    carry its own. Everything here is read fresh on each call; nothing is
+    baked in at import.
 
     No invite URLs for third-party bots: their OAuth links are keyed to client
     ids that are not ours to guess, and a wrong link would send someone's
-    server to the wrong application. Discord's own App Directory is reachable
-    from the server dropdown and is the safe route.
+    server to the wrong application. Discord's App Directory is the safe route.
     """
-    # Discord's Rules Screening takes up to 16 rules, each a short title with
-    # an optional description. These mirror the long version posted in #rules.
-    screening = "\n\n".join([
-        "Be decent to each other\nDisagreement is fine, contempt is not. Defuse things or bring in a mod.",
-        "No hate speech\nSlurs and bigotry of any kind mean an immediate permanent ban. No warnings.",
-        "No NSFW or shock content\nIncluding your username, avatar and bio. Immediate permanent ban.",
-        "No politics or religion\nIncluding debates, memes, and the joking versions.",
-        "Protect personal information\nYours and everyone else's. Check your screenshots before posting.",
-        "No advertising\nNo invite links, no promoting services, never ask members for money.",
-        "Use the right channel\nEach one has a job. The right place is the difference between an answer and silence.",
-        "Bug reports need a build number\nBuild number, steps, and what you expected. In #bug-reports, not #general.",
-        "Playtest builds are confidential\nNothing from #playtest-lounge leaves it until that build is public.",
-        "No spam or mass pings\nNo flooding, no repeated content, no pinging staff or members repeatedly.",
-        "Do not impersonate staff\nNo lookalike names or avatars. Staff never DM you first asking for anything.",
-        "No cheats that affect others\nNo distributing hacks or unsafe files. Report exploits, do not use them.",
-        "Credit art that is not yours\nGame-generated images are game content. Fan art should be your own work.",
-        "Listen to moderators\nFollow instructions in the moment. Dispute them afterwards, in DMs.",
-        "Use common sense\nIf you are wondering whether to post it, that hesitation is usually the answer.",
-        "Discord's rules apply too\nYou must be 13 or older, and Discord's Terms and Guidelines apply here.",
-    ])
+    bp = bp or {}
+    variables = bp.get("variables", {})
+    base = bp.get("_base_dir")
 
-    steps = [
-        {
-            "kind": "setting", "title": "Rules Screening",
-            "why": "Makes every new member tick a box agreeing to the rules before they "
-                   "can post. The long version is already posted and pinned in #rules; "
-                   "this is the short version Discord shows at the door. No endpoint "
-                   "exists for it, so this is the one piece of real typing.",
-            "where": ["Click your server name at the top left",
-                      "Server Settings, then Safety Setup",
-                      "Rules Screening, then Set Up Rules Screening",
-                      "Paste one rule per box. Each block below is a title on the first "
-                      "line and its description underneath.",
-                      "Save. 16 is Discord's maximum and there are exactly 16 here."],
-            "copy_label": "Copy all 16 rules",
-            "copy": screening,
-        },
-        {
-            "kind": "setting", "title": "Server Guide",
-            "why": "The checklist a new member sees on their first visit. Different from "
-                   "the welcome screen, which is already set for you. Worth five minutes: "
-                   "it is the difference between someone posting and someone lurking.",
-            "where": ["Server name at the top left, Server Settings",
-                      "Onboarding, then the Server Guide tab",
-                      "Under New Member To-Dos, add #start-here, #general and #bug-reports",
-                      "Give each one a line saying what to do there, not what it is",
-                      "Under Resources, add #rules and #announcements",
-                      "Save Changes"],
-            "after": "Keep the to-dos to three. A checklist of ten reads as homework.",
-        },
-        {
-            "kind": "setting", "title": "Raid Protection and DM filtering",
-            "why": "Raid protection spots join floods and makes new arrivals solve a "
-                   "CAPTCHA for an hour. The DM filter scans direct messages from other "
-                   "members for scams, which is the most common way a small server gets "
-                   "hurt. Neither has an endpoint.",
-            "where": ["Server name at the top left, Server Settings, Safety Setup",
-                      "Turn on Raid Protection",
-                      "Set Direct Message Spam Filter to Filter All Messages",
-                      "Check Alerts is pointed at #" + mod_channel],
-            "after": "Turn these on before you invite anyone, not after the first raid.",
-        },
-        {
-            "kind": "setting", "title": "Give yourself the Dev role",
-            "why": "The role exists but Discord will not assign it to you. Until you do "
-                   "this, nothing marks you as staff and your name shows in the default "
-                   "colour.",
-            "where": ["Server name at the top left, Server Settings, Members",
-                      "Find yourself in the list",
-                      "Press the + next to your name and pick Dev",
-                      "While you are here, drag the bot's own role to just under Dev"],
-            "after": "Moving the bot's role up is what lets the setup tool order the rest "
-                     "of the roles for you. A bot cannot move anything above itself.",
-        },
-        {
-            "kind": "setting", "title": "Make an invite link that does not expire",
-            "why": "Discord's default invite dies after 7 days, which is how servers end "
-                   "up with a dead link in their Steam page and no idea why nobody joins.",
-            "where": ["Right-click #general, then Invite People",
-                      "Click Edit invite link",
-                      "Set Expire After to Never and Max Number of Uses to No Limit",
-                      "Generate a New Link and keep it somewhere you will find it"],
-        },
-        {
-            "kind": "bot", "title": "Wick",
-            "why": "Security. Anti-nuke, CAPTCHA verification, and a join gate that "
-                   "filters brand-new and avatarless accounts. The one bot worth "
-                   "installing before you have members rather than after.",
-            "where": ["Click your server name at the top left", "App Directory",
-                      "Search for Wick", "Add to Server, pick your server, Authorize"],
-            "after": "Set its join gate to reject accounts under 7 days old and point its "
-                     f"logging at #{mod_channel}. Leave its automod off; yours is already "
-                     "configured and two filters fighting is worse than one.",
-        },
-        {
-            "kind": "bot", "title": "Sapphire",
-            "why": "Moderation, reaction roles and logging. Genuinely free, and it covers "
-                   "what MEE6 charges for.",
-            "where": ["Server name at the top left", "App Directory",
-                      "Search for Sapphire", "Add to Server, pick your server, Authorize"],
-            "after": f"Point its logging at #{mod_channel}. Skip its join-role feature, "
-                     "the new-member questions already handle roles.",
-        },
-        {
-            "kind": "bot", "title": "Statbot", "optional": True,
-            "why": "Charts and member counters. Its free tier keeps only 30 days of "
-                   "history, which is exactly why the ledger exists alongside it.",
-            "where": ["Server name at the top left", "App Directory",
-                      "Search for Statbot", "Add to Server, pick your server, Authorize"],
-        },
-        {
-            "kind": "bot", "title": "Steamy", "optional": True,
-            "why": f"Posts new Steam reviews and weekly rating digests into Discord. "
-                   f"Install it the day {game} has a Steam page, and not before.",
-            "where": ["Server name at the top left", "App Directory",
-                      "Search for Steamy", "Add to Server, pick your server, Authorize"],
-            "after": "Point it at #patch-notes rather than #announcements. Reviews are a "
-                     "steady drip and announcements should stay rare enough to matter.",
-        },
-    ]
+    steps = []
+    for raw in bp.get("manual_steps", []):
+        step = {
+            "kind": raw.get("kind", "setting"),
+            "title": substitute_text(raw.get("title", ""), variables),
+            "why": substitute_text(raw.get("why", ""), variables),
+            "where": [substitute_text(w, variables) for w in raw.get("where", [])],
+        }
+        if raw.get("after"):
+            step["after"] = substitute_text(raw["after"], variables)
+        if raw.get("optional"):
+            step["optional"] = True
+        if raw.get("copy_file"):
+            body = load_screening_rules(base, raw["copy_file"])
+            if body:
+                step["copy"] = substitute_text(body, variables)
+                step["copy_label"] = raw.get("copy_label", "Copy")
+        steps.append(step)
 
     if app_id:
         steps.append({
