@@ -21,8 +21,10 @@ import os
 import queue
 import secrets
 import socket
+import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -285,6 +287,151 @@ def manual(request: Request, file: str = "", variables: str = ""):
         except ValueError:
             pass
     return core.manual_steps(app_id, bp)
+
+
+# --------------------------------------------------------------------------
+# The ledger, started and watched from here
+#
+# A browser cannot launch a program, but this process can, so the buttons on
+# the page post here and the work happens locally. The ledger is started
+# detached with its output going to a file: detached so closing this window
+# does not stop it recording, and to a file so the page can still show what it
+# said, including the two startup failures people actually hit.
+# --------------------------------------------------------------------------
+
+STEWARD = HERE.parent / "steward"
+LEDGER_LOG = STEWARD / "data" / "ledger.log"
+STALE_AFTER = 90            # seconds without a pulse before it counts as gone
+
+
+def ledger_db():
+    """Read the ledger's own database without importing discord.py."""
+    import sqlite3
+    env = {}
+    envfile = STEWARD / ".env"
+    if envfile.exists():
+        for line in envfile.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip()
+    rel = env.get("STEWARD_DB", "data/steward.sqlite3")
+    path = (STEWARD / rel).resolve()
+    if not path.exists():
+        return None
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def ledger_meta() -> dict:
+    con = ledger_db()
+    if con is None:
+        return {}
+    try:
+        rows = con.execute("SELECT key, value FROM meta").fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    except Exception:                                        # noqa: BLE001
+        return {}
+    finally:
+        con.close()
+
+
+def pid_alive(pid: int) -> bool:
+    if not pid:
+        return False
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                             capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+@app.get("/api/ledger/status")
+def ledger_status():
+    meta = ledger_meta()
+    seen = int(meta.get("ledger_seen_at", 0) or 0)
+    pid = int(meta.get("ledger_pid", 0) or 0)
+    age = int(time.time()) - seen if seen else None
+    alive = bool(seen and age is not None and age < STALE_AFTER and pid_alive(pid))
+
+    tail = ""
+    if LEDGER_LOG.exists():
+        try:
+            tail = "\n".join(
+                LEDGER_LOG.read_text(encoding="utf-8", errors="replace")
+                .splitlines()[-40:])
+        except OSError:
+            pass
+
+    return {
+        "configured": (STEWARD / ".env").exists(),
+        "running": alive,
+        "state": meta.get("ledger_state", "never started"),
+        "seconds_since_seen": age,
+        "pid": pid,
+        "log": tail,
+    }
+
+
+@app.post("/api/ledger/start")
+def ledger_start():
+    status = ledger_status()
+    if status["running"]:
+        raise HTTPException(400, "It is already running.")
+    if not (STEWARD / ".env").exists():
+        raise HTTPException(400, "No steward/.env yet. Add the bot token first.")
+
+    LEDGER_LOG.parent.mkdir(parents=True, exist_ok=True)
+    creation = 0
+    if os.name == "nt":
+        # Detached and in its own process group, so closing the setup page
+        # leaves the ledger recording.
+        creation = getattr(subprocess, "DETACHED_PROCESS", 0) | \
+                   getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    try:
+        with open(LEDGER_LOG, "w", encoding="utf-8") as out:
+            subprocess.Popen([sys.executable, "-u", "bot.py"], cwd=str(STEWARD),
+                             stdout=out, stderr=subprocess.STDOUT,
+                             creationflags=creation, close_fds=True)
+    except OSError as e:
+        raise HTTPException(400, f"Could not start it: {e}")
+    return {"ok": True}
+
+
+@app.post("/api/ledger/stop")
+def ledger_stop():
+    meta = ledger_meta()
+    pid = int(meta.get("ledger_pid", 0) or 0)
+    if not pid or not pid_alive(pid):
+        raise HTTPException(400, "It is not running.")
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                           capture_output=True)
+        else:
+            os.kill(pid, 15)
+    except OSError as e:
+        raise HTTPException(400, f"Could not stop it: {e}")
+    return {"ok": True}
+
+
+@app.post("/api/ledger/install")
+def ledger_install():
+    """Install the ledger's dependencies, so nobody has to find a terminal."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+             "-r", str(STEWARD / "requirements.txt")],
+            capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise HTTPException(400, f"Could not install: {e}")
+    tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
+    return {"ok": proc.returncode == 0, "log": "\n".join(tail)}
+
 
 
 # --------------------------------------------------------------------------

@@ -289,6 +289,20 @@ half-working. If the strip fails for lack of permission, the answer is still
 recorded and the bot says so once, because the number matters more than the
 tidiness.
 
+## Running the ledger from the page
+
+A browser cannot launch a program, but the local server behind the page can, so
+step 7 has Install, Start and Stop buttons. It reports whether the ledger is
+recording by reading a timestamp the ledger writes into its own database every
+thirty seconds: no port to poll, and a process id alone would go stale the
+moment the operating system reused it.
+
+Started from the page it runs detached with its output going to a file, so
+closing the setup page leaves it recording, and the page can still show what it
+said. That matters because the two failures people actually hit, a missing
+intent and a bad token, both happen at startup and would otherwise be invisible
+to someone who never opened a terminal.
+
 ## Tests
 
 ```powershell

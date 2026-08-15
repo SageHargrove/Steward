@@ -155,6 +155,7 @@ class Steward(discord.Client):
         self.nightly_purge.start()
         self.heartbeat.start()
         self.weekly_digest.start()
+        self.pulse.start()
 
     # -- backfill ---------------------------------------------------------
 
@@ -514,6 +515,25 @@ class Steward(discord.Client):
             except discord.HTTPException as e:
                 log.warning("could not update the status message: %s", e)
 
+    def stamp(self, state: str):
+        """Leave proof of life in the database itself.
+
+        The setup page has no other way to tell a running ledger from a dead
+        one: there is no port to poll and a process id goes stale the moment
+        Windows reuses it. A timestamp that stops moving is unambiguous.
+        """
+        self.ledger.set_meta("ledger_state", state)
+        self.ledger.set_meta("ledger_seen_at", int(time.time()))
+        self.ledger.set_meta("ledger_pid", os.getpid())
+
+    @tasks.loop(seconds=30)
+    async def pulse(self):
+        self.stamp("running")
+
+    @pulse.before_loop
+    async def _wait_pulse(self):
+        await self.wait_until_ready()
+
     @tasks.loop(minutes=10)
     async def heartbeat(self):
         # The timestamp going stale is the signal that the bot died, which a
@@ -527,6 +547,7 @@ class Steward(discord.Client):
     async def close(self):
         # Say so on the way out, so a deliberate stop does not look like a crash.
         try:
+            self.stamp("stopped")
             await self.update_status(running=False)
         except Exception:                                    # noqa: BLE001
             pass
@@ -613,6 +634,14 @@ class Steward(discord.Client):
         last = int(self.ledger.get_meta("last_digest_at", 0) or 0)
         if int(time.time()) - last < 7 * 86400:
             return
+
+        # On a brand new ledger there is nothing to report yet, so start the
+        # clock instead of posting an empty week. Use /digest to see one now.
+        if not last and self.guilds:
+            if self.ledger.counts(self.guilds[0].id)["events"] < 20:
+                self.ledger.set_meta("last_digest_at", int(time.time()))
+                log.info("first run: digest clock started, first report in a week")
+                return
         for guild in self.guilds:
             if await self.post_digest(guild):
                 log.info("weekly digest posted in %s", guild.name)

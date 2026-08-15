@@ -1046,6 +1046,24 @@ def _():
         "the ledger invite must include MANAGE_ROLES or the roles can never be removed"
 
 
+@test("a brand new ledger does not post an empty first digest")
+def _():
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "first run: digest clock started" in src, (
+        "a fresh install would post a week of nothing")
+
+
+@test("the ledger can be started and watched from the setup page")
+def _():
+    # A browser cannot launch a program; the local server does it. Detached, so
+    # closing the page does not stop the recording.
+    src = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    for bit in ("/api/ledger/status", "/api/ledger/start", "/api/ledger/stop",
+                "DETACHED_PROCESS"):
+        assert bit in src, f"missing {bit}"
+    assert "ledger_seen_at" in src, "no liveness check, so status would be a guess"
+
+
 @test("startup failures explain themselves")
 def _():
     # discord.py's own errors are written for library authors. The two a person

@@ -231,14 +231,22 @@ chore, because before that it adds noise.
 
 Do this the same day the server exists, and before you invite anyone.
 
-```powershell
-C:\CommunityOps\steward\START-LEDGER.bat
-```
+Step 7 of the setup page runs it: **Install what it needs**, then **Start**.
+It shows a green dot while recording, the last of its output, and a Stop
+button. Started that way it is detached, so closing the setup page leaves it
+running.
 
-It installs what it needs, creates `steward\.env` from the example and opens
-it in Notepad so you can paste the token, then starts recording. Keep the
-window open: the ledger only records while it runs, and Discord does not let
-anyone recover activity from when it was off.
+`steward\START-LEDGER.bat` does the same thing from a terminal, in its own
+window.
+
+Either way it needs `steward\.env` with your bot token. The batch file creates
+that from the example and opens it in Notepad; if you use the page, make the
+file first.
+
+**If it stops with a message about privileged intents**, the Server Members
+Intent is not enabled. Developer Portal, your app, Bot, Privileged Gateway
+Intents, turn on Server Members Intent, and press Save Changes in the green bar
+at the bottom. That last step is the one people miss.
 
 On first connect it seeds every current member from Discord's `joined_at`,
 which is the one field that can legitimately be backfilled. Everything else

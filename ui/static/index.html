@@ -220,6 +220,13 @@
   .edit.dirty > .eh{background:#3a3320}
   .edit.dirty > .eh .st{color:var(--yellow)}
 
+  .dot{width:9px; height:9px; border-radius:50%; flex:none; display:inline-block}
+  .dot.on{background:var(--green); box-shadow:0 0 7px rgba(35,165,90,.7)}
+  .dot.off{background:var(--dimmer)}
+  .dot.bad{background:var(--red); box-shadow:0 0 7px rgba(242,63,66,.6)}
+  .ledgerhead{display:flex; align-items:center; gap:9px; font-size:14px;
+    color:var(--ink); font-weight:600; margin-bottom:4px}
+
   ol.manual{padding-left:0; list-style:none; margin:0}
   ol.manual li{border:1px solid var(--line); border-radius:5px; padding:13px 15px;
     display:flex; gap:12px; margin-bottom:9px; background:var(--raised)}
@@ -495,9 +502,30 @@
   </div>
 </section>
 
-<!-- 7. manual ----------------------------------------------------------- -->
+<!-- 7. the ledger --------------------------------------------------------- -->
 <section class="step" id="s7">
-  <div class="head"><div class="num"><span>7</span></div><h2>The rest, by hand</h2></div>
+  <div class="head"><div class="num"><span>7</span></div><h2>Run the ledger</h2>
+    <div style="margin-left:auto" class="row">
+      <button class="ghost small" onclick="installLedger()" id="instbtn">Install what it needs</button>
+      <button class="ghost small" onclick="stopLedger()" id="stopbtn">Stop</button>
+      <button onclick="startLedger()" id="startbtn">Start</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="callout"><b>Discord has no record of activity from a time when
+      nothing was listening.</b> Days that pass before this runs are permanently
+      missing, and no amount of later work gets them back. Everything else on this
+      page can wait; this one cannot.</div>
+    <div class="ledgerhead"><span class="dot off" id="ldot"></span>
+      <span id="lstate">Checking...</span></div>
+    <div class="hint" id="lhint"></div>
+    <pre class="log" id="llog" style="display:none"></pre>
+  </div>
+</section>
+
+<!-- 8. manual ----------------------------------------------------------- -->
+<section class="step" id="s8">
+  <div class="head"><div class="num"><span>8</span></div><h2>The rest, by hand</h2></div>
   <div class="body">
     <div class="callout">None of this can be automated by any tool. Installing a bot needs
       a human to press Authorize, and the Discord settings below have no API at all. Every
@@ -1398,7 +1426,90 @@ function publine(cls, text){
   $('#publog').scrollTop = $('#publog').scrollHeight;
 }
 
-/* ---------- 7. manual ---------- */
+/* ---------- 7. the ledger ---------- */
+let LEDGER_SEEN_LOG = '';
+
+async function ledgerStatus(){
+  let st;
+  try{ st = await api('/api/ledger/status'); }catch(e){ return; }
+
+  const dot = $('#ldot'), state = $('#lstate'), hint = $('#lhint');
+  const failed = /Traceback|refused|rejected/i.test(st.log || '');
+
+  if(st.running){
+    dot.className = 'dot on';
+    state.textContent = 'Recording';
+    hint.textContent = `Last checked in ${st.seconds_since_seen}s ago. `
+      + 'Leave it running. It survives closing this page.';
+  } else if(!st.configured){
+    dot.className = 'dot off';
+    state.textContent = 'Not set up yet';
+    hint.textContent = 'It needs steward\\.env with your bot token. '
+      + 'Press Start and it will tell you what to do.';
+  } else if(failed){
+    dot.className = 'dot bad';
+    state.textContent = 'Stopped after an error';
+    hint.textContent = 'The reason is at the end of the log below.';
+  } else {
+    dot.className = 'dot off';
+    state.textContent = st.state === 'stopped' ? 'Stopped' : 'Not running';
+    hint.textContent = 'Nothing is being recorded right now.';
+  }
+
+  $('#startbtn').disabled = st.running;
+  $('#stopbtn').disabled = !st.running;
+
+  if(st.log && st.log !== LEDGER_SEEN_LOG){
+    LEDGER_SEEN_LOG = st.log;
+    const log = $('#llog');
+    log.style.display = '';
+    log.textContent = st.log;
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+async function startLedger(){
+  const b = $('#startbtn');
+  b.disabled = true; b.textContent = 'Starting...';
+  try{
+    await api('/api/ledger/start', {method:'POST', body:'{}'});
+    // It takes a few seconds to log in, so do not judge it immediately.
+    setTimeout(ledgerStatus, 1200);
+    setTimeout(ledgerStatus, 4000);
+    setTimeout(ledgerStatus, 9000);
+  }catch(e){
+    $('#lhint').textContent = e.message;
+  }finally{
+    b.textContent = 'Start';
+    setTimeout(() => ledgerStatus(), 500);
+  }
+}
+
+async function stopLedger(){
+  try{ await api('/api/ledger/stop', {method:'POST', body:'{}'}); }
+  catch(e){ $('#lhint').textContent = e.message; }
+  setTimeout(ledgerStatus, 800);
+}
+
+async function installLedger(){
+  const b = $('#instbtn');
+  b.disabled = true; b.textContent = 'Installing...';
+  try{
+    const r = await api('/api/ledger/install', {method:'POST', body:'{}'});
+    const log = $('#llog');
+    log.style.display = '';
+    log.textContent = r.log || (r.ok ? 'Installed.' : 'Failed.');
+  }catch(e){
+    $('#lhint').textContent = e.message;
+  }finally{
+    b.disabled = false; b.textContent = 'Install what it needs';
+  }
+}
+
+setInterval(ledgerStatus, 5000);
+ledgerStatus();
+
+/* ---------- 8. manual ---------- */
 let MANUAL = [];
 
 /* Ticks persist, because this list is worked through over days rather than in
