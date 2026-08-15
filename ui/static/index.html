@@ -153,6 +153,17 @@
     letter-spacing:.03em; font-weight:600; cursor:pointer}
   .pill.on{background:rgba(88,101,242,.18); border-color:var(--blue); color:#c3cafd}
 
+  .swatch{display:flex; align-items:center; gap:5px; flex:none}
+  .swatch input[type=color]{width:26px; height:22px; padding:0; border:1px solid var(--line);
+    background:var(--input); border-radius:4px; cursor:pointer}
+  .swatch button{background:transparent; border:1px solid var(--line); color:var(--dimmer);
+    padding:2px 7px; font-size:10.5px; border-radius:3px; text-transform:uppercase;
+    letter-spacing:.03em; font-weight:600}
+  .swatch button.on{border-color:var(--blue); color:#c3cafd; background:rgba(88,101,242,.18)}
+  .swatch button:hover{color:var(--ink)}
+  .holo{background:linear-gradient(90deg,#A9C9FF,#FFBBEC,#FFC3A0);
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:700}
+
   /* switches for whole features, where on/off genuinely is the right control */
   .sw{position:relative; width:38px; height:22px; flex:none; cursor:pointer}
   .sw input{opacity:0; width:0; height:0; position:absolute}
@@ -501,6 +512,7 @@ function freshSelection(inv){
     prompts: inv.prompts.map(p => p.title),
     defaults: inv.onboarding_defaults.slice(),
     renames: {channels:{}, roles:{}},
+    colors: {},
     additions: {channels:[], roles:[]},
     delete: {channels:[], roles:[]},
     features: {community:true, onboarding:true}
@@ -836,7 +848,10 @@ function renderTree(){
     </div>
     <div class="gone">A role you add here carries no special permissions, which is right
       for a label. Give it powers in Discord's own role editor, where each permission
-      explains what it does.</div></div>`;
+      explains what it does. <b>fade</b> makes a name blend between two colours and
+      <b>holo</b> applies Discord's animated sheen, whose colours are fixed rather than
+      chosen. Both need the server to have three boosts, and quietly fall back to the
+      plain colour without them.</div></div>`;
 
   h += simpleGroup('automod', 'Automatic moderation', INV.automod,
                    a => a.name, a => a.note);
@@ -883,15 +898,66 @@ function addedRow(a){
     <button class="rm" onclick="dropAdded('channels', ${i})">Remove</button></div>`;
 }
 
+function hex(n){ return '#' + (n || 0).toString(16).padStart(6, '0'); }
+
 function roleRow(r, i){
   const locked = r.required;
+  const chosen = SEL.colors[r.name] || {};
+  const primary = chosen.color !== undefined ? chosen.color : r.color;
+  const secondary = chosen.secondary !== undefined
+    ? chosen.secondary : (r.colors && r.colors.secondary);
+  const holo = chosen.holographic !== undefined
+    ? chosen.holographic : !!(r.colors && r.colors.holographic);
+
   return `<div class="item">
-    <div class="meta"><div class="nm"><input type="text" value="${esc(r.name)}"
-        onchange="renameRole(${i}, this.value)">
+    <div class="meta"><div class="nm">
+      <input type="text" value="${esc(r.name)}" onchange="renameRole(${i}, this.value)"
+        ${holo ? 'class="holo"' : `style="color:${hex(primary)}"`}>
       ${locked ? '<span class="tag req">required</span>' : ''}</div>
       <div class="why">${esc(locked ? r.required_reason : r.note)}</div></div>
+    <div class="swatch">
+      <input type="color" value="${hex(primary)}" title="Colour"
+             onchange="setRoleColor(${i}, 'color', this.value)">
+      ${secondary !== undefined && secondary !== null && !holo
+        ? `<input type="color" value="${hex(secondary)}" title="Fades to this"
+             onchange="setRoleColor(${i}, 'secondary', this.value)">`
+        : ''}
+      <button class="${secondary && !holo ? 'on' : ''}" title="Fade between two colours"
+        onclick="toggleFade(${i})">fade</button>
+      <button class="${holo ? 'on' : ''}" title="Discord's animated sheen. Fixed colours."
+        onclick="toggleHolo(${i})">holo</button>
+    </div>
     ${locked ? '<span class="lock">cannot remove</span>'
              : `<button class="rm" onclick="removeRole(${i})">Remove</button>`}</div>`;
+}
+
+function roleStyle(i){
+  const r = INV.roles[i];
+  SEL.colors[r.name] = SEL.colors[r.name] || {};
+  return SEL.colors[r.name];
+}
+
+function setRoleColor(i, key, value){
+  roleStyle(i)[key] = parseInt(value.replace('#', ''), 16) || 0;
+  redraw();
+}
+
+function toggleFade(i){
+  const r = INV.roles[i], st = roleStyle(i);
+  const on = st.secondary !== undefined ? st.secondary : (r.colors && r.colors.secondary);
+  if(on){ st.secondary = null; }
+  else { st.secondary = st.color !== undefined ? st.color : r.color; st.holographic = false; }
+  redraw();
+}
+
+function toggleHolo(i){
+  const st = roleStyle(i);
+  const r = INV.roles[i];
+  const on = st.holographic !== undefined ? st.holographic
+                                          : !!(r.colors && r.colors.holographic);
+  st.holographic = !on;
+  if(st.holographic) st.secondary = null;
+  redraw();
 }
 
 function addedRoleRow(a){

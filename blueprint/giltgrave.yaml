@@ -197,62 +197,77 @@ roles:
     mentionable: true
     permissions: []
 
-  # Level tiers, handed out by a leveling bot at set levels.
+  # Level tiers, handed out by the leveling system at the levels set further
+  # down. Stars rather than floors on purpose: if your game already shows
+  # players a floor, a level or a depth, reusing that word on Discord makes two
+  # unrelated numbers look like the same one.
   #
-  # Stars rather than floors on purpose: if your game already shows players a
-  # floor, a level or any other number, reusing that word on Discord makes two
-  # unrelated numbers look like the same one. A separate scale sidesteps that.
-  # The colours climb the way rarity does, so the tier reads at a glance.
-  # Rename or delete these to suit; they are only meaningful to the bot that
-  # awards them.
+  # Colours climb the way rarity does. The last two use enhanced role styles:
+  #
+  #   colors.primary + colors.secondary  -> the name fades between two colours
+  #   colors.holographic: true           -> Discord's animated sheen. The look
+  #                                         is fixed; you switch it on, you do
+  #                                         not design it.
+  #
+  # Both need the server to have three boosts. Without them these roles simply
+  # use the plain `color` below, which is also what Discord reverts to if the
+  # boosts ever lapse. Nothing breaks either way.
+  #
+  # Rename, recolour or delete any of these. They mean nothing to Discord and
+  # only matter to the rewards list further down.
   - name: "★1"
-    note: "Level tier 1. Awarded automatically by the leveling bot."
-    color: 0x000000
+    note: "Level tier 1 (common). Awarded automatically."
+    color: 0x9BA3AF
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★2"
-    note: "Level tier 2. Awarded automatically by the leveling bot."
-    color: 0x000000
+    note: "Level tier 2 (uncommon). Awarded automatically."
+    color: 0x3BA55D
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★3"
-    note: "Level tier 3. Awarded automatically by the leveling bot."
-    color: 0x8A9BA8
+    note: "Level tier 3 (rare). Awarded automatically."
+    color: 0x3B82F6
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★4"
-    note: "Level tier 4. Awarded automatically by the leveling bot."
-    color: 0x5E8C7B
+    note: "Level tier 4 (epic). Awarded automatically."
+    color: 0x8B5CF6
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★5"
-    note: "Level tier 5. Awarded automatically by the leveling bot."
-    color: 0x4A7FB5
+    note: "Level tier 5 (legendary). Awarded automatically."
+    color: 0xF0862D
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "★6"
-    note: "Level tier 6. Awarded automatically by the leveling bot."
-    color: 0x8B5FBF
+    note: "Level tier 6 (mythic, a gradient rather than one colour). Awarded automatically."
+    color: 0xE0403E
     hoist: false
     mentionable: false
     permissions: []
+    colors:
+      primary: 0xE0403E
+      secondary: 0xF0862D
 
   - name: "★7"
-    note: "Level tier 7. Awarded automatically by the leveling bot."
+    note: "Level tier 7 (the animated holographic sheen). Awarded automatically."
     color: 0xC9A227
     hoist: false
     mentionable: false
     permissions: []
+    colors:
+      holographic: true
 
   # The compliance rail. Every proactive reach routes through this role
   # instead of a DM. Granted by the onboarding prompt below.

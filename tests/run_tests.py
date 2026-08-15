@@ -294,6 +294,57 @@ def _():
     assert prov.problems, "should have recorded the failures"
     assert fake.onboarding is not None, "run should have continued to onboarding"
 
+@test("gradient and holographic roles are described correctly")
+def _():
+    bp = core.load(BLUEPRINT)
+    by = {r["name"]: r for r in bp["roles"]}
+    grad = core.role_colors(by["★" + "6"])
+    assert grad and "secondary_color" in grad and "tertiary_color" not in grad, grad
+    holo = core.role_colors(by["★" + "7"])
+    assert holo == core.HOLOGRAPHIC, "holographic colours are fixed by the API"
+    plain = core.role_colors(by["★" + "1"])
+    assert plain is None, "a single colour is not a gradient"
+
+
+@test("a server without the perk still gets its roles")
+def _():
+    # Enhanced styles need three boosts. Sending them anyway would fail the
+    # whole role, so they are dropped and the plain colour is used.
+    fake = install(core, FakeDiscord())
+    bp = load()
+    fake, prov = run(bp, fake=fake)
+    sent = [b for m, q, b in fake.calls if m == "POST" and q.endswith("/roles")]
+    assert sent, "no roles created"
+    assert not any("colors" in b for b in sent), (
+        "gradients were sent to a server that has not unlocked them")
+    assert any(b["name"] == "★" + "7" for b in sent), "the top tier was skipped"
+
+
+@test("with the perk, the styles are sent")
+def _():
+    fake = install(core, FakeDiscord())
+    fake.guild["features"] = [core.ENHANCED_ROLE_COLORS]
+    bp = load()
+    fake, prov = run(bp, fake=fake)
+    sent = {b["name"]: b for m, q, b in fake.calls
+            if m == "POST" and q.endswith("/roles")}
+    assert "colors" in sent["★" + "7"], "holographic never sent"
+    assert sent["★" + "7"]["colors"] == core.HOLOGRAPHIC
+    assert "colors" in sent["★" + "6"], "gradient never sent"
+    assert "colors" not in sent["Dev"], "a plain role should not carry a style"
+
+
+@test("the UI can recolour any role, not only ones it added")
+def _():
+    bp = load({"colors": {"Mod": {"color": 0xFF0000},
+                          "Veteran": {"color": 0x00FF00, "secondary": 0x0000FF},
+                          "Playtester": {"holographic": True}}})
+    by = {r["name"]: r for r in bp["roles"]}
+    assert by["Mod"]["color"] == 0xFF0000
+    assert core.role_colors(by["Veteran"])["secondary_color"] == 0x0000FF
+    assert core.role_colors(by["Playtester"]) == core.HOLOGRAPHIC
+
+
 @test("roles are ordered below the bot's own role, not from the top")
 def _():
     # Numbering from the top asks Discord to place a role above the bot, which

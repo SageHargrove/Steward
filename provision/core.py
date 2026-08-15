@@ -110,6 +110,32 @@ INVITE_PERMS_LEDGER = 2416004096      # view, send, history, embed, slash comman
                                       # ephemeral attribution roles after recording them
 
 
+# Enhanced role styles: a two-colour gradient, or the animated holographic
+# sheen. Unlocked by three server boosts and then usable on any number of
+# roles. Discord fixes the holographic colours, so it is a look you switch on
+# rather than one you design; a gradient is the customisable option.
+# If the perk lapses, Discord silently reverts those roles to their primary
+# colour, which is why every role here keeps a plain `color` as well.
+HOLOGRAPHIC = {"primary_color": 11127295,      # #A9C9FF
+               "secondary_color": 16759788,    # #FFBBEC
+               "tertiary_color": 16761760}     # #FFC3A0
+ENHANCED_ROLE_COLORS = "ENHANCED_ROLE_COLORS"
+
+
+def role_colors(spec: dict) -> dict | None:
+    """The `colors` object for a role, or None if it just wants a flat colour."""
+    style = spec.get("colors")
+    if not style:
+        return None
+    if style.get("holographic"):
+        return dict(HOLOGRAPHIC)
+    primary = style.get("primary", spec.get("color", 0))
+    secondary = style.get("secondary")
+    if secondary is None:
+        return None                             # one colour is not a gradient
+    return {"primary_color": int(primary), "secondary_color": int(secondary)}
+
+
 class Failed(Exception):
     pass
 
@@ -272,6 +298,7 @@ def inventory(bp: dict) -> dict:
             "color": r.get("color", 0),
             "note": r.get("note", ""),
             "ephemeral": bool(r.get("ephemeral")),
+            "colors": r.get("colors") or {},
         } for r in bp.get("roles", [])],
         "automod": [{
             "name": a["name"],
@@ -456,6 +483,22 @@ def customize(bp: dict, selection: dict | None) -> dict:
                 o["roles"] = [rr(x) for x in o.get("roles", [])]
         for a in bp.get("automod", []):
             a["exempt_roles"] = [rr(x) for x in a.get("exempt_roles", [])]
+
+    # -- recolouring, which the UI offers on every role rather than only on
+    # ones somebody added by hand
+    for name, style in (sel.get("colors") or {}).items():
+        for r in bp.get("roles", []):
+            if r["name"] != name:
+                continue
+            if "color" in style:
+                r["color"] = int(style["color"])
+            if style.get("holographic"):
+                r["colors"] = {"holographic": True}
+            elif style.get("secondary"):
+                r["colors"] = {"primary": int(style.get("primary", r.get("color", 0))),
+                               "secondary": int(style["secondary"])}
+            elif "secondary" in style:      # explicitly cleared
+                r.pop("colors", None)
 
     # -- fill in {{placeholders}}, now that every selection has been matched
     # against the raw names it was built from
@@ -903,6 +946,19 @@ class Provisioner:
         existing = {r["name"]: r for r in self.c.get(f"/guilds/{self.gid}/roles")}
         self.roles["everyone"] = self.gid   # @everyone's role id is the guild id
 
+        try:
+            features = set(self.c.get(f"/guilds/{self.gid}").get("features", []))
+        except Failed:
+            features = set()
+        fancy = ENHANCED_ROLE_COLORS in features
+        wanted = [r["name"] for r in self.bp.get("roles", []) if role_colors(r)]
+        if wanted and not fancy:
+            self.log(f"  gradients skipped: {len(wanted)} role(s) ask for one, and this "
+                     f"server has not unlocked them")
+            self.log("      Three server boosts turns them on. Until then those roles")
+            self.log("      use their plain colour, which is what Discord falls back to")
+            self.log("      anyway if the boosts ever lapse.")
+
         for spec in self.bp.get("roles", []):
             name = spec["name"]
             body = {
@@ -914,6 +970,9 @@ class Provisioner:
                 # interest roles want, so pass it straight through.
                 "color": int(spec.get("color", 0)),
             }
+            style = role_colors(spec) if fancy else None
+            if style:
+                body["colors"] = style
             try:
                 if name in existing:
                     rid = existing[name]["id"]
