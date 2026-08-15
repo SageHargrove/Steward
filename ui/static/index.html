@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server Setup for Discord</title>
+<style>
+  /* Discord's own neutral greys, so this reads as belonging beside the app.
+     Blue appears on the primary button and nowhere else. */
+  :root{
+    --ground:#1e1f22; --panel:#2b2d31; --raised:#313338; --input:#1e1f22;
+    --hover:#35373c; --line:#3f4147; --line-soft:#2e3035;
+    --ink:#f2f3f5; --text:#dbdee1; --muted:#b5bac1; --dim:#949ba4; --dimmer:#80848e;
+    --blue:#5865f2; --blue-hi:#4752c4;
+    --green:#23a55a; --red:#f23f42; --yellow:#f0b232;
+    --r:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--ground); color:var(--text);
+    font:15px/1.5 "gg sans","Segoe UI",system-ui,sans-serif}
+  a{color:#00a8fc; text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font:12.5px/1.4 ui-monospace,Consolas,monospace; background:var(--ground);
+    border:1px solid var(--line); padding:1px 5px; border-radius:4px; color:var(--ink)}
+  kbd{background:var(--raised); font-family:inherit; font-size:13px; font-weight:600}
+  h1{font-size:20px; margin:0; color:var(--ink); font-weight:700}
+  h2{font-size:16px; margin:0; color:var(--ink); font-weight:600}
+  .wrap{max-width:1180px; margin:0 auto; padding:24px 20px 90px}
+  .offline{position:sticky; top:0; z-index:20; margin:-24px -20px 20px;
+    background:var(--red); color:#fff; padding:12px 20px; font-size:14px; font-weight:500}
+  header{margin-bottom:4px}
+  header .sub{color:var(--dim); font-size:14px; margin-top:2px}
+
+  .step{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--r);
+    margin-top:16px; overflow:hidden}
+  .step > .head{display:flex; align-items:center; gap:11px; padding:14px 18px}
+  .step > .body{padding:0 18px 18px}
+  .step.locked{opacity:.4; pointer-events:none}
+  .num{width:24px; height:24px; border-radius:50%; background:var(--line); color:var(--muted);
+    display:grid; place-items:center; font-size:12.5px; font-weight:700; flex:none}
+  .step.done .num{background:var(--green); color:#fff}
+  .step.done .num::after{content:"✓"}
+  .step.done .num span{display:none}
+
+  label.f{display:block; margin-bottom:14px}
+  label.f > span{display:block; font-size:12px; color:var(--muted); margin-bottom:6px;
+    text-transform:uppercase; letter-spacing:.02em; font-weight:700}
+  input[type=text],input[type=password],select{width:100%; background:var(--input);
+    color:var(--ink); border:1px solid #1e1f22; border-radius:4px; padding:10px 11px;
+    font:14px/1.4 inherit}
+  input[type=file]{width:100%; color:var(--dim); font-size:13px}
+  input:focus,select:focus{outline:none; border-color:var(--blue)}
+  .hint{font-size:13px; color:var(--dim); margin-top:6px}
+
+  button{background:var(--blue); color:#fff; border:0; border-radius:4px; padding:10px 17px;
+    font:500 14px/1.2 inherit; cursor:pointer}
+  button:hover{background:var(--blue-hi)}
+  button:disabled{opacity:.5; cursor:not-allowed; background:var(--blue)}
+  button.ghost{background:var(--raised); color:var(--text); border:1px solid var(--line)}
+  button.ghost:hover{background:var(--hover)}
+  button.small{padding:6px 12px; font-size:13px}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+  /* instructions */
+  details.guide{background:var(--raised); border:1px solid var(--line); border-radius:5px;
+    margin:0 0 16px}
+  details.guide > summary{cursor:pointer; padding:11px 14px; font-weight:500; font-size:14px;
+    color:var(--ink); list-style:none; display:flex; align-items:center; gap:8px}
+  details.guide > summary::-webkit-details-marker{display:none}
+  details.guide > summary::before{content:"▸"; color:var(--dim); font-size:12px}
+  details.guide[open] > summary::before{content:"▾"}
+  details.guide[open] > summary{border-bottom:1px solid var(--line)}
+  .guide .inner{padding:6px 16px 14px}
+  .guide ol{margin:0; padding-left:22px}
+  .guide ol > li{margin:11px 0; font-size:14px; color:var(--text)}
+  .guide ol > li::marker{color:var(--dim); font-weight:600}
+  .guide .note{font-size:13px; color:var(--dim); margin-top:4px}
+  .guide .note.why{border-left:2px solid var(--line); padding-left:9px; margin-top:6px}
+  .ui{background:var(--ground); border:1px solid var(--line); border-radius:3px;
+    padding:1px 7px; font-size:13px; color:var(--ink); font-weight:500;
+    white-space:nowrap; display:inline-block}
+  .toggle-on{color:var(--green); font-weight:600}
+  .toggle-off{color:var(--red); font-weight:600}
+
+  .callout{background:var(--raised); border-left:3px solid var(--blue); border-radius:4px;
+    padding:12px 14px; font-size:13.5px; color:var(--muted); margin-bottom:16px}
+  .callout b{color:var(--ink)}
+  .callout.warn{border-left-color:var(--yellow)}
+  .danger{background:rgba(242,63,66,.1); border:1px solid rgba(242,63,66,.35);
+    border-left:3px solid var(--red); border-radius:4px; padding:12px 14px;
+    font-size:13.5px; color:#f5c2c3; margin:14px 0 2px}
+  .danger b{color:#fff}
+
+  .guilds{display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:9px}
+  .guild{display:flex; gap:11px; align-items:center; padding:11px 13px; cursor:pointer;
+    background:var(--raised); border:1px solid var(--line); border-radius:5px; text-align:left}
+  .guild:hover{background:var(--hover)}
+  .guild.sel{border-color:var(--blue); background:var(--hover)}
+  .guild .av{width:32px; height:32px; border-radius:50%; background:var(--line); color:var(--ink);
+    display:grid; place-items:center; font-weight:600; font-size:13px; flex:none; overflow:hidden}
+  .guild .av img{width:100%;height:100%;object-fit:cover}
+  .guild .nm{font-size:14px; color:var(--ink); overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap}
+  .guild .no{font-size:11.5px; color:var(--red)}
+
+  .cols{display:grid; grid-template-columns:1fr 330px; gap:16px; align-items:start}
+  @media(max-width:960px){.cols{grid-template-columns:1fr}}
+
+  .group{border:1px solid var(--line); border-radius:5px; margin-bottom:10px; overflow:hidden}
+  .group > .gh{display:flex; align-items:center; gap:9px; padding:9px 13px; background:var(--raised);
+    font-size:11.5px; letter-spacing:.02em; color:var(--muted); text-transform:uppercase;
+    font-weight:700}
+  .group > .gh .count{margin-left:auto; color:var(--dimmer); font-weight:500}
+  .item{display:flex; align-items:flex-start; gap:11px; padding:9px 13px;
+    border-top:1px solid var(--line-soft)}
+  .item:hover{background:var(--raised)}
+  .item .meta{flex:1; min-width:0}
+  .item .nm{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+  .item .nm b{font-weight:500; font-size:14px; color:var(--ink)}
+  .item .why{font-size:12.5px; color:var(--dim); margin-top:3px}
+  .item input[type=text]{padding:4px 8px; font-size:13.5px; width:auto; max-width:200px}
+  .item input[type=color]{width:30px; height:26px; padding:0; border:1px solid var(--line);
+    background:var(--input); border-radius:4px; cursor:pointer; flex:none}
+
+  /* remove / add-back controls replace the old checkboxes: what is listed is
+     what gets built, so there is no ambiguous greyed-out state */
+  .rm{background:transparent; border:1px solid var(--line); color:var(--dim);
+    padding:4px 10px; font-size:12.5px; border-radius:4px; flex:none}
+  .rm:hover{background:rgba(242,63,66,.14); border-color:var(--red); color:#f5c2c3}
+  .lock{font-size:11px; color:var(--yellow); flex:none; padding:5px 2px 0 0; white-space:nowrap}
+  .addrow{display:flex; gap:7px; align-items:center; padding:9px 13px;
+    border-top:1px solid var(--line-soft); background:rgba(0,0,0,.14); flex-wrap:wrap}
+  .addrow input[type=text]{flex:1; min-width:130px; padding:6px 9px; font-size:13.5px}
+  .addrow select{width:auto; padding:6px 9px; font-size:13.5px}
+  .addrow button{padding:6px 13px; font-size:13px}
+  .gone{padding:9px 13px; border-top:1px solid var(--line-soft); font-size:12.5px;
+    color:var(--dimmer); display:flex; gap:7px; align-items:center; flex-wrap:wrap;
+    background:rgba(0,0,0,.14)}
+  .back{background:transparent; border:1px dashed var(--line); color:var(--muted);
+    padding:3px 9px; font-size:12.5px; border-radius:4px}
+  .back:hover{border-style:solid; border-color:var(--blue); color:var(--ink)}
+
+  .tag{font-size:10.5px; padding:1px 6px; border-radius:3px; background:var(--ground);
+    color:var(--dim); text-transform:uppercase; letter-spacing:.03em; font-weight:600}
+  .tag.forum,.tag.announcement,.tag.voice{color:var(--muted)}
+  .tag.req{color:var(--yellow)}
+  .tag.added{color:#7ee2a8}
+  .pill{font-size:10.5px; padding:2px 7px; border-radius:3px; background:transparent;
+    border:1px solid var(--line); color:var(--dimmer); text-transform:uppercase;
+    letter-spacing:.03em; font-weight:600; cursor:pointer}
+  .pill.on{background:rgba(88,101,242,.18); border-color:var(--blue); color:#c3cafd}
+
+  /* switches for whole features, where on/off genuinely is the right control */
+  .sw{position:relative; width:38px; height:22px; flex:none; cursor:pointer}
+  .sw input{opacity:0; width:0; height:0; position:absolute}
+  .sw span{position:absolute; inset:0; background:var(--line); border-radius:22px;
+    transition:background .15s}
+  .sw span::before{content:""; position:absolute; width:16px; height:16px; left:3px; top:3px;
+    background:#fff; border-radius:50%; transition:transform .15s}
+  .sw input:checked + span{background:var(--green)}
+  .sw input:checked + span::before{transform:translateX(16px)}
+
+  aside{position:sticky; top:16px}
+  .card{background:var(--raised); border:1px solid var(--line); border-radius:5px;
+    padding:15px; margin-bottom:12px}
+  .card h2{font-size:12px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted);
+    margin-bottom:10px}
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:7px 14px}
+  .stat{display:flex; justify-content:space-between; font-size:13.5px}
+  .stat span{color:var(--dim)}
+  .stat b{color:var(--ink); font-weight:600}
+  .msg{font-size:13px; padding:9px 11px; border-radius:4px; margin-top:9px; border-left:3px solid}
+  .msg.err{background:rgba(242,63,66,.1); border-color:var(--red); color:#f5c2c3}
+  .msg.warn{background:rgba(240,178,50,.09); border-color:var(--yellow); color:#f2dcb3}
+  .msg.ok{background:rgba(35,165,90,.1); border-color:var(--green); color:#b7e6c9}
+
+  pre.log{background:var(--ground); border:1px solid var(--line); border-radius:5px; padding:13px;
+    font:12.5px/1.6 ui-monospace,Consolas,monospace; max-height:400px; overflow:auto;
+    white-space:pre-wrap; margin:14px 0 0; color:var(--muted)}
+  pre.log .p{color:#7ee2a8} pre.log .w{color:#f5989a}
+
+  ol.manual{padding-left:0; list-style:none; margin:0}
+  ol.manual li{border:1px solid var(--line); border-radius:5px; padding:13px 15px;
+    display:flex; gap:12px; margin-bottom:9px; background:var(--raised)}
+  ol.manual li.ticked{opacity:.45}
+  ol.manual li.ticked .steps,ol.manual li.ticked .why,ol.manual li.ticked .after{display:none}
+  ol.manual input[type=checkbox]{width:18px; height:18px; accent-color:var(--green);
+    margin-top:2px; flex:none; cursor:pointer}
+  ol.manual .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; padding:2px 7px;
+    border-radius:3px; flex:none; background:var(--ground); color:var(--dim); font-weight:700}
+  ol.manual .hd{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  ol.manual b{font-size:14.5px; color:var(--ink); font-weight:600}
+  ol.manual .why{margin:5px 0 0; font-size:13px; color:var(--dim)}
+  ol.manual .steps{margin:9px 0 0; padding:0; list-style:none; counter-reset:mstep}
+  ol.manual .steps li{all:unset; display:flex; gap:9px; align-items:flex-start;
+    font-size:13.5px; color:var(--text); padding:3px 0}
+  ol.manual .steps li::before{counter-increment:mstep; content:counter(mstep);
+    background:var(--ground); color:var(--dim); width:19px; height:19px; border-radius:50%;
+    display:grid; place-items:center; font-size:11px; font-weight:700; flex:none; margin-top:1px}
+  ol.manual .after{margin:9px 0 0; font-size:13px; color:var(--muted);
+    border-left:2px solid var(--line); padding-left:10px}
+  ol.manual .after b{font-size:13px}
+  .copybtn{background:var(--ground); border:1px solid var(--line); color:var(--text);
+    padding:6px 12px; font-size:13px; border-radius:4px; margin-top:9px}
+  .copybtn:hover{background:var(--hover)}
+  .progress{font-size:13px; color:var(--dim); margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="offline" class="offline" style="display:none"></div>
+
+<header>
+  <h1>Server Setup for Discord</h1>
+  <div class="sub">Build a server from a blueprint, without clicking through a hundred settings</div>
+</header>
+
+<!-- 1. create the bot --------------------------------------------------- -->
+<section class="step" id="s1">
+  <div class="head"><div class="num"><span>1</span></div><h2>Create your bot</h2></div>
+  <div class="body">
+
+    <div class="callout">
+      <b>A "bot" here is just an account you own that this tool logs in as.</b>
+      Making one takes about two minutes and costs nothing. You will not write any
+      bot code. It exists so something has permission to create your channels.
+    </div>
+
+    <details class="guide" open>
+      <summary>Step by step, assuming you have never done this</summary>
+      <div class="inner">
+        <ol>
+          <li>Open <a href="https://discord.com/developers/applications" target="_blank"
+              rel="noopener">discord.com/developers/applications</a> in a new tab.
+            <div class="note">Log in with the same Discord account you use normally. It is
+              the ordinary Discord login, not a separate developer account.</div></li>
+
+          <li>Top right of that page, click <span class="ui">New Application</span>.</li>
+
+          <li>Type a name, for example <code>Steward</code>. Tick the box agreeing to the
+            Developer Terms of Service, then click <span class="ui">Create</span>.
+            <div class="note">This name is internal. It is not your server's name and you
+              can change it later.</div></li>
+
+          <li>You land on a page called <b>General Information</b>. In the menu down the
+            left side, click <span class="ui">Bot</span>.
+            <div class="note">Everything from here on is on this one page, working
+              straight down it. You should not need to scroll back up.</div></li>
+
+          <li><b>Token</b> is the first section. Click
+            <span class="ui">Reset Token</span>, confirm with
+            <span class="ui">Yes, do it!</span>, and enter your two-factor code if your
+            account has one.</li>
+
+          <li>A long line of random characters appears with a
+            <span class="ui">Copy</span> button. Click it, then
+            <b>paste it straight into the box at the bottom of this page</b> so you
+            cannot lose it. Then come back here and finish the last three steps.
+            <div class="note why">Discord shows a token once and never again. If you lose
+              it, press Reset Token for a new one, which invalidates the old.</div></li>
+
+          <li>Next section down, <b>Authorization Flow</b>. Turn
+            <span class="toggle-off">OFF</span> the switch labelled
+            <span class="ui">Public Bot</span>.
+            <div class="note why">This stops anyone else adding your bot to their server.
+              Leave it on and strangers can invite it.</div></li>
+
+          <li>Next section down, <b>Privileged Gateway Intents</b>. Turn
+            <span class="toggle-on">ON</span> the switch labelled
+            <span class="ui">Server Members Intent</span>. Leave
+            <span class="ui">Presence Intent</span> and
+            <span class="ui">Message Content Intent</span>
+            <span class="toggle-off">OFF</span>.
+            <div class="note why">Server Members lets the ledger see who joins and leaves.
+              Message Content stays off deliberately: the ledger records who posted where
+              and when, never what was written. Less to protect, and an honest answer when
+              somebody asks what is stored.</div></li>
+
+          <li>A green bar appears at the bottom. Click
+            <span class="ui">Save Changes</span>.
+            <div class="note">Skip this and the two switches above do not stick, and the
+              ledger fails to start later with no obvious reason why.</div></li>
+        </ol>
+
+        <div class="danger">
+          <b>The token is a password. Do not paste it anywhere except the box below.</b>
+          Not in a chat, not in a screenshot, not in a message to a friend, not into an
+          AI assistant, not into a repo. Anyone who sees it controls the bot until you
+          reset it. If it does get out, the fix is quick and free: Developer Portal, your
+          app, Bot, <span class="ui">Reset Token</span>. The old one dies instantly.
+        </div>
+      </div>
+    </details>
+
+    <div id="connected" style="display:none">
+      <div class="row">
+        <div class="msg ok" style="margin:0; flex:1">Connected as <b id="botname"></b></div>
+        <button class="ghost small" onclick="disconnect()">Disconnect</button>
+      </div>
+    </div>
+
+    <div id="connform">
+      <label class="f"><span>Bot token</span>
+        <input type="password" id="token" placeholder="paste the token you just copied"
+               autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter') connect()"></label>
+      <div class="row">
+        <button onclick="connect()" id="connbtn">Connect</button>
+        <div class="hint" style="margin:0">Held in memory on this computer only. Never
+          written to disk, never sent back to this page. Closing the window forgets it.</div>
+      </div>
+      <div id="connerr"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. add the bot ------------------------------------------------------ -->
+<section class="step locked" id="s2">
+  <div class="head"><div class="num"><span>2</span></div><h2>Add the bot to your server</h2></div>
+  <div class="body">
+
+    <div class="callout warn">
+      <b>You need to have made the server yourself first.</b> Bots can no longer create or
+      own Discord servers, so this tool fills in a server that already exists. An empty one
+      is exactly right.
+    </div>
+
+    <details class="guide">
+      <summary>I have not made the server yet</summary>
+      <div class="inner">
+        <ol>
+          <li>In the Discord app, look at the narrow column of round server icons on the far
+            left.</li>
+          <li>At the bottom of that column, click the green
+            <span class="ui">+</span> button. Its tooltip says <b>Add a Server</b>.</li>
+          <li>Click <span class="ui">Create My Own</span>, then
+            <span class="ui">For me and my friends</span>.</li>
+          <li>Give it a name and click <span class="ui">Create</span>. You can rename it,
+            and set its icon, in step 4 of this page.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="guide" open>
+      <summary>Adding the bot</summary>
+      <div class="inner">
+        <ol>
+          <li>Click the button below. It opens Discord's authorize page in a new tab, with
+            everything already filled in.</li>
+          <li>In the dropdown labelled <span class="ui">ADD TO SERVER</span>, pick your
+            server.
+            <div class="note">Only servers where you can Manage Server appear here. If yours
+              is missing, you are not its owner or an admin.</div></li>
+          <li>Click <span class="ui">Continue</span>, then
+            <span class="ui">Authorize</span>. Solve the captcha if it asks.</li>
+          <li>Come back to this tab and click <span class="ui">I have added it</span>.</li>
+        </ol>
+        <div class="note why" style="margin-top:12px">
+          <b>Why it asks for Administrator.</b> The blueprint creates a <code>Dev</code> role
+          that carries Administrator, and Discord refuses to let a bot hand out a permission
+          it does not hold itself. It is your own server and the bot is private, so this is
+          safe. Step 6 shows you how to reduce it afterwards if you want to.
+        </div>
+      </div>
+    </details>
+
+    <div class="row">
+      <a id="invitelink" href="#" target="_blank" rel="noopener"><button>Open the invite page</button></a>
+      <button class="ghost" onclick="refreshGuilds()" id="refreshbtn">I have added it</button>
+    </div>
+    <div id="inviteerr"></div>
+  </div>
+</section>
+
+<!-- 3. pick server ------------------------------------------------------ -->
+<section class="step locked" id="s3">
+  <div class="head"><div class="num"><span>3</span></div><h2>Pick the server</h2></div>
+  <div class="body">
+    <div class="guilds" id="guilds"></div>
+    <div class="hint" id="guildhint"></div>
+  </div>
+</section>
+
+<!-- 4. customize -------------------------------------------------------- -->
+<section class="step locked" id="s4">
+  <div class="head"><div class="num"><span>4</span></div><h2>Choose what to build</h2>
+    <div style="margin-left:auto" class="row">
+      <select id="bpfile" style="width:auto" onchange="loadBlueprint()"></select>
+      <button class="ghost small" onclick="setAll(true)">Select all</button>
+      <button class="ghost small" onclick="setAll(false)">Clear</button>
+    </div>
+  </div>
+  <div class="body cols">
+    <div>
+      <div class="callout">What is listed here is what gets built. <b>Remove</b> anything
+        you do not want, click any name to rename it, and use the <b>Add</b> row at the
+        bottom of each group to put in your own. Removed things drop to the bottom of their
+        group so you can put them back. The panel on the right updates as you go and tells
+        you if a choice breaks a Discord rule.</div>
+      <div id="vars"></div>
+      <div id="existing"></div>
+      <div id="tree"></div>
+    </div>
+    <aside>
+      <div class="card">
+        <h2>What you will get</h2>
+        <div class="stats" id="stats"></div>
+        <div id="messages"></div>
+      </div>
+      <div class="card">
+        <h2>Server name and icon</h2>
+        <label class="f"><span>Rename server</span>
+          <input type="text" id="servername" placeholder="leave blank to keep as is"></label>
+        <label class="f" style="margin-bottom:0"><span>Server icon</span>
+          <input type="file" id="iconfile" accept="image/png,image/jpeg">
+          <div class="hint">Square PNG or JPG. Optional.</div></label>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- 5. apply ------------------------------------------------------------ -->
+<section class="step locked" id="s5">
+  <div class="head"><div class="num"><span>5</span></div><h2>Build it</h2></div>
+  <div class="body">
+    <div class="row">
+      <button id="applybtn" onclick="apply(false)">Build the server</button>
+      <button class="ghost" onclick="apply(true)">Dry run first</button>
+    </div>
+    <div class="hint">Dry run shows you every change without making any of them. Building is
+      safe to repeat: it updates what is already there rather than creating duplicates, so
+      you can change your mind and run it again.</div>
+    <pre class="log" id="log" style="display:none"></pre>
+  </div>
+</section>
+
+<!-- 6. manual ----------------------------------------------------------- -->
+<section class="step" id="s6">
+  <div class="head"><div class="num"><span>6</span></div><h2>The rest, by hand</h2></div>
+  <div class="body">
+    <div class="callout">None of this can be automated by any tool. Installing a bot needs
+      a human to press Authorize, and the Discord settings below have no API at all. Every
+      step says exactly where to click. Tick things off as you go; the list remembers.</div>
+    <div class="progress" id="manualprogress"></div>
+    <ol class="manual" id="manual"></ol>
+  </div>
+</section>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let INV = null, EXISTING = null, SEL = null;
+let GUILD = null, FILE = null, BUSY = false;
+let VKEYS = [], CHANS = [];
+
+function freshSelection(inv){
+  return {
+    variables: {...inv.variables},
+    roles: inv.roles.map(r => r.name),
+    channels: inv.categories.flatMap(c => c.channels.map(ch => ch.name)),
+    automod: inv.automod.map(a => a.name),
+    prompts: inv.prompts.map(p => p.title),
+    defaults: inv.onboarding_defaults.slice(),
+    renames: {channels:{}, roles:{}},
+    additions: {channels:[], roles:[]},
+    delete: {channels:[], roles:[]},
+    features: {community:true, onboarding:true}
+  };
+}
+
+function esc(s){ return String(s??"").replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function unlock(id, on){ $(id).classList.toggle('locked', !on); }
+function done(id, on){ $(id).classList.toggle('done', on); }
+
+/* A dead local server and a genuine error look identical to the browser: both
+   surface as "Failed to fetch". Tell them apart here, because the fix is
+   completely different. */
+const OFFLINE_MSG = 'Cannot reach the setup program. It is not running any more. '
+  + 'Go back to the black SETUP-UI window and check it is still open, or run '
+  + 'SETUP-UI.bat again, then reload this page.';
+
+async function api(path, opts={}){
+  let r;
+  try{
+    r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  }catch(e){
+    setOffline(true);
+    throw new Error(OFFLINE_MSG);
+  }
+  setOffline(false);
+  if(!r.ok){
+    let d; try{ d = (await r.json()).detail; }catch(e){ d = await r.text(); }
+    throw new Error(d || `${r.status} ${r.statusText}`);
+  }
+  return r.json();
+}
+
+function setOffline(on){
+  const b = $('#offline');
+  b.style.display = on ? '' : 'none';
+  if(on) b.textContent = OFFLINE_MSG;
+}
+
+/* Notice the program going away even while the page sits idle, so the first
+   sign is not a button that mysteriously does nothing. */
+setInterval(async () => {
+  try{
+    const r = await fetch('/api/health', {cache:'no-store'});
+    setOffline(!r.ok);
+  }catch(e){ setOffline(true); }
+}, 5000);
+
+/* ---------- 1. connect ---------- */
+async function connect(){
+  const token = $('#token').value.trim();
+  $('#connerr').innerHTML = '';
+  if(!token) return;
+  $('#connbtn').disabled = true; $('#connbtn').textContent = 'Connecting...';
+  try{
+    const d = await api('/api/connect', {method:'POST', body:JSON.stringify({token})});
+    $('#token').value = '';
+    $('#connform').style.display = 'none';
+    $('#connected').style.display = '';
+    $('#botname').textContent = d.bot.username;
+    $('#invitelink').href = d.invite_url;
+    done('#s1', true); unlock('#s2', true);
+    loadManual();
+    showGuilds(d.guilds);
+  }catch(e){
+    $('#connerr').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+  }finally{
+    $('#connbtn').disabled = false; $('#connbtn').textContent = 'Connect';
+  }
+}
+
+async function disconnect(){
+  await api('/api/disconnect', {method:'POST', body:'{}'});
+  location.reload();
+}
+
+/* ---------- 2 and 3. invite, then pick ---------- */
+async function refreshGuilds(){
+  $('#inviteerr').innerHTML = '';
+  $('#refreshbtn').disabled = true; $('#refreshbtn').textContent = 'Checking...';
+  try{ showGuilds((await api('/api/guilds')).guilds); }
+  catch(e){ $('#inviteerr').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  finally{ $('#refreshbtn').disabled = false; $('#refreshbtn').textContent = 'I have added it'; }
+}
+
+function showGuilds(gs){
+  if(!gs.length){
+    $('#guilds').innerHTML = '';
+    $('#guildhint').textContent = '';
+    $('#inviteerr').innerHTML = `<div class="msg warn">This bot is not in any server yet.
+      Use the invite page above, then press "I have added it".</div>`;
+    return;
+  }
+  done('#s2', true); unlock('#s3', true);
+  $('#guilds').innerHTML = gs.map(g => `
+    <button class="guild" data-id="${g.id}" ${g.can_manage?'':'disabled'}
+            onclick="pickGuild('${g.id}', this)">
+      <div class="av">${g.icon
+        ? `<img src="https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64" alt="">`
+        : esc(g.name.slice(0,1).toUpperCase())}</div>
+      <div style="min-width:0">
+        <div class="nm">${esc(g.name)}</div>
+        ${g.can_manage ? '' : '<div class="no">cannot manage this one</div>'}
+      </div></button>`).join('');
+  $('#guildhint').textContent = 'Servers your bot can see. Missing one? Add the bot to it first.';
+  const usable = gs.filter(g => g.can_manage);
+  if(usable.length === 1) pickGuild(usable[0].id, $(`.guild[data-id="${usable[0].id}"]`));
+}
+
+function pickGuild(id, el){
+  GUILD = id;
+  document.querySelectorAll('.guild').forEach(b => b.classList.remove('sel'));
+  if(el) el.classList.add('sel');
+  done('#s3', true); unlock('#s4', true);
+  if(!INV) initBlueprints(); else loadExisting();
+}
+
+/* ---------- 4. blueprint ---------- */
+async function initBlueprints(){
+  const list = await api('/api/blueprints');
+  $('#bpfile').innerHTML = list.map(b =>
+    `<option value="${esc(b.file)}">${esc(b.name)}</option>`).join('');
+  FILE = list[0]?.file;
+  if(FILE) loadBlueprint();
+}
+
+async function loadBlueprint(){
+  FILE = $('#bpfile').value || FILE;
+  const d = await api('/api/blueprint/' + encodeURIComponent(FILE));
+  INV = d.inventory;
+  SEL = freshSelection(INV);
+  renderVars();
+  redraw();
+  loadExisting();
+  loadManual();
+}
+
+/* What is already in the server, so leftovers from Discord's default template
+   can be dealt with here instead of by hand afterwards. */
+async function loadExisting(){
+  if(!GUILD) return;
+  try{
+    EXISTING = await api('/api/existing?guild_id=' + encodeURIComponent(GUILD));
+  }catch(e){ EXISTING = null; }
+  renderExisting();
+}
+
+/* Handlers reference items by index, never by interpolating a name into a JS
+   string literal. Blueprint text is arbitrary and an apostrophe in a rule name
+   would otherwise break the page. */
+function renderVars(){
+  VKEYS = Object.keys(INV.variables);
+  if(!VKEYS.length){ $('#vars').innerHTML = ''; return; }
+  $('#vars').innerHTML = `<div class="group"><div class="gh">Fill in the blanks</div>
+    <div style="padding:14px 13px 2px">
+      ${VKEYS.map((k,i) => `<label class="f"><span>${esc(k)}</span>
+        <input type="text" value="${esc(INV.variables[k])}"
+               oninput="setVar(${i}, this.value)"></label>`).join('')}
+      <div class="hint" style="margin:-8px 0 14px">Wherever the blueprint says
+        <code>{{${esc(VKEYS[0])}}}</code> it uses this instead. Change it once here rather
+        than editing channel descriptions one at a time.</div>
+    </div></div>`;
+}
+function setVar(i, val){ SEL.variables[VKEYS[i]] = val; refresh(); }
+
+function chip(ch){
+  const t = [];
+  if(ch.type !== 'text') t.push(`<span class="tag ${ch.type}">${ch.type}</span>`);
+  if(ch.added) t.push(`<span class="tag added">yours</span>`);
+  if(ch.tags.length) t.push(`<span class="tag">${ch.tags.length} post tags</span>`);
+  return t.join('');
+}
+
+/* Handlers reference items by index, never by interpolating a name into a JS
+   string literal. Blueprint text is arbitrary and an apostrophe in a rule name
+   would otherwise break the page. */
+function renderVars(){
+  VKEYS = Object.keys(INV.variables);
+  if(!VKEYS.length){ $('#vars').innerHTML = ''; return; }
+  $('#vars').innerHTML = `<div class="group"><div class="gh">Fill in the blanks</div>
+    <div style="padding:14px 13px 2px">
+      ${VKEYS.map((k,i) => `<label class="f"><span>${esc(k)}</span>
+        <input type="text" value="${esc(INV.variables[k])}"
+               oninput="setVar(${i}, this.value)"></label>`).join('')}
+      <div class="hint" style="margin:-8px 0 14px">Wherever the blueprint says
+        <code>{{${esc(VKEYS[0])}}}</code> it uses this instead. Change it once here rather
+        than editing channel descriptions one at a time.</div>
+    </div></div>`;
+}
+function setVar(i, val){ SEL.variables[VKEYS[i]] = val; refresh(); }
+
+/* ---------- what is already in the server ---------- */
+function renderExisting(){
+  const el = $('#existing');
+  if(!EXISTING || !INV){ el.innerHTML = ''; return; }
+
+  // Anything the blueprint also names gets adopted and updated in place, so it
+  // is not clutter. Only the rest is worth offering to delete.
+  const planned = new Set();
+  for(const c of INV.categories){
+    planned.add(c.name.toLowerCase());
+    for(const ch of c.channels) planned.add(ch.name.toLowerCase());
+  }
+  for(const a of SEL.additions.channels) planned.add(a.name.toLowerCase());
+  for(const v of Object.values(SEL.renames.channels)) planned.add(v.toLowerCase());
+
+  const plannedRoles = new Set(
+    INV.roles.map(r => r.name.toLowerCase())
+      .concat(SEL.additions.roles.map(r => r.name.toLowerCase()))
+      .concat(Object.values(SEL.renames.roles).map(v => v.toLowerCase())));
+
+  const chans = EXISTING.channels.filter(c => !planned.has(c.name.toLowerCase()));
+  const roles = EXISTING.roles.filter(r => r.deletable
+                                        && !plannedRoles.has(r.name.toLowerCase()));
+  if(!chans.length && !roles.length){ el.innerHTML = ''; return; }
+
+  const row = (kind, o, label) => {
+    const on = SEL.delete[kind].includes(o.id);
+    return `<div class="item">
+      <div class="meta"><div class="nm"><b>${esc(o.name)}</b>${label}</div>
+      <div class="why">${on ? 'Will be deleted when you build.'
+        : 'Already in your server. Not part of this blueprint.'}</div></div>
+      <button class="rm" onclick="toggleDelete('${kind}','${o.id}')"
+        style="${on ? 'border-color:var(--red);color:#f5c2c3' : ''}"
+        >${on ? 'Keep it' : 'Delete'}</button></div>`;
+  };
+
+  el.innerHTML = `<div class="group"><div class="gh">Already in your server
+      <span class="count">${chans.length + roles.length}</span></div>
+    <div class="item" style="border-top:0"><div class="meta"><div class="why" style="margin:0">
+      Discord puts a few channels in every new server. These are the ones this blueprint
+      does not use. Delete them for a clean result, or leave them alone.
+      <b style="color:var(--ink)">Deleting a channel deletes its messages and cannot be
+      undone.</b></div></div></div>
+    ${chans.map(c => row('channels', c, `<span class="tag ${c.type}">${c.type}</span>`)).join('')}
+    ${roles.map(r => row('roles', r, '<span class="tag">role</span>')).join('')}
+    </div>`;
+}
+
+function toggleDelete(kind, id){
+  const a = SEL.delete[kind], i = a.indexOf(id);
+  if(i < 0) a.push(id); else a.splice(i, 1);
+  renderExisting();
+}
+
+/* ---------- the blueprint itself ---------- */
+function renderTree(){
+  CHANS = INV.categories.flatMap(c => c.channels);
+  const kept = n => SEL.channels.includes(n);
+
+  let h = `<div class="group"><div class="gh">Server features</div>
+    ${feature('community', 'Community mode',
+      'Unlocks forum channels, announcement channels, the new-member questionnaire and '
+      + 'raid protection. Turning it off removes every forum and announcement channel, '
+      + 'because Discord will not create those without it.')}
+    ${feature('onboarding', 'New-member questions',
+      'Discord requires 7 or more starting channels, 5 of them fully open, before it '
+      + 'will accept these. Turn this off if you want a smaller server.')}
+    </div>`;
+
+  INV.categories.forEach((cat, catIdx) => {
+    const rows = [], gone = [];
+    cat.channels.forEach(ch => {
+      const i = CHANS.indexOf(ch);
+      if(kept(ch.name)) rows.push(channelRow(ch, i));
+      else gone.push(`<button class="back" onclick="restoreChannel(${i})">+ ${esc(ch.name)}</button>`);
+    });
+    SEL.additions.channels.forEach(a => {
+      if(a.category === cat.name) rows.push(addedRow(a));
+    });
+
+    h += `<div class="group"><div class="gh">${esc(cat.name)}
+      <span class="count">${rows.length}</span></div>
+      ${rows.join('')}
+      ${gone.length ? `<div class="gone">Removed:${gone.join('')}</div>` : ''}
+      <div class="addrow">
+        <input type="text" placeholder="new-channel-name" id="nc${catIdx}"
+               onkeydown="if(event.key==='Enter') addChannel(${catIdx})">
+        <select id="nt${catIdx}">
+          <option value="text">Text</option>
+          <option value="voice">Voice</option>
+          <option value="forum">Forum</option>
+          <option value="announcement">Announcement</option>
+        </select>
+        <button class="ghost" onclick="addChannel(${catIdx})">Add</button>
+      </div></div>`;
+  });
+
+  const rrows = [], rgone = [];
+  INV.roles.forEach((r,i) => {
+    if(SEL.roles.includes(r.name)) rrows.push(roleRow(r, i));
+    else rgone.push(`<button class="back" onclick="restoreRole(${i})">+ ${esc(r.name)}</button>`);
+  });
+  SEL.additions.roles.forEach(a => rrows.push(addedRoleRow(a)));
+
+  h += `<div class="group"><div class="gh">Roles <span class="count">${rrows.length}</span></div>
+    ${rrows.join('')}
+    ${rgone.length ? `<div class="gone">Removed:${rgone.join('')}</div>` : ''}
+    <div class="addrow">
+      <input type="text" placeholder="new role name" id="nrname"
+             onkeydown="if(event.key==='Enter') addRole()">
+      <input type="color" id="nrcolor" value="#99aab5" title="Role colour">
+      <button class="ghost" onclick="addRole()">Add</button>
+    </div>
+    <div class="gone">A role you add here carries no special permissions, which is right
+      for a label. Give it powers in Discord's own role editor, where each permission
+      explains what it does.</div></div>`;
+
+  h += simpleGroup('automod', 'Automatic moderation', INV.automod,
+                   a => a.name, a => a.note);
+  h += simpleGroup('prompts', 'Questions for new members', INV.prompts,
+                   p => p.title, p => p.note || p.options.join(' / '));
+  $('#tree').innerHTML = h;
+}
+
+function feature(key, title, why){
+  const on = SEL.features[key] !== false;
+  return `<div class="item">
+    <label class="sw"><input type="checkbox" ${on?'checked':''}
+      onchange="toggleFeature('${key}', this)"><span></span></label>
+    <div class="meta"><div class="nm"><b>${title}</b></div>
+    <div class="why">${why}</div></div></div>`;
+}
+
+function channelRow(ch, i){
+  const isDefault = SEL.defaults.includes(ch.name);
+  const locked = ch.required && (ch.required_when !== 'community'
+                                 || SEL.features.community !== false);
+  return `<div class="item">
+    <div class="meta">
+      <div class="nm"><b>#</b><input type="text" value="${esc(ch.name)}"
+          onchange="renameChan(${i}, this.value)">${chip(ch)}
+        ${ch.type === 'voice' ? '' :
+          `<button class="pill ${isDefault?'on':''}" onclick="toggleDefault(${i})"
+            title="Whether new members are shown this channel while joining"
+            >shown to new members</button>`}
+        ${locked ? '<span class="tag req">required</span>' : ''}</div>
+      <div class="why">${esc((locked ? ch.required_reason : ch.topic).slice(0,150))}</div>
+    </div>
+    ${locked ? '<span class="lock">cannot remove</span>'
+             : `<button class="rm" onclick="removeChannel(${i})">Remove</button>`}</div>`;
+}
+
+function addedRow(a){
+  const i = SEL.additions.channels.indexOf(a);
+  return `<div class="item">
+    <div class="meta"><div class="nm"><b>#</b><input type="text" value="${esc(a.name)}"
+      onchange="editAdded('channels', ${i}, this.value)">
+      <span class="tag ${a.type}">${a.type}</span><span class="tag added">yours</span></div>
+      <div class="why">You added this one.</div></div>
+    <button class="rm" onclick="dropAdded('channels', ${i})">Remove</button></div>`;
+}
+
+function roleRow(r, i){
+  const locked = r.required;
+  return `<div class="item">
+    <div class="meta"><div class="nm"><input type="text" value="${esc(r.name)}"
+        onchange="renameRole(${i}, this.value)">
+      ${locked ? '<span class="tag req">required</span>' : ''}</div>
+      <div class="why">${esc(locked ? r.required_reason : r.note)}</div></div>
+    ${locked ? '<span class="lock">cannot remove</span>'
+             : `<button class="rm" onclick="removeRole(${i})">Remove</button>`}</div>`;
+}
+
+function addedRoleRow(a){
+  const i = SEL.additions.roles.indexOf(a);
+  return `<div class="item">
+    <div class="meta"><div class="nm"><input type="text" value="${esc(a.name)}"
+      onchange="editAdded('roles', ${i}, this.value)">
+      <span class="tag added">yours</span></div>
+      <div class="why">You added this one. No special permissions.</div></div>
+    <button class="rm" onclick="dropAdded('roles', ${i})">Remove</button></div>`;
+}
+
+function simpleGroup(kind, title, items, nameOf, noteOf){
+  const rows = [], gone = [];
+  items.forEach((it,i) => {
+    const n = nameOf(it);
+    if(SEL[kind].includes(n)){
+      rows.push(`<div class="item"><div class="meta">
+        <div class="nm"><b>${esc(n)}</b></div>
+        <div class="why">${esc(noteOf(it))}</div></div>
+        <button class="rm" onclick="removeSimple('${kind}', ${i})">Remove</button></div>`);
+    } else {
+      gone.push(`<button class="back" onclick="restoreSimple('${kind}', ${i})">+ ${esc(n)}</button>`);
+    }
+  });
+  return `<div class="group"><div class="gh">${title} <span class="count">${rows.length}</span></div>
+    ${rows.join('')}
+    ${gone.length ? `<div class="gone">Removed:${gone.join('')}</div>` : ''}</div>`;
+}
+
+/* ---------- mutations ---------- */
+function removeChannel(i){
+  const n = CHANS[i].name;
+  SEL.channels = SEL.channels.filter(x => x !== n);
+  SEL.defaults = SEL.defaults.filter(x => x !== n);
+  redraw();
+}
+function restoreChannel(i){ SEL.channels.push(CHANS[i].name); redraw(); }
+function removeRole(i){
+  SEL.roles = SEL.roles.filter(x => x !== INV.roles[i].name); redraw();
+}
+function restoreRole(i){ SEL.roles.push(INV.roles[i].name); redraw(); }
+
+function removeSimple(kind, i){
+  const n = kind === 'prompts' ? INV.prompts[i].title : INV.automod[i].name;
+  SEL[kind] = SEL[kind].filter(x => x !== n); redraw();
+}
+function restoreSimple(kind, i){
+  SEL[kind].push(kind === 'prompts' ? INV.prompts[i].title : INV.automod[i].name);
+  redraw();
+}
+
+function toggleDefault(i){
+  const n = CHANS[i].name, j = SEL.defaults.indexOf(n);
+  if(j < 0) SEL.defaults.push(n); else SEL.defaults.splice(j, 1);
+  redraw();
+}
+
+function renameChan(i, val){
+  const orig = CHANS[i].name; val = val.trim();
+  if(!val || val === orig) delete SEL.renames.channels[orig];
+  else SEL.renames.channels[orig] = val;
+  redraw();
+}
+function renameRole(i, val){
+  const orig = INV.roles[i].name; val = val.trim();
+  if(!val || val === orig) delete SEL.renames.roles[orig];
+  else SEL.renames.roles[orig] = val;
+  redraw();
+}
+
+function addChannel(catIdx){
+  const nameEl = $('#nc' + catIdx);
+  let name = nameEl.value.trim();
+  if(!name) return;
+  const type = $('#nt' + catIdx).value;
+  // Discord lowercases text-style channel names and turns spaces into dashes.
+  // Do it here so the result is not a surprise after building.
+  if(type !== 'voice') name = name.toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
+  const taken = CHANS.some(c => c.name === name)
+             || SEL.additions.channels.some(c => c.name === name);
+  if(taken){ alert('There is already a channel called ' + name); return; }
+  SEL.additions.channels.push({name, type, category: INV.categories[catIdx].name});
+  nameEl.value = '';
+  redraw();
+}
+
+function addRole(){
+  const el = $('#nrname'), name = el.value.trim();
+  if(!name) return;
+  const taken = INV.roles.some(r => r.name === name)
+             || SEL.additions.roles.some(r => r.name === name);
+  if(taken){ alert('There is already a role called ' + name); return; }
+  const hex = ($('#nrcolor').value || '#000000').replace('#', '');
+  SEL.additions.roles.push({name, color: parseInt(hex, 16) || 0});
+  el.value = '';
+  redraw();
+}
+
+function editAdded(kind, i, val){
+  val = val.trim();
+  if(val) SEL.additions[kind][i].name = val;
+  redraw();
+}
+function dropAdded(kind, i){ SEL.additions[kind].splice(i, 1); redraw(); }
+
+function toggleFeature(name, el){
+  SEL.features[name] = el.checked;
+  // The questionnaire is a Community feature, so mirror the dependency rather
+  // than letting the user hit a confusing error.
+  if(name === 'community' && !el.checked) SEL.features.onboarding = false;
+  redraw();
+}
+
+function redraw(){ renderTree(); renderExisting(); refresh(); }
+
+function setAll(on){
+  SEL.channels = on ? CHANS.map(c => c.name)
+                    : CHANS.filter(c => c.required).map(c => c.name);
+  SEL.roles = on ? INV.roles.map(r => r.name)
+                 : INV.roles.filter(r => r.required).map(r => r.name);
+  SEL.automod = on ? INV.automod.map(a => a.name) : [];
+  SEL.prompts = on ? INV.prompts.map(p => p.title) : [];
+  SEL.defaults = on ? INV.onboarding_defaults.slice() : [];
+  redraw();
+}
+
+/* ---------- live validation ---------- */
+let timer = null;
+function refresh(){ clearTimeout(timer); timer = setTimeout(doRefresh, 160); }
+
+async function doRefresh(){
+  let d;
+  try{ d = await api('/api/preview', {method:'POST',
+        body: JSON.stringify({file:FILE, selection:SEL})}); }
+  catch(e){ return; }
+
+  const s = d.summary;
+  $('#stats').innerHTML = [
+    ['Channels', s.channels], ['Categories', s.categories],
+    ['Roles', s.roles], ['Mod rules', s.automod],
+    ['Questions', s.prompts], ['Community', s.community ? 'on' : 'off'],
+  ].map(([k,v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('');
+
+  let m = '';
+  for(const e of d.errors)   m += `<div class="msg err">${esc(e)}</div>`;
+  for(const w of d.warnings) m += `<div class="msg warn">${esc(w)}</div>`;
+  if(!d.errors.length) m += `<div class="msg ok">Ready to build.</div>`;
+  $('#messages').innerHTML = m;
+
+  const ok = d.errors.length === 0;
+  $('#applybtn').disabled = !ok || BUSY;
+  unlock('#s5', ok);
+}
+
+/* ---------- 5. apply ---------- */
+function readIcon(){
+  const f = $('#iconfile').files[0];
+  if(!f) return Promise.resolve(null);
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => res(null);
+    r.readAsDataURL(f);
+  });
+}
+
+async function apply(dry){
+  if(BUSY) return;
+  BUSY = true; $('#applybtn').disabled = true;
+  const log = $('#log'); log.style.display = ''; log.textContent = '';
+
+  const body = JSON.stringify({
+    file: FILE, selection: SEL, guild_id: GUILD, dry_run: dry,
+    server_name: $('#servername').value, icon: await readIcon(),
+    delete: SEL.delete
+  });
+
+  let resp;
+  try{
+    resp = await fetch('/api/apply', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body});
+  }catch(e){
+    line('w', 'Could not reach the local program: ' + e.message);
+    BUSY = false; $('#applybtn').disabled = false; return;
+  }
+  if(!resp.ok){
+    let d; try{ d = (await resp.json()).detail; }catch(e){ d = resp.statusText; }
+    line('w', d); BUSY = false; $('#applybtn').disabled = false; return;
+  }
+
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  while(true){
+    const {value, done:fin} = await reader.read();
+    if(fin) break;
+    buf += dec.decode(value, {stream:true});
+    const parts = buf.split('\n\n'); buf = parts.pop();
+    for(const p of parts){
+      const ev = (p.match(/^event: (.*)$/m) || [])[1];
+      const dm = (p.match(/^data: (.*)$/m) || [])[1];
+      if(!ev || dm === undefined) continue;
+      let data; try{ data = JSON.parse(dm); }catch(e){ continue; }
+      if(ev === 'log')    line('', data);
+      if(ev === 'failed') line('w', 'Failed: ' + data);
+      if(ev === 'done'){
+        const n = data.problems.length;
+        line('p', data.dry_run
+          ? '\nDry run finished. Nothing was changed.'
+          : (n ? `\nFinished, with ${n} thing(s) worth reading above.`
+               : '\nFinished. Open Discord and look at your server.'));
+        if(!data.dry_run){ done('#s5', true); SEL.delete = {channels:[], roles:[]}; loadExisting(); }
+      }
+    }
+  }
+  BUSY = false; $('#applybtn').disabled = false;
+}
+
+function line(cls, text){
+  const el = document.createElement('span');
+  if(cls) el.className = cls;
+  el.textContent = text + '\n';
+  $('#log').appendChild(el);
+  $('#log').scrollTop = $('#log').scrollHeight;
+}
+
+/* ---------- 6. manual ---------- */
+let MANUAL = [];
+
+/* Ticks persist, because this list is worked through over days rather than in
+   one sitting, and losing your place in it is the whole annoyance. */
+function ticks(){
+  try{ return JSON.parse(localStorage.getItem('manualTicks') || '{}'); }
+  catch(e){ return {}; }
+}
+function tick(title, on){
+  const t = ticks(); if(on) t[title] = 1; else delete t[title];
+  localStorage.setItem('manualTicks', JSON.stringify(t));
+  renderManual();
+}
+
+async function loadManual(){
+  const game = (SEL && SEL.variables && SEL.variables.game) || 'the game';
+  try{ MANUAL = await api('/api/manual?game=' + encodeURIComponent(game)); }
+  catch(e){ return; }
+  renderManual();
+}
+
+function renderManual(){
+  const t = ticks();
+  const done = MANUAL.filter(s => t[s.title]).length;
+  $('#manualprogress').textContent = MANUAL.length
+    ? `${done} of ${MANUAL.length} done` : '';
+
+  $('#manual').innerHTML = MANUAL.map((s, i) => {
+    const on = !!t[s.title];
+    return `<li class="${on ? 'ticked' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="tickAt(${i}, this.checked)">
+      <div style="flex:1; min-width:0">
+        <div class="hd"><b>${esc(s.title)}</b>
+          <span class="k">${esc(s.kind === 'bot' ? 'add a bot' : 'discord setting')}</span>
+          ${s.optional ? '<span class="k">optional</span>' : ''}</div>
+        <p class="why">${esc(s.why)}</p>
+        ${s.where ? `<ol class="steps">${s.where.map(w =>
+            `<li>${esc(w)}</li>`).join('')}</ol>` : ''}
+        ${s.url ? `<p class="why"><a href="${esc(s.url)}" target="_blank"
+            rel="noopener">Open the link</a></p>` : ''}
+        ${s.copy ? `<button class="copybtn" onclick="copyStep(${i}, this)">${
+            esc(s.copy_label || 'Copy')}</button>` : ''}
+        ${s.after ? `<p class="after"><b>Then:</b> ${esc(s.after)}</p>` : ''}
+      </div></li>`;
+  }).join('');
+}
+
+function tickAt(i, on){ tick(MANUAL[i].title, on); }
+
+function copyStep(i, btn){
+  navigator.clipboard.writeText(MANUAL[i].copy).then(() => {
+    const was = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = was; }, 1400);
+  });
+}
+
+loadManual();
+</script>
+</body>
+</html>

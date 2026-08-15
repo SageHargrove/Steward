@@ -1,0 +1,12 @@
+# Keep line endings stable in the repo. Without this, Git's autocrlf on Windows
+# rewrites every file on checkout and diffs fill up with whole-file changes.
+* text=auto eol=lf
+
+# Windows needs CRLF to run these reliably.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.sqlite3 binary

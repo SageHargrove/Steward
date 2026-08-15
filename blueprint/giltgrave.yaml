@@ -1,0 +1,590 @@
+# Giltgrave community server blueprint
+#
+# This file is the spec. The server is its first instantiation.
+# Applied by ../provision/provision.py, which is idempotent: run it as many
+# times as you like, it updates in place rather than duplicating.
+#
+# Everything here is deliberately game-agnostic in structure and Giltgrave-
+# specific only in content, so a second game (One Trick) forks this file
+# rather than starting over.
+
+meta:
+  name: Giltgrave
+  slug: giltgrave
+
+# Fill-in-the-blanks. Anything written as {{name}} below gets replaced.
+# This is what makes the blueprint redeployable to the next project instead of
+# being a config file for one server: {{game}} survives the move, "Giltgrave"
+# does not. The UI turns this block into form fields.
+variables:
+  game: Giltgrave
+  # What the community calls itself. Used in channel topics.
+  players: climbers
+
+guild:
+  # Community mode. The provisioner enables this for you.
+  # Discord requires all three of these before it will accept COMMUNITY.
+  community: true
+  verification_level: 1        # 1 = verified email required (Community minimum)
+  explicit_content_filter: 2   # 2 = scan messages from all members
+  default_message_notifications: 1   # 1 = mentions only. Sane default for a game server.
+  rules_channel: rules
+  public_updates_channel: server-updates
+  safety_alerts_channel: mod-log
+
+# ---------------------------------------------------------------------------
+# Roles
+#
+# Listed highest-first. The provisioner sets positions to match this order,
+# clamped below its own integration role.
+# ---------------------------------------------------------------------------
+roles:
+  - name: Dev
+    color: 0xC9A227
+    hoist: true
+    mentionable: true
+    permissions: [ADMINISTRATOR]
+
+  - name: Mod
+    color: 0x7A5CA8
+    hoist: true
+    mentionable: true
+    permissions:
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - SEND_MESSAGES_IN_THREADS
+      - CREATE_PUBLIC_THREADS
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - ADD_REACTIONS
+      - READ_MESSAGE_HISTORY
+      - MENTION_EVERYONE
+      - MANAGE_MESSAGES
+      - MANAGE_THREADS
+      - MANAGE_NICKNAMES
+      - KICK_MEMBERS
+      - BAN_MEMBERS
+      - MODERATE_MEMBERS
+      - VIEW_AUDIT_LOG
+      - CONNECT
+      - SPEAK
+      - MUTE_MEMBERS
+      - MOVE_MEMBERS
+
+  # Scarcity mechanic. Granted by hand to everyone who joins before the public
+  # announcement, then never granted again. Costs nothing, people care.
+  - name: Founding Member
+    note: "Scarcity mechanic. Grant to everyone who joins before you announce publicly, then never again."
+    color: 0xB0902A
+    hoist: true
+    mentionable: false
+    permissions: []
+
+  - name: Veteran
+    color: 0x9C4A3C
+    hoist: false
+    mentionable: false
+    permissions: []
+
+  - name: Playtester
+    note: "Gates #playtest-lounge. Turn both off together if you are not running playtests."
+    color: 0x3F7A6B
+    hoist: true
+    mentionable: true
+    permissions: []
+
+  # The compliance rail. Every proactive reach routes through this role
+  # instead of a DM. Granted by the onboarding prompt below.
+  - name: Ping Me For Playtests
+    required: true
+    required_reason: "Discord prohibits unsolicited DMs. An opt-in role is the only compliant way to reach people."
+    note: "Every announcement that would otherwise want to be a DM mentions this role instead."
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  # Attribution roles. Discord rejects any onboarding answer that grants
+  # neither a role nor a channel, so "How did you find us?" cannot be a pure
+  # survey. Granting a role is better regardless: Server Settings, Members,
+  # filter by role turns each answer into a number you can actually count.
+  # They carry no permissions, no colour and no hoist, so members never see them.
+  - name: "Found via Steam"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  - name: "Found via a Friend"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  - name: "Found via a Creator"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  - name: "Found via Reddit"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  - name: "Found via Another Server"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  - name: "Found via Elsewhere"
+    color: 0x000000
+    hoist: false
+    mentionable: false
+    permissions: []
+    note: "Attribution only. Count them under Server Settings, Members."
+
+  # Interest roles, granted by onboarding answers.
+  - name: Tower Climber
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Guild Seeker
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Bug Hunter
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Lore Reader
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+# ---------------------------------------------------------------------------
+# Permission overwrite presets, referenced by channels below.
+#
+# "everyone" is a magic name meaning @everyone (the role whose id is the
+# guild id). Names otherwise refer to roles declared above.
+# ---------------------------------------------------------------------------
+overwrite_presets:
+
+  # Anyone can read, only staff can post. Threads off.
+  readonly:
+    - role: everyone
+      deny: [SEND_MESSAGES, CREATE_PUBLIC_THREADS, CREATE_PRIVATE_THREADS, SEND_MESSAGES_IN_THREADS, ADD_REACTIONS]
+      allow: [VIEW_CHANNEL, READ_MESSAGE_HISTORY]
+    - role: Dev
+      allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
+    - role: Mod
+      allow: [SEND_MESSAGES, CREATE_PUBLIC_THREADS]
+
+  # Read-only but reactions allowed. Used for announcement channels where a
+  # reaction is the only feedback signal you get.
+  readonly_reactable:
+    - role: everyone
+      deny: [SEND_MESSAGES, CREATE_PUBLIC_THREADS, CREATE_PRIVATE_THREADS]
+      allow: [VIEW_CHANNEL, READ_MESSAGE_HISTORY, ADD_REACTIONS, SEND_MESSAGES_IN_THREADS]
+    - role: Dev
+      allow: [SEND_MESSAGES, MENTION_EVERYONE, CREATE_PUBLIC_THREADS]
+    - role: Mod
+      allow: [SEND_MESSAGES, CREATE_PUBLIC_THREADS]
+
+  # Fully open. These are the five that satisfy Discord's onboarding rule.
+  open:
+    - role: everyone
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, SEND_MESSAGES_IN_THREADS, CREATE_PUBLIC_THREADS, EMBED_LINKS, ATTACH_FILES, ADD_REACTIONS, READ_MESSAGE_HISTORY, USE_EXTERNAL_EMOJIS, SEND_POLLS]
+
+  # Open but no link embeds for @everyone, which kills the most common
+  # low-effort scam vector without needing an AutoMod rule slot.
+  open_no_links:
+    - role: everyone
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, SEND_MESSAGES_IN_THREADS, CREATE_PUBLIC_THREADS, ATTACH_FILES, ADD_REACTIONS, READ_MESSAGE_HISTORY, USE_EXTERNAL_EMOJIS]
+      deny: [EMBED_LINKS]
+
+  # Forum: anyone can open a post and reply.
+  forum_open:
+    - role: everyone
+      allow: [VIEW_CHANNEL, READ_MESSAGE_HISTORY, CREATE_PUBLIC_THREADS, SEND_MESSAGES_IN_THREADS, ADD_REACTIONS, EMBED_LINKS, ATTACH_FILES]
+      deny: [SEND_MESSAGES]
+
+  playtester_only:
+    - role: everyone
+      deny: [VIEW_CHANNEL]
+    - role: Playtester
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, SEND_MESSAGES_IN_THREADS, CREATE_PUBLIC_THREADS, EMBED_LINKS, ATTACH_FILES, ADD_REACTIONS, READ_MESSAGE_HISTORY]
+    - role: Dev
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, MENTION_EVERYONE]
+    - role: Mod
+      allow: [VIEW_CHANNEL, SEND_MESSAGES]
+
+  staff_only:
+    - role: everyone
+      deny: [VIEW_CHANNEL]
+    - role: Dev
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
+    - role: Mod
+      allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
+
+  voice_open:
+    - role: everyone
+      allow: [VIEW_CHANNEL, CONNECT, SPEAK, USE_VAD, READ_MESSAGE_HISTORY, SEND_MESSAGES]
+
+# ---------------------------------------------------------------------------
+# Channels
+#
+# Order within a category is preserved. Forum and announcement channels are
+# created after Community mode is enabled, because Discord rejects them before.
+# ---------------------------------------------------------------------------
+categories:
+
+  - name: INFO
+    channels:
+      - name: start-here
+        type: text
+        overwrites: readonly
+        topic: "What {{game}} is, how the server works, where to go first."
+
+      - name: rules
+        type: text
+        overwrites: readonly
+        required: true
+        required_when: community
+        required_reason: "Community mode will not turn on without a rules channel."
+        topic: "Read these. Rules Screening shows them to every new member before they can post."
+
+      - name: announcements
+        type: announcement
+        overwrites: readonly_reactable
+        topic: "Releases, playtests, events. Follow this channel to mirror it into your own server."
+
+      - name: patch-notes
+        type: announcement
+        overwrites: readonly_reactable
+        topic: "Build notes, every version. Separate from announcements on purpose: people who want builds do not want events."
+
+  - name: PLAY
+    channels:
+      - name: general
+        type: text
+        overwrites: open
+        default: true
+        topic: "Everything {{game}}."
+
+      - name: screenshots
+        type: text
+        overwrites: open
+        default: true
+        topic: "Post what your run looked like."
+
+      # For a gacha this is the highest-engagement channel in the server.
+      - name: hero-showcase
+        type: text
+        overwrites: open
+        default: true
+        topic: "Pulls, ascensions, ornament builds. Brag here."
+
+      - name: tower-talk
+        type: text
+        overwrites: open
+        default: true
+        topic: "Strategy, floor progression, zone comps, what wall you are stuck on."
+
+      - name: looking-for-guild
+        type: text
+        overwrites: open
+        topic: "Recruiting, or looking to be recruited. One post per guild, edit it rather than reposting."
+
+  - name: FEEDBACK
+    channels:
+      - name: bug-reports
+        type: forum
+        overwrites: forum_open
+        topic: |
+          One bug per post. Include:
+          1. Build number (Settings, bottom of the panel)
+          2. What you did, step by step
+          3. What you expected, what happened instead
+          4. A screenshot if it is visual
+
+          Tag your post. Untagged posts get tagged by a mod and that is slower for you.
+        default_auto_archive_duration: 10080   # 1 week, not the 3-day default
+        default_sort_order: 1                  # 1 = creation date
+        default_forum_layout: 1                # 1 = list view
+        tags:
+          - { name: crash, emoji: "💥" }
+          - { name: visual, emoji: "🖼️" }
+          - { name: balance, emoji: "⚖️" }
+          - { name: multiplayer, emoji: "🌐" }
+          - { name: generation, emoji: "🎨" }
+          - { name: account, emoji: "🔑" }
+          - { name: save-data, emoji: "💾" }
+          # Moderated tags: only staff can apply these. This is your triage state.
+          - { name: needs-info, emoji: "❓", moderated: true }
+          - { name: confirmed, emoji: "✅", moderated: true }
+          - { name: fixed, emoji: "🩹", moderated: true }
+          - { name: cannot-reproduce, emoji: "🌫️", moderated: true }
+          - { name: by-design, emoji: "📐", moderated: true }
+
+      - name: suggestions
+        type: forum
+        overwrites: forum_open
+        topic: |
+          One idea per post. Vote with the 👍 reaction on the first message.
+          Read before posting: a duplicate splits the vote and makes your idea
+          look less popular than it is.
+        default_auto_archive_duration: 10080
+        default_reaction_emoji: "👍"
+        default_sort_order: 0                  # 0 = latest activity
+        tags:
+          - { name: gameplay, emoji: "🎲" }
+          - { name: heroes, emoji: "🗡️" }
+          - { name: tower, emoji: "🗼" }
+          - { name: guild, emoji: "🛡️" }
+          - { name: ui, emoji: "🪟" }
+          - { name: quality-of-life, emoji: "🧹" }
+          - { name: under-consideration, emoji: "🤔", moderated: true }
+          - { name: planned, emoji: "📌", moderated: true }
+          - { name: shipped, emoji: "🚢", moderated: true }
+          - { name: not-planned, emoji: "🚫", moderated: true }
+
+      - name: playtest-lounge
+        type: text
+        overwrites: playtester_only
+        topic: "Build discussion for current playtesters. Anything here is unreleased. Do not post it elsewhere."
+
+  - name: DEV
+    channels:
+      - name: devlog
+        type: announcement
+        overwrites: readonly_reactable
+        topic: "How {{game}} gets made. Other dev servers can Follow this channel, which is free reach."
+
+      - name: ask-the-dev
+        type: forum
+        overwrites: forum_open
+        topic: |
+          Ask anything. Posts stay browsable, so check whether it has been
+          answered before you open a new one.
+        default_auto_archive_duration: 10080
+        tags:
+          - { name: design, emoji: "📐" }
+          - { name: tech, emoji: "⚙️" }
+          - { name: art, emoji: "🎨" }
+          - { name: roadmap, emoji: "🗺️" }
+          - { name: business, emoji: "💼" }
+          - { name: answered, emoji: "💬", moderated: true }
+
+  - name: OFF-TOPIC
+    channels:
+      - name: off-topic
+        type: text
+        overwrites: open
+        default: true
+        topic: "Anything that is not {{game}}."
+
+      - name: other-games
+        type: text
+        overwrites: open_no_links
+        topic: "What else you are playing."
+
+  - name: VOICE
+    channels:
+      - name: General Voice
+        type: voice
+        overwrites: voice_open
+
+      - name: Co-op and Raids
+        type: voice
+        overwrites: voice_open
+
+  - name: STAFF
+    channels:
+      - name: mod-log
+        type: text
+        overwrites: staff_only
+        topic: "AutoMod alerts, Sapphire logging, Wick alerts, Steward warnings. Also the safety alerts channel."
+
+      - name: server-updates
+        type: text
+        overwrites: staff_only
+        required: true
+        required_when: community
+        required_reason: "Community mode will not turn on without a mod-only updates channel."
+        topic: "Discord's community updates channel. Required by Community mode. Discord posts here, you do not."
+
+      - name: steward-reports
+        type: text
+        overwrites: staff_only
+        topic: "Weekly cohort digest, decay alerts, onboarding funnel numbers. Steward posts here."
+
+# Channels shown to every new member during onboarding.
+# Discord requires at least 7 defaults, of which at least 5 must let
+# @everyone both view AND send. Counted below: 8 defaults, 5 of them open.
+onboarding_defaults:
+  - start-here
+  - rules
+  - announcements
+  - general
+  - screenshots
+  - hero-showcase
+  - tower-talk
+  - off-topic
+
+# ---------------------------------------------------------------------------
+# Onboarding prompts
+# ---------------------------------------------------------------------------
+onboarding_prompts:
+
+  - title: "What brings you to {{game}}?"
+    type: multiple_choice
+    single_select: false
+    required: true
+    options:
+      - title: "Climbing the tower"
+        description: "Floor progression, comps, the wall you are stuck on."
+        emoji: "🗼"
+        roles: [Tower Climber]
+        channels: [tower-talk]
+      - title: "Guilds and other players"
+        description: "Raids, trade, finding people to run with."
+        emoji: "🛡️"
+        roles: [Guild Seeker]
+        channels: [looking-for-guild]
+      - title: "Breaking things"
+        description: "You find bugs and you enjoy it."
+        emoji: "🐛"
+        roles: [Bug Hunter]
+        channels: [bug-reports]
+      - title: "The world and the writing"
+        description: "Lore, art, how it all got made."
+        emoji: "📜"
+        roles: [Lore Reader]
+        channels: [devlog]
+
+  # This prompt is the entire proactive layer's legal basis. Discord's
+  # Developer Policy prohibits unsolicited DMs. An opt-in role is the only
+  # compliant path for reaching people, and it is a better product anyway:
+  # visible, revocable, and it does not read as spam.
+  - title: "Want a ping when a playtest opens?"
+    note: "The opt-in that makes every later announcement compliant. Keep this one."
+    type: multiple_choice
+    single_select: true
+    required: true
+    options:
+      - title: "Yes, ping me"
+        description: "A role mention in #announcements when builds go out. A few times a month at most."
+        emoji: "🔔"
+        roles: [Ping Me For Playtests]
+      - title: "No thanks"
+        description: "You can add this later from the Channels and Roles menu."
+        emoji: "🔕"
+        roles: []
+        # Discord rejects an answer that grants neither a role nor a channel.
+        # Pointing at a channel they already see is the harmless way to say
+        # "this answer does nothing".
+        channels: [general]
+
+  # Attribution you cannot get any other way. Server Insights does not unlock
+  # until 500 members and its attribution is coarse even then. Three seconds
+  # from the member, and it tells you which channel is actually working.
+  - title: "How did you find us?"
+    note: "Attribution you cannot get any other way. Server Insights needs 500 members and is coarse even then."
+    type: dropdown
+    single_select: true
+    required: true
+    options:
+      - { title: "Steam", emoji: "🎮", roles: [Found via Steam] }
+      - { title: "A friend", emoji: "👋", roles: [Found via a Friend] }
+      - { title: "A streamer or video", emoji: "📺", roles: [Found via a Creator] }
+      - { title: "Reddit", emoji: "👽", roles: [Found via Reddit] }
+      - { title: "Another Discord server", emoji: "💬", roles: [Found via Another Server] }
+      - { title: "Somewhere else", emoji: "🧭", roles: [Found via Elsewhere] }
+
+# ---------------------------------------------------------------------------
+# AutoMod
+#
+# Hard API limits: 6 keyword rules, 10 regex patterns per rule at 260 chars
+# each (Rust regex, no lookahead or backreferences), 1 spam rule,
+# 1 keyword-preset rule, 1 mention-spam rule, 1 member-profile rule.
+# Timeout as an action only works on keyword and mention-spam rules.
+# ---------------------------------------------------------------------------
+automod:
+
+  - name: "Slurs and sexual content"
+    note: "Discord's own maintained word lists. Nothing for you to write or update."
+    trigger: keyword_preset
+    presets: [sexual_content, slurs]
+    allow_list: []
+    actions:
+      - block: "That was caught by the server's content filter."
+      - alert: mod-log
+    exempt_roles: []
+
+  - name: "Spam"
+    trigger: spam
+    actions:
+      - block: "That looked like spam to the server filter."
+      - alert: mod-log
+    exempt_roles: [Dev, Mod]
+
+  - name: "Mention spam"
+    note: "Blocks messages with more than 6 mentions and times the sender out for 10 minutes."
+    trigger: mention_spam
+    mention_total_limit: 6
+    mention_raid_protection: true
+    actions:
+      - block: "Too many mentions in one message."
+      - alert: mod-log
+      - timeout: 600
+    exempt_roles: [Dev, Mod]
+
+  - name: "Invite links and advertising"
+    note: "Exempts #looking-for-guild, where recruiters legitimately post links."
+    trigger: keyword
+    regex_patterns:
+      - '(discord\.(gg|io|me|li)|discordapp\.com/invite)/[a-zA-Z0-9-]+'
+      - '(?i)(free\s+nitro|steam\s+gift|claim\s+your\s+reward)'
+    keyword_filter: []
+    allow_list: []
+    actions:
+      - block: "Invite links and advertising are not allowed here. Ask a mod if you think this is a mistake."
+      - alert: mod-log
+      - timeout: 300
+    exempt_roles: [Dev, Mod]
+    # #looking-for-guild is where guild recruiters legitimately post links.
+    exempt_channels: [looking-for-guild]
+
+  # Note: Discord's preset filters (profanity, sexual content, slurs) are only
+  # available on the keyword_preset trigger, which applies to messages. Member
+  # profiles support keyword and regex matching only, so this rule targets
+  # staff impersonation and giveaway scams, which is what nickname abuse in a
+  # game server actually looks like.
+  - name: "Nickname and profile filter"
+    trigger: member_profile
+    event: member_update
+    keyword_filter:
+      - "*giveaway*"
+      - "*free nitro*"
+      - "*steam gift*"
+    regex_patterns:
+      - '(?i)^\W*({{game}}\s+)?(mod|admin|moderator|staff|support|dev)\W*$'
+    allow_list: []
+    actions:
+      - block_member_interaction: true
+    exempt_roles: [Dev, Mod]

@@ -1,0 +1,274 @@
+"""
+Steward, stage one: the activity ledger and nothing else.
+
+It records events and offers three commands. It posts no digests, runs no
+calendar, detects no decay. Those are built later on top of the history this
+accumulates, and they are only worth building once there is history.
+
+Notably it does NOT request the MESSAGE_CONTENT intent. on_message fires
+without it; only the content field comes back empty, and the ledger records
+who posted where and when rather than what was said. That means less to
+protect, no annual reapplication once the bot passes 10,000 users, and an
+honest answer when a member asks what is stored.
+
+Run:
+    python bot.py
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import time
+from datetime import datetime, timezone
+
+import discord
+from discord import app_commands
+from discord.ext import tasks
+from dotenv import load_dotenv
+
+from ledger import Ledger
+
+load_dotenv()
+
+TOKEN = os.environ.get("DISCORD_TOKEN")
+DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
+RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
+REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+)
+log = logging.getLogger("steward")
+
+# GUILDS for structure, MEMBERS for joins and leaves and onboarding flags,
+# VOICE_STATES for voice. MEMBERS is privileged: toggle it in the Developer
+# Portal. Under 10,000 users that is a toggle, not an application.
+intents = discord.Intents.none()
+intents.guilds = True
+intents.members = True
+intents.voice_states = True
+intents.message_content = False
+
+
+class Steward(discord.Client):
+    def __init__(self):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+        self.ledger = Ledger(DB_PATH)
+
+    async def setup_hook(self):
+        await self.tree.sync()
+        self.nightly_purge.start()
+
+    # -- backfill ---------------------------------------------------------
+
+    async def on_ready(self):
+        log.info("connected as %s", self.user)
+        for guild in self.guilds:
+            seeded = 0
+            async for member in guild.fetch_members(limit=None):
+                if member.bot or not member.joined_at:
+                    continue
+                self.ledger.touch_member(
+                    guild.id, member.id, int(member.joined_at.timestamp()))
+                if member.flags.completed_onboarding:
+                    self.ledger.mark(guild.id, member.id, "onboarding_completed_at",
+                                     int(member.joined_at.timestamp()))
+                seeded += 1
+            log.info("%s: seeded %d members", guild.name, seeded)
+        counts = self.ledger.counts(self.guilds[0].id) if self.guilds else {}
+        log.info("ledger: %s", counts)
+
+    # -- recording --------------------------------------------------------
+
+    async def on_message(self, message: discord.Message):
+        if message.guild is None or message.author.bot:
+            return
+        now = int(message.created_at.timestamp())
+        self.ledger.record(
+            guild_id=message.guild.id,
+            user_id=message.author.id,
+            channel_id=message.channel.id,
+            event_type="message",
+            ts=now,
+            attachments=len(message.attachments) or None,
+            thread=isinstance(message.channel, discord.Thread) or None,
+        )
+        self.ledger.mark(message.guild.id, message.author.id, "first_message_at", now)
+
+    async def on_thread_create(self, thread: discord.Thread):
+        # Forum posts arrive here. Bug reports and suggestions are threads, so
+        # without this the two channels that matter most look silent.
+        if thread.guild is None or thread.owner_id is None:
+            return
+        parent = thread.parent
+        self.ledger.record(
+            guild_id=thread.guild.id,
+            user_id=thread.owner_id,
+            channel_id=thread.parent_id,
+            event_type="thread_create",
+            ts=int(thread.created_at.timestamp()) if thread.created_at else None,
+            forum=isinstance(parent, discord.ForumChannel) or None,
+            tags=[t.name for t in getattr(thread, "applied_tags", [])] or None,
+        )
+
+    async def on_member_join(self, member: discord.Member):
+        if member.bot:
+            return
+        now = int(time.time())
+        self.ledger.touch_member(member.guild.id, member.id, now)
+        self.ledger.record(
+            guild_id=member.guild.id, user_id=member.id,
+            event_type="join", ts=now,
+            account_age_days=(datetime.now(timezone.utc) - member.created_at).days,
+        )
+
+    async def on_member_remove(self, member: discord.Member):
+        if member.bot:
+            return
+        now = int(time.time())
+        self.ledger.record(guild_id=member.guild.id, user_id=member.id,
+                           event_type="leave", ts=now)
+        self.ledger.mark(member.guild.id, member.id, "last_left_at", now, first_only=False)
+
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        # There is no onboarding-completed event. The member flag flipping is
+        # the only signal, so watch for the transition.
+        if after.bot:
+            return
+        if not before.flags.completed_onboarding and after.flags.completed_onboarding:
+            now = int(time.time())
+            self.ledger.record(guild_id=after.guild.id, user_id=after.id,
+                               event_type="onboarding_complete", ts=now)
+            self.ledger.mark(after.guild.id, after.id, "onboarding_completed_at", now)
+
+    async def on_voice_state_update(self, member, before, after):
+        if member.bot:
+            return
+        gid = member.guild.id
+        if before.channel is None and after.channel is not None:
+            self.ledger.record(guild_id=gid, user_id=member.id,
+                               channel_id=after.channel.id, event_type="voice_join")
+        elif before.channel is not None and after.channel is None:
+            self.ledger.record(guild_id=gid, user_id=member.id,
+                               channel_id=before.channel.id, event_type="voice_leave")
+        elif before.channel and after.channel and before.channel.id != after.channel.id:
+            self.ledger.record(guild_id=gid, user_id=member.id,
+                               channel_id=after.channel.id, event_type="voice_move",
+                               **{"from": before.channel.id})
+
+    # -- retention --------------------------------------------------------
+
+    @tasks.loop(hours=24)
+    async def nightly_purge(self):
+        removed = self.ledger.purge_older_than(RETENTION_DAYS)
+        if removed:
+            log.info("retention: removed %d events older than %d days",
+                     removed, RETENTION_DAYS)
+
+    @nightly_purge.before_loop
+    async def _wait(self):
+        await self.wait_until_ready()
+
+
+client = Steward()
+
+
+# --------------------------------------------------------------------------
+# Commands
+# --------------------------------------------------------------------------
+
+@client.tree.command(name="my-data",
+                     description="See exactly what this server's bot has recorded about you.")
+async def my_data(interaction: discord.Interaction):
+    s = client.ledger.summary_for(interaction.user.id)
+    if s["opted_out"]:
+        await interaction.response.send_message(
+            "You have opted out. Nothing is being recorded about you. "
+            "Use `/remember-me` if you change your mind.", ephemeral=True)
+        return
+    if not s["total"]:
+        await interaction.response.send_message("Nothing recorded yet.", ephemeral=True)
+        return
+
+    lines = [
+        "**What is stored about you**",
+        "Message *metadata* only: which channel, and when. Not what you wrote.",
+        "",
+        f"Events: **{s['total']}**",
+        f"First: <t:{s['first']}:D>   Most recent: <t:{s['last']}:R>",
+        "",
+        *[f"- {k}: {v}" for k, v in s["by_type"].items()],
+        "",
+        f"Retained for {RETENTION_DAYS} days, then deleted automatically.",
+        "Use `/forget-me` to erase all of it now and stop future recording.",
+    ]
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@client.tree.command(name="forget-me",
+                     description="Erase everything recorded about you and stop future recording.")
+@app_commands.describe(confirm="Type DELETE to confirm. This cannot be undone.")
+async def forget_me(interaction: discord.Interaction, confirm: str):
+    if confirm.strip().upper() != "DELETE":
+        await interaction.response.send_message(
+            "Not deleted. Run it again with `confirm: DELETE` if you meant to.",
+            ephemeral=True)
+        return
+    removed = client.ledger.forget(interaction.user.id)
+    await interaction.response.send_message(
+        f"Deleted {removed['events']} events and your membership record. "
+        "Nothing further will be recorded about you unless you run `/remember-me`.",
+        ephemeral=True)
+    log.info("forget-me honoured for %s", interaction.user.id)
+
+
+@client.tree.command(name="remember-me",
+                     description="Opt back in to activity recording.")
+async def remember_me(interaction: discord.Interaction):
+    changed = client.ledger.unforget(interaction.user.id)
+    await interaction.response.send_message(
+        "Recording resumed. Nothing previously deleted was restored."
+        if changed else "You were not opted out.", ephemeral=True)
+
+
+@client.tree.command(name="ledger-status",
+                     description="Ledger health. Staff only.")
+async def ledger_status(interaction: discord.Interaction):
+    perms = interaction.user.guild_permissions if interaction.guild else None
+    if not perms or not perms.manage_guild:
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+
+    c = client.ledger.counts(interaction.guild_id)
+    f = client.ledger.funnel(interaction.guild_id, cohort_days=7)
+    joined = f["joined"] or 0
+    pct = lambda n: f"{(n / joined * 100):.0f}%" if joined else "n/a"
+
+    lines = [
+        "**Ledger**",
+        f"{c['events']} events since " + (f"<t:{c['since']}:D>" if c["since"] else "never"),
+        f"{c['members']} members tracked, {c['opt_outs']} opted out, "
+        f"{c['db_bytes'] / 1024:.0f} KB on disk",
+        "",
+        "**Last 7 days of joins**",
+        f"joined: {joined}",
+        f"completed onboarding: {f['onboarded']} ({pct(f['onboarded'])})",
+        f"posted at least once: {f['posted']} ({pct(f['posted'])})",
+        f"already left: {f['left_server']} ({pct(f['left_server'])})",
+        "",
+        *[f"- {k}: {v}" for k, v in c["by_type"].items()],
+    ]
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+if __name__ == "__main__":
+    if not TOKEN:
+        raise SystemExit("No DISCORD_TOKEN. Copy .env.example to .env and fill it in.")
+    try:
+        client.run(TOKEN, log_handler=None)
+    except KeyboardInterrupt:
+        pass
