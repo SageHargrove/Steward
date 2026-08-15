@@ -811,22 +811,49 @@ class Provisioner:
                     self.log("      Re-invite the bot with Administrator, then re-run.")
 
     def sync_role_positions(self):
-        """Blueprint lists roles highest-first. Discord positions are
-        lowest-first, and nothing can sit above the bot's own managed role,
-        so a failure here is expected and harmless."""
+        """Put the roles in the blueprint's order, highest first.
+
+        Discord numbers positions from the bottom, and a bot cannot move any
+        role above its own. Asking for a position above it rejects the ENTIRE
+        batch, which is why naively numbering from the top left everything
+        where it started. So find the bot's own role and pack everything into
+        the space underneath it.
+        """
         if self.dry:
             self.log("\n  [dry run] would reorder roles")
             return
-        names = [r["name"] for r in self.bp.get("roles", [])]
-        payload = [{"id": self.roles[n], "position": len(names) - i}
-                   for i, n in enumerate(names) if n in self.roles]
-        if not payload:
+
+        names = [r["name"] for r in self.bp.get("roles", []) if r["name"] in self.roles]
+        if not names:
             return
+
+        try:
+            me = self.c.get(f"/guilds/{self.gid}/members/@me")
+            live = {r["id"]: r for r in self.c.get(f"/guilds/{self.gid}/roles")}
+        except Failed as e:
+            self._warn(f"could not read role positions: {str(e)[:120]}")
+            return
+
+        mine = [live[rid]["position"] for rid in me.get("roles", []) if rid in live]
+        # Everything must land strictly below the bot's highest role.
+        ceiling = (min(mine) if mine else len(live)) - 1
+
+        if ceiling < len(names):
+            self.log(
+                f"\n  role order skipped: only {max(ceiling, 0)} slots sit below this "
+                f"bot's own role but {len(names)} roles need ordering.")
+            self.log("      Server Settings, Roles, drag the bot's role to the top,")
+            self.log("      then run this again and the order sorts itself out.")
+            return
+
+        payload = [{"id": self.roles[n], "position": ceiling - i}
+                   for i, n in enumerate(names)]
         try:
             self.c.patch(f"/guilds/{self.gid}/roles", payload)
-            self.log("\n  role order applied")
-        except Failed:
-            self.log("\n  role order not applied, drag them by hand in Server Settings")
+            self.log(f"\n  role order applied, {names[0]} at the top")
+        except Failed as e:
+            self._warn(f"role order not applied: {str(e)[:140]}")
+            self.log("      Drag the bot's role above the others and re-run.")
 
     # -- channels ---------------------------------------------------------
 
@@ -1135,9 +1162,15 @@ class Provisioner:
 
         # Never delete something this run just made, whatever the browser sent.
         mine = set(self.channels.values()) | set(self.roles.values())
+        by_id = {v: k for k, v in self.channels.items()}
+        by_id.update({v: k for k, v in self.roles.items()})
+
         for cid in channel_ids or []:
             if str(cid) in mine:
-                self._warn(f"refused to delete channel {cid}: this run just created it")
+                name = by_id.get(str(cid), cid)
+                self._warn(
+                    f"kept #{name}: it was marked for deletion but this run also "
+                    f"builds it, so deleting it would undo the work above")
                 continue
             try:
                 self.c.request("DELETE", f"/channels/{cid}")
@@ -1150,7 +1183,10 @@ class Provisioner:
                 self._warn("refused to delete @everyone")
                 continue
             if str(rid) in mine:
-                self._warn(f"refused to delete role {rid}: this run just created it")
+                name = by_id.get(str(rid), rid)
+                self._warn(
+                    f"kept the {name} role: it was marked for deletion but this run "
+                    f"also builds it, so deleting it would undo the work above")
                 continue
             try:
                 self.c.request("DELETE", f"/guilds/{self.gid}/roles/{rid}")

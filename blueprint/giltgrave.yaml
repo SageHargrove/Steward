@@ -160,6 +160,31 @@ roles:
     mentionable: true
     permissions: []
 
+  # Interest roles, granted by onboarding answers.
+  - name: Tower Climber
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Guild Seeker
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Bug Hunter
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
+  - name: Lore Reader
+    color: 0x000000
+    hoist: false
+    mentionable: true
+    permissions: []
+
   # Attribution roles, held for about a second each.
   #
   # Discord rejects any onboarding answer that grants neither a role nor a
@@ -220,31 +245,6 @@ roles:
     mentionable: false
     permissions: []
     note: "Removed automatically once Steward records the answer. Never stays on anyone."
-
-  # Interest roles, granted by onboarding answers.
-  - name: Tower Climber
-    color: 0x000000
-    hoist: false
-    mentionable: true
-    permissions: []
-
-  - name: Guild Seeker
-    color: 0x000000
-    hoist: false
-    mentionable: true
-    permissions: []
-
-  - name: Bug Hunter
-    color: 0x000000
-    hoist: false
-    mentionable: true
-    permissions: []
-
-  - name: Lore Reader
-    color: 0x000000
-    hoist: false
-    mentionable: true
-    permissions: []
 
 # ---------------------------------------------------------------------------
 # Permission overwrite presets, referenced by channels below.

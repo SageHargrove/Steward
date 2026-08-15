@@ -679,6 +679,17 @@ function renderExisting(){
   const chans = EXISTING.channels.filter(c => !planned.has(c.name.toLowerCase()));
   const roles = EXISTING.roles.filter(r => r.deletable
                                         && !plannedRoles.has(r.name.toLowerCase()));
+
+  // Anything no longer offered must drop out of the delete queue too. Marking
+  // a channel for deletion and then adding one with the same name hid the row
+  // but left the id queued, so the build asked to create and delete the same
+  // thing in one run.
+  const offered = {channels: new Set(chans.map(c => c.id)),
+                   roles: new Set(roles.map(r => r.id))};
+  for(const kind of ["channels", "roles"]){
+    SEL.delete[kind] = SEL.delete[kind].filter(id => offered[kind].has(id));
+  }
+
   if(!chans.length && !roles.length){ el.innerHTML = ''; return; }
 
   const row = (kind, o, label) => {

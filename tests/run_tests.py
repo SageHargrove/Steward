@@ -294,6 +294,34 @@ def _():
     assert prov.problems, "should have recorded the failures"
     assert fake.onboarding is not None, "run should have continued to onboarding"
 
+@test("roles are ordered below the bot's own role, not from the top")
+def _():
+    # Numbering from the top asks Discord to place a role above the bot, which
+    # rejects the WHOLE batch and silently leaves every role where it was.
+    fake = install(core, FakeDiscord())
+    fake.bot_role_position = 30
+    bp = load()
+    fake, prov = run(bp, fake=fake)
+    patch = next((b for m, p, b in fake.calls
+                  if m == "PATCH" and p == "/guilds/5/roles"), None)
+    assert patch, "role positions were never sent"
+    positions = [e["position"] for e in patch]
+    assert max(positions) < 30, f"asked for a slot at or above the bot: {max(positions)}"
+    assert positions == sorted(positions, reverse=True), "order must be descending"
+    assert len(set(positions)) == len(positions), "positions must be distinct"
+
+
+@test("says what to do when there is no room below the bot")
+def _():
+    fake = install(core, FakeDiscord())
+    fake.bot_role_position = 2          # almost at the bottom
+    bp = load()
+    fake, prov = run(bp, fake=fake)
+    patch = next((b for m, p, b in fake.calls
+                  if m == "PATCH" and p == "/guilds/5/roles"), None)
+    assert patch is None, "should not attempt an ordering that cannot fit"
+
+
 @test("deletes only what was asked, and refuses its own work")
 def _():
     fake = install(core, FakeDiscord(channels=[
@@ -313,6 +341,20 @@ def _():
     made = fake.channel_named("general")["id"]
     fake2, prov2 = run(bp, fake=fake, delete_channels=[made])
     assert not any(made in d for d in fake2.deleted), "deleted a channel it had just made"
+    assert any("general" in p for p in prov2.problems), \
+        f"the warning should name the channel, got: {prov2.problems}"
+
+
+@test("the delete queue drops anything no longer offered")
+def _():
+    # Marking a channel for deletion and then adding one with the same name
+    # used to hide the row but leave the id queued, so a build asked to create
+    # and delete the same thing. The page prunes the queue on every redraw.
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "const offered = {channels:" in html, "the prune step is missing"
+    body = html[html.index("function renderExisting"):html.index("function toggleDelete")]
+    assert body.index("SEL.delete[kind].filter") < body.index("if(!chans.length"), \
+        "the queue must be pruned before the early return, or a cleared list never prunes"
 
 
 # ---------------------------------------------------------------------------

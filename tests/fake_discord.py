@@ -29,6 +29,7 @@ class FakeDiscord:
         self.automod = []
         self.guild = {"id": guild_id, "features": [], "name": "Test Server"}
         self.onboarding = None
+        self.bot_role_position = 50   # where this bot's own role sits
         self.calls = []          # (method, path, body)
         self.deleted = []
         self.fail_on = {}        # (method, path_substring) -> status to raise
@@ -91,13 +92,21 @@ class FakeDiscord:
         return _Resp(200, {})
 
     def _get(self, path):
+        if path.endswith("/members/@me"):
+            # The bot's own membership, used to find the ceiling it can order under.
+            return {"user": {"id": "4242"}, "roles": ["bot-role"]}
         if path == "/users/@me":
             return {"id": "4242", "username": "Steward", "avatar": None}
         if path == "/users/@me/guilds":
             return [{"id": self.guild_id, "name": "Test Server", "icon": None,
                      "owner": True, "permissions": 8}]
         if path.endswith("/roles"):
-            return self.roles
+            out = []
+            for i, r in enumerate(self.roles):
+                out.append({**r, "position": r.get("position", i)})
+            out.append({"id": "bot-role", "name": "Steward", "managed": True,
+                        "position": self.bot_role_position})
+            return out
         if path.endswith("/channels"):
             return self.channels
         if "auto-moderation" in path:
