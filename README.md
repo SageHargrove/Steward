@@ -17,10 +17,14 @@ provision/provision.py      command-line wrapper
 ui/app.py                   Server Setup for Discord, the local UI
 steward/                    the bot. Ledger, levels, digest, moderation log,
                             calendar engine, playtest pipeline
+install/                    Start Menu shortcuts, and an Inno Setup script
+                            for a real installer later
 SETUP.md                    the runbook. Start there
 ```
 
-**Server Setup for Discord is the easy path.** Run `START.bat`. Nine
+**Server Setup for Discord is the easy path.** Run `INSTALL.bat` once to put
+it on the Start Menu, then launch it from there. Or run `START.bat` directly.
+Nine
 numbered steps, with the Developer Portal walkthrough built in so it assumes
 you have never made a bot before, and it generates your invite link once you
 paste a token. The CLI does the same job with flags.
@@ -372,7 +376,23 @@ half-working. If the strip fails for lack of permission, the answer is still
 recorded and the bot says so once, because the number matters more than the
 tidiness.
 
-## One file to run, and nothing to restart by hand
+## Installing, launching, restarting
+
+`INSTALL.bat` puts it on the Start Menu. Per-user, so no administrator prompt,
+nothing in the registry, and nothing written outside your own profile. The
+shortcuts point at the files where they already sit, so `git pull` updates what
+the Start Menu launches. `install\Uninstall.bat` removes them and touches
+nothing else, least of all the ledger database.
+
+The shortcut icon is the same arch as the bot's avatar, rendered separately at
+each of the nine sizes Windows uses rather than scaled down from one large
+image. `python brand\icon.py` rebuilds it.
+
+`install/setup.iss` is an Inno Setup script for the day this ships to somebody
+without a checkout: one .exe, a Programs and Features entry, no terminal. It is
+written but **not compiled or tested**, and it still needs Python on the target
+machine. `install/README.md` covers the three ways to fix that and recommends
+shipping the embeddable Python.
 
 `START.bat` is the only thing you ever double-click. Everything else is a
 button on the page:

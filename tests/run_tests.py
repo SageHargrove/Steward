@@ -1966,6 +1966,89 @@ def _():
     assert claim < send, "the beat is posted before it is claimed"
 
 # ---------------------------------------------------------------------------
+print("\nlaunchers and shortcuts")
+
+
+@test("every path the installer points at exists")
+def _():
+    # A shortcut to a file that moved fails silently months later, and the
+    # failure looks like the program being broken rather than the shortcut.
+    ps1 = (ROOT / "install" / "Install.ps1").read_text(encoding="utf-8")
+    joins = re.findall(r"Join-Path \$Root '([^']+)'", ps1)
+    assert joins, "the installer no longer resolves anything against $Root"
+    for rel in joins:
+        assert (ROOT / rel.replace("\\", "/")).exists(), \
+            f"Install.ps1 points at {rel}, which does not exist"
+
+
+@test("the launchers exist and run the file they claim to")
+def _():
+    for bat, must in (("START.bat", "app.py"),
+                      ("INSTALL.bat", "install\\Install.ps1"),
+                      ("install/Uninstall.bat", "install\\Uninstall.ps1"),
+                      ("steward/START-LEDGER.bat", "bot.py")):
+        p = ROOT / bat
+        assert p.exists(), f"{bat} is missing"
+        assert must in p.read_text(encoding="utf-8"), f"{bat} does not run {must}"
+
+
+@test("the icon carries every size Windows asks for")
+def _():
+    # Windows picks a frame by context: 256 for the large-icon view, 32 for the
+    # taskbar, 16 for the Start Menu list. A single big frame gets scaled by
+    # Windows, which is exactly what this mark was drawn to avoid.
+    ico = ROOT / "brand" / "steward.ico"
+    assert ico.exists(), "brand/steward.ico is missing. Run python brand/icon.py"
+    from PIL import Image
+    sizes = {s[0] for s in Image.open(ico).info["sizes"]}
+    for needed in (16, 32, 48, 256):
+        assert needed in sizes, f"the icon has no {needed}px frame. Has: {sorted(sizes)}"
+
+
+@test("the installer stays per-user, so it never needs administrator")
+def _():
+    ps1 = (ROOT / "install" / "Install.ps1").read_text(encoding="utf-8")
+    # 'Programs' and 'Desktop' are the per-user folders. CommonPrograms and
+    # CommonDesktopDirectory are the all-users ones and would prompt for admin.
+    for forbidden in ("CommonPrograms", "CommonDesktopDirectory", "CommonStartMenu"):
+        assert forbidden not in ps1, f"Install.ps1 writes to {forbidden}, which needs admin"
+    assert "GetFolderPath('Programs')" in ps1
+
+
+@test("the uninstaller never deletes the ledger")
+def _():
+    # The activity history cannot be rebuilt from Discord, and uninstalling
+    # shortcuts is not consent to destroy it.
+    text = (ROOT / "install" / "Uninstall.ps1").read_text(encoding="utf-8")
+    removes = re.findall(r"Remove-Item[^\n]*", text)
+    for line in removes:
+        assert "data" not in line and "sqlite" not in line, \
+            f"the uninstaller touches the ledger: {line}"
+    iss = (ROOT / "install" / "setup.iss").read_text(encoding="utf-8")
+    block = iss[iss.index("[UninstallDelete]"):iss.index("[Code]")]
+    for line in block.splitlines():
+        if line.strip().startswith("Type:"):
+            assert "steward\\data" not in line and ".env" not in line, \
+                f"the installer would delete data on uninstall: {line}"
+
+
+@test("the installer packages no secrets")
+def _():
+    # steward/.env holds a live bot token and steward/data holds members'
+    # activity. Either one inside a distributed installer is a breach.
+    iss = (ROOT / "install" / "setup.iss").read_text(encoding="utf-8")
+    block = iss[iss.index("[Files]"):iss.index("[Icons]")]
+    for line in block.splitlines():
+        if not line.strip().startswith("Source:"):
+            continue
+        src = re.search(r'Source: "([^"]+)"', line).group(1)
+        assert not src.endswith("\\.env"), f"the installer ships {src}"
+        assert "steward\\data" not in src, f"the installer ships {src}"
+        # A bare steward\* would sweep up both of the above.
+        assert src != "..\\steward\\*", "steward\\* would package .env and the ledger"
+
+
+# ---------------------------------------------------------------------------
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 if FAIL:
