@@ -9,6 +9,8 @@
 
 {{tagline}}
 
+Your tower is yours alone. So is everyone else's, which is what makes the arena, the trade post and the siege boards worth reading: the same hundred floors, a hundred different rosters, and nobody agreeing on the right way up.
+
 This server is where it gets made in public: builds, bugs, arguments about what to change, and the occasional screenshot nobody believes.
 
 **Start here**

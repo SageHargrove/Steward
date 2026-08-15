@@ -23,7 +23,9 @@ variables:
   # What the community calls itself. Used in channel topics.
   players: climbers
   # One line describing the game, used in the welcome post.
-  tagline: "A tower that remembers the nameless. Climb it, or be forgotten in it."
+  # The hook is consent: every hero traded going home for being remembered,
+  # which is the opposite of the genre's usual conscripted-summon premise.
+  tagline: "A hundred floors, and you will not climb one of them. They gave up going home for the chance to get that high. All you have to do is be worth it."
 
 guild:
   # Community mode. The provisioner enables this for you.
