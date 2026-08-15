@@ -43,8 +43,11 @@ guild:
   # and adds "setup tips" nagging, which looks like clutter you left behind.
   # Join messages are kept on purpose: a small server feels alive when you can
   # see people arrive.
-  # Discord's default invite dies after 7 days. This makes a permanent one.
-  owner_role: Dev
+  # Roles handed to whoever owns the server. Discord assigns roles to nobody
+  # automatically, so without this the owner sits in the default colour looking
+  # like the setup half-finished. Owner is the cosmetic badge, Dev is the one
+  # that actually carries permissions.
+  owner_roles: [Owner, Dev]
   raid_alerts: true
   system_channel: general
   system_channel_flags:

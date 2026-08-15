@@ -835,10 +835,70 @@ async def sweep_roles(interaction: discord.Interaction):
         else "Nothing to clean up. Every answer is already recorded.", ephemeral=True)
 
 
+def explain(title: str, lines: list[str]):
+    """Discord's own errors are written for library authors. Anything a person
+    has to act on gets rewritten here as the clicks that fix it."""
+    width = 68
+    print()
+    print("  " + "=" * width)
+    print("  " + title)
+    print("  " + "=" * width)
+    for line in lines:
+        print("  " + line)
+    print("  " + "=" * width)
+    print()
+
+
 if __name__ == "__main__":
     if not TOKEN:
-        raise SystemExit("No DISCORD_TOKEN. Copy .env.example to .env and fill it in.")
+        explain("No token in steward\\.env", [
+            "",
+            "Open steward\\.env and paste your bot token after DISCORD_TOKEN=",
+            "",
+            "If you no longer have it, get a new one:",
+            "  1. https://discord.com/developers/applications",
+            "  2. Your app, then Bot in the left menu",
+            "  3. Reset Token, confirm, then Copy",
+            "",
+            "Resetting invalidates the old token, which is fine.",
+        ])
+        raise SystemExit(1)
+
     try:
         client.run(TOKEN, log_handler=None)
+
+    except discord.PrivilegedIntentsRequired:
+        explain("Discord refused: one switch is still off", [
+            "",
+            "The ledger needs the Server Members Intent to see who joins and",
+            "leaves. It is off by default and has to be turned on by hand.",
+            "",
+            "  1. https://discord.com/developers/applications",
+            "  2. Click your app, then Bot in the left menu",
+            "  3. Scroll to Privileged Gateway Intents",
+            "  4. Turn ON  Server Members Intent",
+            "  5. Leave Presence Intent and Message Content Intent OFF",
+            "  6. Click Save Changes in the green bar at the bottom",
+            "",
+            "Step 6 is the one people miss. Without it nothing is saved and",
+            "you land back here.",
+            "",
+            "Then run this file again.",
+        ])
+        raise SystemExit(1)
+
+    except discord.LoginFailure:
+        explain("Discord rejected that token", [
+            "",
+            "Check steward\\.env holds the bot token itself, not the",
+            "Application ID and not the Client Secret. If you have reset the",
+            "token since copying it, the old one stopped working.",
+            "",
+            "  1. https://discord.com/developers/applications",
+            "  2. Your app, then Bot, then Reset Token",
+            "  3. Copy it and paste it after DISCORD_TOKEN= in steward\\.env",
+        ])
+        raise SystemExit(1)
+
     except KeyboardInterrupt:
         pass

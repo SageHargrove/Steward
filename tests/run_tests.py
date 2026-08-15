@@ -689,12 +689,55 @@ def _():
     assert not again, "a second invite was created on re-run"
 
 
-@test("the server owner is given the top role")
+@test("the server owner is given every role meant for them")
 def _():
     bp = load()
-    fake, _ = run(bp)
-    puts = [q for m, q, _ in fake.calls if m == "PUT" and "/roles/" in q and "/members/" in q]
-    assert puts, "the owner was never given a role"
+    fake, prov = run(bp)
+    byid = {v: k for k, v in prov.roles.items()}
+    given = {byid.get(q.rsplit("/", 1)[1]) for m, q, _ in fake.calls
+             if m == "PUT" and "/roles/" in q and "/members/" in q}
+    wanted = set(bp["guild"]["owner_roles"])
+    assert wanted <= given, f"owner missing {wanted - given}"
+
+
+@test("level settings and thresholds are editable, not blueprint-only")
+def _():
+    # They were invisible from the setup page, so the only way to change a
+    # threshold was to open the YAML.
+    inv = core.inventory(core.load(BLUEPRINT))
+    assert inv["levels"]["noun"], "the noun is not exposed to the UI"
+    assert inv["levels"]["rewards"], "the thresholds are not exposed to the UI"
+    bp = load({"levels": {"noun": "Rank",
+                          "xp_per_message": [5, 9],
+                          "rewards": {"Veteran": 12}}})
+    assert bp["levels"]["noun"] == "Rank"
+    assert bp["levels"]["xp_per_message"] == [5, 9]
+    assert bp["levels"]["rewards"] == [{"level": 12, "role": "Veteran"}]
+
+
+@test("a reward pointing at a removed role is dropped")
+def _():
+    keep = [r["name"] for r in core.load(BLUEPRINT)["roles"]
+            if not r["name"].startswith("★")]
+    bp = load({"roles": keep})
+    assert bp["levels"]["rewards"] == [], (
+        "rewards still point at roles that will not exist")
+    assert not core.validate(bp)["errors"]
+
+
+@test("thresholds come back in unlock order")
+def _():
+    bp = load({"levels": {"rewards": {"Veteran": 30, "Playtester": 2,
+                                      "Content Creator": 9}}})
+    assert [r["role"] for r in bp["levels"]["rewards"]] == [
+        "Playtester", "Content Creator", "Veteran"]
+
+
+@test("any role can be a reward, not only the star tiers")
+def _():
+    bp = load({"levels": {"rewards": {"Veteran": 12}}})
+    assert bp["levels"]["rewards"] == [{"level": 12, "role": "Veteran"}]
+    assert not core.validate(bp)["errors"]
 
 
 @test("join-raid alerts are left switched on")
@@ -1001,6 +1044,18 @@ def _():
     sys.path.insert(0, str(ROOT / "provision"))
     assert core.INVITE_PERMS_LEDGER & (1 << 28), \
         "the ledger invite must include MANAGE_ROLES or the roles can never be removed"
+
+
+@test("startup failures explain themselves")
+def _():
+    # discord.py's own errors are written for library authors. The two a person
+    # actually hits are a missing intent and a bad token, and both are fixed by
+    # clicks rather than by reading a traceback.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "PrivilegedIntentsRequired" in src, "the missing-intent case is unhandled"
+    assert "LoginFailure" in src, "a bad token still shows a traceback"
+    assert "Save Changes" in src, "the step people miss is not called out"
+    assert "Server Members Intent" in src
 
 
 @test("the bot says out loud whether it is recording")

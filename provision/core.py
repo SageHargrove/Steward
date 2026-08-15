@@ -311,6 +311,13 @@ def inventory(bp: dict) -> dict:
             "note": p.get("note", ""),
         } for p in bp.get("onboarding_prompts", [])],
         "onboarding_defaults": bp.get("onboarding_defaults", []),
+        "levels": {
+            **{k: v for k, v in (bp.get("levels") or {}).items() if k != "rewards"},
+            # role name -> the level that unlocks it, which is how the UI wants
+            # to show it: on the role itself rather than in a separate list.
+            "rewards": {r["role"]: r["level"]
+                        for r in (bp.get("levels") or {}).get("rewards", [])},
+        },
     }
 
 
@@ -335,6 +342,27 @@ def customize(bp: dict, selection: dict | None) -> dict:
     # and silently dropped them. Every keep-list, rename key and default below
     # therefore matches against the blueprint's own untouched names.
     bp = copy.deepcopy(bp)
+
+    # -- level settings, which the UI edits alongside the roles they reward
+    lv = sel.get("levels")
+    if lv:
+        levels = dict(bp.get("levels") or {})
+        for key in ("enabled", "noun", "cooldown_seconds", "voice_xp_per_minute",
+                    "announce", "announce_only_rewards", "no_xp_channels"):
+            if key in lv:
+                levels[key] = lv[key]
+        if "xp_per_message" in lv:
+            pair = lv["xp_per_message"]
+            levels["xp_per_message"] = [int(pair[0]), int(pair[1])]
+        if "rewards" in lv:
+            # Sent as {role: level}; stored as a list so the order is the
+            # order they unlock in.
+            levels["rewards"] = [
+                {"level": int(level), "role": role}
+                for role, level in sorted((lv["rewards"] or {}).items(),
+                                          key=lambda kv: int(kv[1]))
+                if str(level).strip() != ""]
+        bp["levels"] = levels
 
     # Whole features the user can switch off, as opposed to individual items.
     feats = sel.get("features") or {}
@@ -406,6 +434,10 @@ def customize(bp: dict, selection: dict | None) -> dict:
 
     bp["onboarding_defaults"] = [
         c for c in bp.get("onboarding_defaults", []) if c in chans_keep]
+
+    if bp.get("levels", {}).get("rewards"):
+        bp["levels"]["rewards"] = [r for r in bp["levels"]["rewards"]
+                                   if r["role"] in roles_keep]
 
     for p in bp.get("onboarding_prompts", []):
         for o in p.get("options", []):
@@ -1667,28 +1699,41 @@ class Provisioner:
             self._warn(f"could not create an invite: {str(e)[:140]}")
 
     def grant_owner_role(self):
-        """Give the server owner the top staff role.
+        """Give the server owner the roles that mark them as running the place.
 
-        Discord never assigns a role to anyone automatically, so without this
-        the person who owns the server shows up in the default colour with no
+        Discord assigns roles to nobody automatically, so without this the
+        person who owns the server shows up in the default colour with no
         badge, which reliably reads as the setup having failed.
         """
-        role_name = self.bp.get("guild", {}).get("owner_role")
-        if not role_name:
+        wanted = self.bp.get("guild", {}).get("owner_roles")
+        if not wanted:
+            single = self.bp.get("guild", {}).get("owner_role")
+            wanted = [single] if single else []
+        if not wanted or self.dry:
             return
-        rid = self.roles.get(role_name)
-        if not rid or self.dry:
-            return
+
         try:
             owner = self.c.get(f"/guilds/{self.gid}").get("owner_id")
-            if not owner:
-                return
-            self.c.put(f"/guilds/{self.gid}/members/{owner}/roles/{rid}", None)
-            self.log(f"\nOwner\n  gave {role_name} to the server owner")
         except Failed as e:
-            # Usually means the bot's own role sits below the one it is trying
-            # to hand out, which it cannot do.
-            self._warn(f"could not give the owner the {role_name} role: {str(e)[:120]}")
+            self._warn(f"could not find the server owner: {str(e)[:120]}")
+            return
+        if not owner:
+            return
+
+        given = []
+        for name in wanted:
+            rid = self.roles.get(name)
+            if not rid:
+                continue
+            try:
+                self.c.put(f"/guilds/{self.gid}/members/{owner}/roles/{rid}", None)
+                given.append(name)
+            except Failed as e:
+                # Usually the bot's own role sitting below the one it is trying
+                # to hand out, which Discord will not allow.
+                self._warn(f"could not give the owner the {name} role: {str(e)[:110]}")
+        if given:
+            self.log(f"\nOwner\n  gave {', '.join(given)} to the server owner")
 
     # -- deletions --------------------------------------------------------
 

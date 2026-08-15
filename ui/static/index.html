@@ -153,6 +153,18 @@
     letter-spacing:.03em; font-weight:600; cursor:pointer}
   .pill.on{background:rgba(88,101,242,.18); border-color:var(--blue); color:#c3cafd}
 
+  .unlock{display:flex; align-items:center; gap:5px; flex:none; font-size:11.5px;
+    color:var(--dimmer)}
+  .unlock input{width:52px; padding:3px 6px; font-size:12.5px; text-align:center}
+  .lvlgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px; padding:13px}
+  .lvlgrid label{display:block; font-size:11.5px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.02em; font-weight:700; margin-bottom:5px}
+  .lvlgrid input[type=text],.lvlgrid input[type=number],.lvlgrid select{
+    width:100%; padding:7px 9px; font-size:13.5px}
+  .lvlgrid .pair{display:flex; gap:6px; align-items:center}
+  .lvlgrid .hint{font-size:11.5px; margin-top:5px}
+
   .swatch{display:flex; align-items:center; gap:5px; flex:none}
   .swatch input[type=color]{width:26px; height:22px; padding:0; border:1px solid var(--line);
     background:var(--input); border-radius:4px; cursor:pointer}
@@ -513,6 +525,7 @@ function freshSelection(inv){
     defaults: inv.onboarding_defaults.slice(),
     renames: {channels:{}, roles:{}},
     colors: {},
+    levels: JSON.parse(JSON.stringify(inv.levels || {rewards:{}})),
     additions: {channels:[], roles:[]},
     delete: {channels:[], roles:[]},
     features: {community:true, onboarding:true}
@@ -802,6 +815,8 @@ function renderTree(){
       + 'will accept these. Turn this off if you want a smaller server.')}
     </div>`;
 
+  h += levelsPanel();
+
   INV.categories.forEach((cat, catIdx) => {
     const rows = [], gone = [];
     cat.channels.forEach(ch => {
@@ -864,6 +879,94 @@ function renderTree(){
   $('#tree').innerHTML = h;
 }
 
+function levelsPanel(){
+  const L = SEL.levels;
+  const noun = esc(L.noun || 'Level');
+  const opt = (v, label) => `<option value="${v}" ${L.announce === v ? 'selected' : ''}>${label}</option>`;
+  return `<div class="group"><div class="gh">Levels</div>
+    <div class="item">
+      <label class="sw"><input type="checkbox" ${L.enabled === false ? '' : 'checked'}
+        onchange="setLevel('enabled', this.checked)"><span></span></label>
+      <div class="meta"><div class="nm"><b>Give people levels</b></div>
+      <div class="why">Members earn a level for taking part, and roles unlock at the
+      levels you set below. Switch this off and nothing tracks XP at all.</div></div>
+    </div>
+    <div class="lvlgrid">
+      <div>
+        <label>What a level is called</label>
+        <input type="text" value="${noun}" onchange="setLevel('noun', this.value)">
+        <div class="hint">Members see this word: <b>${noun} 12</b>. Avoid one your
+          game already uses for a number of its own.</div>
+      </div>
+      <div>
+        <label>XP per message</label>
+        <div class="pair">
+          <input type="number" min="1" max="500" value="${L.xp_per_message[0]}"
+                 onchange="setXp(0, this.value)">
+          <span style="color:var(--dimmer)">to</span>
+          <input type="number" min="1" max="500" value="${L.xp_per_message[1]}"
+                 onchange="setXp(1, this.value)">
+        </div>
+        <div class="hint">Picked at random in this range, so it cannot be counted exactly.</div>
+      </div>
+      <div>
+        <label>Cooldown</label>
+        <input type="number" min="0" max="3600" value="${L.cooldown_seconds}"
+               onchange="setLevel('cooldown_seconds', +this.value)">
+        <div class="hint">Seconds between awards. This is the thing that stops
+          somebody farming levels by posting one word repeatedly.</div>
+      </div>
+      <div>
+        <label>Voice XP per minute</label>
+        <input type="number" min="0" max="100" value="${L.voice_xp_per_minute}"
+               onchange="setLevel('voice_xp_per_minute', +this.value)">
+        <div class="hint">Paid when they leave the channel. Zero switches voice off.</div>
+      </div>
+      <div>
+        <label>When someone levels up</label>
+        <select onchange="setLevel('announce', this.value)">
+          ${opt('reply', 'Reply to their message')}
+          ${opt('channel', 'Post to a channel')}
+          ${opt('off', 'Say nothing')}
+        </select>
+        <div class="hint">Replying is quietest. Announcing every level to a channel is
+          the fastest way to get muted.</div>
+      </div>
+      <div>
+        <label>Only speak up for rewards</label>
+        <select onchange="setLevel('announce_only_rewards', this.value === 'yes')">
+          <option value="yes" ${L.announce_only_rewards !== false ? 'selected' : ''}>Only when a role unlocks</option>
+          <option value="no" ${L.announce_only_rewards === false ? 'selected' : ''}>Every level</option>
+        </select>
+        <div class="hint">Every level gets noisy quickly on a busy server.</div>
+      </div>
+    </div>
+    <div class="gone">Set which roles unlock, and when, using the
+      <b>unlocks at</b> box on each role below. Any role can be a reward, not just the
+      star ones, and leaving it blank means the role is never given out automatically.</div>
+    </div>`;
+}
+
+function setLevel(key, value){ SEL.levels[key] = value; redraw(); }
+
+function setXp(i, value){
+  const v = Math.max(1, parseInt(value, 10) || 1);
+  SEL.levels.xp_per_message[i] = v;
+  // A range that runs backwards would award nothing, so keep them in order.
+  if(SEL.levels.xp_per_message[0] > SEL.levels.xp_per_message[1]){
+    SEL.levels.xp_per_message[i === 0 ? 1 : 0] = v;
+  }
+  redraw();
+}
+
+function setReward(i, value){
+  const name = INV.roles[i].name;
+  const level = parseInt(value, 10);
+  if(!value.trim() || isNaN(level) || level < 1) delete SEL.levels.rewards[name];
+  else SEL.levels.rewards[name] = level;
+  redraw();
+}
+
 function feature(key, title, why){
   const on = SEL.features[key] !== false;
   return `<div class="item">
@@ -919,6 +1022,11 @@ function roleRow(r, i){
         ${holo ? 'class="holo"' : `style="color:${hex(primary)}"`}>
       ${locked ? '<span class="tag req">required</span>' : ''}</div>
       <div class="why">${esc(locked ? r.required_reason : r.note)}</div></div>
+    <div class="unlock" title="Leave blank if this role is not a level reward">
+      unlocks at
+      <input type="number" min="1" max="500" value="${SEL.levels.rewards[r.name] ?? ''}"
+             placeholder="-" onchange="setReward(${i}, this.value)">
+    </div>
     <div class="swatch">
       <input type="color" value="${hex(primary)}" title="Colour"
              onchange="setRoleColor(${i}, 'color', this.value)">
