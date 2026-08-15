@@ -1,65 +1,67 @@
 # Steward's face
 
-Avatar concepts and banners, plus the contact sheets they were judged on.
+## What ships
 
-## Why the first attempt failed
+    steward-avatar.png          1024x1024, upload as the bot's avatar
+    steward-banner.png          680x240, upload as the bot's banner
+    steward-avatar-slate.png    the same two colours, swapped
+    steward-banner-slate.png
+    steward-contact-sheet.png   the avatar at 512, 96, 40 and 20 on both themes
 
-A line-art key looked fine at 512px and turned to noise at 20px. That is not a
-taste problem, it is a size problem: **a bot avatar spends its life at about
-40px in a member list and 20px beside a message.** Thin outlines disappear
-there. Everything here is either a filled silhouette or a letterform, both of
-which survive being shrunk.
+Mark is **gate3**: three voussoirs carried down onto two piers. A steward keeps
+a house, and an arch is the part of a house that only stands because every
+piece leans on the next one.
 
-`marks-sheet.png` shows every option at 128, 64, 40 and 20px, masked to a
-circle the way Discord renders them. That sheet is the actual test; judge from
-it rather than from the full-size files.
+Type is **Newsreader** at weight 600, letter-spaced. SIL Open Font License, so
+it is clear for commercial use and for embedding in a logo.
 
-## What is here
+Colour is **limestone** `#E8E1D3` on **slate** `#2A2E36`. The light ground is
+deliberate: nearly every bot avatar in a member list is dark, so a pale one is
+the one you can find. Swap to the slate files if you would rather it sat back.
 
-    mark-monogram-gold.png          S in gold on near-black
-    mark-monogram-ivory-violet.png  S in ivory on violet
-    mark-wax-seal.png               crimson seal
-    mark-wax-seal-gold.png          gold seal
-    mark-solid-key.png              a key, filled rather than outlined
-    mark-ledger.png                 a closed book
-    mark-lantern.png                a lantern
+## The rule everything here obeys
 
-    banner-gold-on-deep.png         wordmark, 680x240
-    banner-ivory-on-violet.png
-    banner-seal-left.png            mark and wordmark together
-    banner-discord-grey.png         on Discord's own grey, so the word floats
+**A bot avatar spends its life at about 40px in a member list and 20px beside a
+message.** Not 512. Line art dies there, interior detail dies there, and only a
+filled silhouette or a letterform survives. So every mark was drawn at 8x,
+downsampled, and then judged at 20px before anything else about it mattered.
 
-## The typeface
+`steward-contact-sheet.png` is that test. Judge from it, not from the 1024 file.
 
-Cinzel, converted from the copy already bundled with the game, so the tool
-reads as the same hand without borrowing the game's name. Cinzel is an
-all-caps face and needs letter-spacing to read as a wordmark rather than a
-word; every banner here sets it with tracking.
+Two things this settled, both of which cost a round of drawing to find out:
 
-Licensed under the SIL Open Font License, which permits commercial use.
+- **A tally mark cannot work.** Five strokes need six gaps, and at 20px wide a
+  gap under about 1.5px closes up. Heavier strokes make it fill in sooner, not
+  later. `marks-sheet.png` has the failed version.
+- **Gaps have to be sized in the final pixels, not the drawing.** The first
+  keystone used 2-degree joints between stones, which is a third of a pixel at
+  20px, so the stones fused into a blob. Nine degrees is the floor. The
+  constant is `GAP` in `keystones.py` and the arithmetic is in the comment
+  above it.
+
+## The sheets, in the order they were made
+
+    marks-sheet.png        six directions: tally, arch, column, keystone,
+                             s-cut, stack. Tally failed outright
+    keystones-sheet.png    six ways to draw the keystone once it was chosen.
+                             The fan versions read as a crown; only the ones
+                             with piers under them read as an arch
+    wordmarks-sheet.png    twelve OFL faces setting STEWARD at real banner size
+    colourways-sheet.png   eight two-colour schemes, banner and avatar together
 
 ## Regenerating
 
-`marks.py` and `banner.py` in the session scratchpad produced these. Both are
-plain Pillow, no design tool needed. Change a colour constant at the top and
-re-run to get the whole set again.
+    python getfonts.py      pulls the OFL faces into brand/fonts (gitignored)
+    python keystones.py     the mark variants + their sheet
+    python wordmarks.py     the typeface comparison
+    python final.py         colourways and the delivery files
 
+All plain Pillow, no design tool involved. To change the colour, edit
+`PALETTES` at the top of `final.py`; to change the mark, edit `gate3` in
+`keystones.py`. Everything downstream rebuilds.
 
-## Palettes
+## If you want someone else to draw it instead
 
-`palettes-sheet.png` is the one to look at: eight two-colour schemes, each shown
-as the banner and as the matching avatar at 96px and 40px, so the pair can be
-judged together rather than separately.
-
-    pal-banner-<name>.png    680x240
-    pal-seal-<name>.png      512x512, the same two colours
-
-The banner is deliberately plain. A wordmark on a flat ground is the one thing
-that never dates, and nothing more elaborate survives being a strip nobody
-looks at twice.
-
-Both files of a pair use the same two colours in opposite roles, which is what
-makes the profile read as one thing instead of two.
-
-Regenerate the whole set from `palettes.py` by editing the PALETTES dict at the
-top; every file rebuilds from those eight pairs of hex values.
+`BRIEF.md` is written to be handed to a designer or pasted into a design tool
+with no other context. It leads with the 20px constraint, because that is what
+every previous attempt died on.

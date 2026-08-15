@@ -16,7 +16,7 @@ INK = (233, 226, 212)
 
 # face -> (point size at 1x, tracking at 1x, weight to ask a variable font for)
 FACES = {
-    "cinzel":       (62, 14, None),
+    "cinzel":       (62, 14, 600),
     "marcellus":    (68, 14, None),
     "dmserif":      (70, 10, None),
     "youngserif":   (64, 10, None),
@@ -32,10 +32,7 @@ FACES = {
 
 
 def face(name, size, weight):
-    path = FONTS / f"{name}.ttf"
-    if not path.exists():
-        path = OUT / f"{name}.ttf"          # cinzel lives at the top level
-    f = ImageFont.truetype(str(path), size)
+    f = ImageFont.truetype(str(FONTS / f"{name}.ttf"), size)
     if weight:
         try:
             axes = f.get_variation_axes()
@@ -94,7 +91,5 @@ def sheet():
     return sh
 
 
-for name in FACES:
-    banner(name).save(OUT / f"word-{name}.png")
 sheet().save(OUT / "wordmarks-sheet.png")
 print("wrote", len(FACES), "wordmarks")

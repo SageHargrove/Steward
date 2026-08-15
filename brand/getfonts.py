@@ -6,6 +6,7 @@ OUT.mkdir(exist_ok=True)
 BASE = "https://raw.githubusercontent.com/google/fonts/main/"
 
 FONTS = {
+    "cinzel":         "ofl/cinzel/Cinzel[wght].ttf",
     "marcellus":      "ofl/marcellus/Marcellus-Regular.ttf",
     "dmserif":        "ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf",
     "youngserif":     "ofl/youngserif/YoungSerif-Regular.ttf",
