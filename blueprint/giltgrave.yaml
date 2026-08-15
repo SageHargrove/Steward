@@ -22,10 +22,11 @@ variables:
   game: Giltgrave
   # What the community calls itself. Used in channel topics.
   players: climbers
-  # One line describing the game, used in the welcome post.
-  # The hook is consent: every hero traded going home for being remembered,
-  # which is the opposite of the genre's usual conscripted-summon premise.
-  tagline: "A hundred floors, and you will not climb one of them. They gave up going home for the chance to get that high. All you have to do is be worth it."
+  # One line for the top of the welcome post. Deliberately blank: this is the
+  # one thing nobody else's words will do, and a placeholder here would end up
+  # posted in somebody's server unchanged. Fill it in from the setup page.
+  # Leave it empty and the welcome post simply skips the line.
+  tagline: ""
 
 guild:
   # Community mode. The provisioner enables this for you.

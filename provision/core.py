@@ -175,6 +175,9 @@ def split_content(text: str) -> list[str]:
     channel, so a content file can explain how to edit itself.
     """
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    # A variable left blank leaves an empty line behind. Collapse those, so an
+    # unfilled tagline reads as "no tagline" rather than as a gap in the post.
+    text = re.sub(r"[ \t]*\n[ \t]*(?:\n[ \t]*)+", "\n\n", text)
     parts = [p.strip("\n") for p in re.split(rf"^{re.escape(SPLIT_MARKER)}\s*$",
                                              text, flags=re.M)]
     return [p.strip() for p in parts if p.strip()]
@@ -697,6 +700,14 @@ def validate(bp: dict) -> dict:
         warnings.append("No roles selected")
     if not channels:
         errors.append("No channels selected, so there is nothing to build")
+
+    # A blank variable is legal and the text around it is simply left out, but
+    # it is nearly always something nobody got round to filling in.
+    for name, value in (bp.get("variables") or {}).items():
+        if isinstance(value, str) and not value.strip():
+            warnings.append(
+                f"'{name}' is empty, so the line it belongs to is left out of the "
+                f"posted text. Fill it in above if you want it")
 
     unresolved = set()
     def scan(node):
