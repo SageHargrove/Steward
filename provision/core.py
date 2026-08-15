@@ -952,15 +952,33 @@ class Provisioner:
             return
 
         try:
-            me = self.c.get(f"/guilds/{self.gid}/members/@me")
             live = {r["id"]: r for r in self.c.get(f"/guilds/{self.gid}/roles")}
         except Failed as e:
             self._warn(f"could not read role positions: {str(e)[:120]}")
             return
 
-        mine = [live[rid]["position"] for rid in me.get("roles", []) if rid in live]
-        # Everything must land strictly below the bot's highest role.
-        ceiling = (min(mine) if mine else len(live)) - 1
+        # "@me" only resolves for an OAuth2 bearer token with
+        # guilds.members.read; with a bot token Discord rejects it as an
+        # invalid user id. Ask who we are first, then look ourselves up.
+        mine: list[int] = []
+        uid = None
+        try:
+            uid = self.c.get("/users/@me")["id"]
+            member = self.c.get(f"/guilds/{self.gid}/members/{uid}")
+            mine = [live[rid]["position"] for rid in member.get("roles", []) if rid in live]
+        except Failed:
+            # Fall back to the integration role Discord creates for the bot,
+            # which carries our application id in its tags.
+            mine = [r["position"] for r in live.values()
+                    if (r.get("tags") or {}).get("bot_id") == uid]
+
+        if not mine:
+            self.log("\n  role order skipped: could not work out this bot's own position")
+            return
+
+        # A bot may manage any role below its HIGHEST one, so that is the
+        # ceiling. Using the lowest would refuse orderings that are legal.
+        ceiling = max(mine) - 1
 
         if ceiling < len(names):
             self.log(

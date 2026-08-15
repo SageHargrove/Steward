@@ -84,7 +84,10 @@ class FakeDiscord:
                 return _Resp(status, {"message": "forced failure", "code": 50035})
 
         if method == "GET":
-            return _Resp(200, self._get(path))
+            payload = self._get(path)
+            if isinstance(payload, dict) and payload.get("code") == 50035:
+                return _Resp(400, payload)
+            return _Resp(200, payload)
         if method == "POST":
             return _Resp(200, self._post(path, body))
         if method in ("PATCH", "PUT"):
@@ -96,8 +99,14 @@ class FakeDiscord:
 
     def _get(self, path):
         if path.endswith("/members/@me"):
-            # The bot's own membership, used to find the ceiling it can order under.
-            return {"user": {"id": "4242"}, "roles": ["bot-role"]}
+            # Real Discord rejects this for bot tokens: @me only resolves for an
+            # OAuth2 bearer token with guilds.members.read. Refusing it here is
+            # what makes the ordering test honest.
+            return {"message": "Invalid Form Body", "code": 50035,
+                    "errors": {"user_id": {"_errors": [{"code": "NUMBER_TYPE_COERCE"}]}}}
+        if "/members/" in path:
+            uid = path.rsplit("/", 1)[1]
+            return {"user": {"id": uid}, "roles": ["bot-role"]}
         if path == "/users/@me":
             return {"id": "4242", "username": "Steward", "avatar": None}
         if path == "/users/@me/guilds":
