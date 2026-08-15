@@ -1064,6 +1064,18 @@ def _():
     assert "ledger_seen_at" in src, "no liveness check, so status would be a guess"
 
 
+@test("two callers cannot both post a status message")
+def _():
+    # on_ready and the heartbeat's first tick arrive together. Without a lock
+    # both looked, both found nothing, and both posted; a live server ended up
+    # with two.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "status_lock" in src, "no lock, so the duplicate can happen again"
+    assert "async with self.status_lock" in src
+    assert "find_status_messages" in src, "it should look for all of them, not one"
+    assert "extra.delete()" in src, "duplicates already posted are never cleaned up"
+
+
 @test("startup failures explain themselves")
 def _():
     # discord.py's own errors are written for library authors. The two a person

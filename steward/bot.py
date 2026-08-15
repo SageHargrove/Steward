@@ -119,6 +119,8 @@ class Steward(discord.Client):
         self.started_at = int(time.time())
         # user id -> when they joined voice, for paying out on leave
         self.voice_since: dict[int, int] = {}
+        # Serialises status updates, which two callers reach at once on startup.
+        self.status_lock = asyncio.Lock()
 
     async def absorb_attribution(self, member: discord.Member) -> bool:
         """Write down how someone said they found us, then take the role back
@@ -459,16 +461,23 @@ class Steward(discord.Client):
     async def status_channel(self, guild):
         return discord.utils.get(guild.text_channels, name=REPORT_CHANNEL)
 
-    async def find_status_message(self, channel):
-        """The one status message, reused so restarts do not stack up."""
+    async def find_status_messages(self, channel):
+        """Every status message in the channel, newest first.
+
+        Plural because there should be one and occasionally there are two: two
+        callers can both look, both find nothing, and both post. The lock below
+        prevents that happening again, and returning the whole list lets the
+        next run tidy up any that already exist.
+        """
+        found = []
         try:
-            async for m in channel.history(limit=30):
+            async for m in channel.history(limit=50):
                 if m.author.id == self.user.id and m.embeds:
                     if (m.embeds[0].title or "").startswith(STATUS_TITLE):
-                        return m
+                        found.append(m)
         except discord.HTTPException:
             pass
-        return None
+        return found
 
     def status_embed(self, guild, running=True):
         c = self.ledger.counts(guild.id)
@@ -494,15 +503,28 @@ class Steward(discord.Client):
         return e
 
     async def update_status(self, running=True):
+        # on_ready and the heartbeat's first tick land at almost the same
+        # moment. Without this both look, both find nothing, and both post.
+        async with self.status_lock:
+            await self._update_status(running)
+
+    async def _update_status(self, running=True):
         for guild in self.guilds:
             channel = await self.status_channel(guild)
             if channel is None:
                 continue
             try:
                 embed = self.status_embed(guild, running)
-                existing = await self.find_status_message(channel)
-                if existing:
-                    await existing.edit(embed=embed)
+                found = await self.find_status_messages(channel)
+                if found:
+                    await found[0].edit(embed=embed)
+                    # Tidy up any duplicates a previous version left behind.
+                    for extra in found[1:]:
+                        try:
+                            await extra.delete()
+                            log.info("removed a duplicate status message")
+                        except discord.HTTPException:
+                            pass
                 else:
                     msg = await channel.send(embed=embed)
                     try:
