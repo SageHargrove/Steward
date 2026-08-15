@@ -232,12 +232,13 @@ chore, because before that it adds noise.
 Do this the same day the server exists, and before you invite anyone.
 
 ```powershell
-cd C:\CommunityOps\steward
-python -m pip install -r requirements.txt
-copy .env.example .env
-notepad .env          # paste the token, save
-python bot.py
+C:\CommunityOps\steward\START-LEDGER.bat
 ```
+
+It installs what it needs, creates `steward\.env` from the example and opens
+it in Notepad so you can paste the token, then starts recording. Keep the
+window open: the ledger only records while it runs, and Discord does not let
+anyone recover activity from when it was off.
 
 On first connect it seeds every current member from Discord's `joined_at`,
 which is the one field that can legitimately be backfilled. Everything else

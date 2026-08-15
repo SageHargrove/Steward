@@ -359,6 +359,135 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+print("\nledger")
+
+sys.path.insert(0, str(ROOT / "steward"))
+from ledger import Ledger                                # noqa: E402
+import tempfile                                          # noqa: E402
+import time as _time                                     # noqa: E402
+
+
+def fresh_ledger():
+    d = tempfile.mkdtemp()
+    return Ledger(Path(d) / "test.sqlite3")
+
+
+@test("records events and counts them")
+def _():
+    L = fresh_ledger()
+    L.touch_member(1, 100, int(_time.time()))
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    L.record(guild_id=1, user_id=100, channel_id=8, event_type="voice_join")
+    c = L.counts(1)
+    assert c["events"] == 3, c
+    assert c["by_type"] == {"message": 2, "voice_join": 1}, c["by_type"]
+    L.close()
+
+
+@test("the join funnel is four honest numbers")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    for uid in (1, 2, 3, 4):
+        L.touch_member(1, uid, now - 3600)
+    L.mark(1, 1, "onboarding_completed_at", now)
+    L.mark(1, 2, "onboarding_completed_at", now)
+    L.mark(1, 1, "first_message_at", now)
+    L.mark(1, 4, "last_left_at", now, first_only=False)
+    f = L.funnel(1, cohort_days=7)
+    assert f == {"joined": 4, "onboarded": 2, "posted": 1, "left_server": 1}, f
+    L.close()
+
+
+@test("first_message_at keeps the earliest, not the latest")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    L.touch_member(1, 100, now - 999)
+    L.mark(1, 100, "first_message_at", now - 500)
+    L.mark(1, 100, "first_message_at", now)          # later, must not overwrite
+    row = L.db.execute("SELECT first_message_at FROM members WHERE user_id=100").fetchone()
+    assert row["first_message_at"] == now - 500, row["first_message_at"]
+    L.close()
+
+
+@test("forget-me erases everything and stops future recording")
+def _():
+    L = fresh_ledger()
+    L.touch_member(1, 100, int(_time.time()))
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    removed = L.forget(100)
+    assert removed["events"] == 1 and removed["members"] == 1, removed
+    assert L.counts(1)["events"] == 0
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    assert L.counts(1)["events"] == 0, "kept recording after forget-me"
+    assert L.is_opted_out(100)
+    L.close()
+
+
+@test("an opted-out member is not re-added by touch_member")
+def _():
+    # A leave/rejoin must not quietly resurrect someone who opted out.
+    L = fresh_ledger()
+    L.forget(100)
+    L.touch_member(1, 100, int(_time.time()))
+    assert L.counts(1)["members"] == 0, "opted-out member was re-created"
+    L.close()
+
+
+@test("remember-me resumes recording without restoring anything")
+def _():
+    L = fresh_ledger()
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    L.forget(100)
+    assert L.unforget(100) is True
+    assert L.unforget(100) is False, "second call should report nothing changed"
+    L.record(guild_id=1, user_id=100, channel_id=7, event_type="message")
+    assert L.counts(1)["events"] == 1, "old events should stay deleted"
+    L.close()
+
+
+@test("retention deletes old events but keeps the member funnel")
+def _():
+    L = fresh_ledger()
+    now = int(_time.time())
+    L.touch_member(1, 100, now - 400 * 86400)
+    L.mark(1, 100, "first_message_at", now - 400 * 86400)
+    L.record(guild_id=1, user_id=100, event_type="message", ts=now - 400 * 86400)
+    L.record(guild_id=1, user_id=100, event_type="message", ts=now)
+    removed = L.purge_older_than(365)
+    assert removed == 1, removed
+    assert L.counts(1)["events"] == 1
+    assert L.counts(1)["members"] == 1, "member funnel rows must survive retention"
+    L.close()
+
+
+@test("survives being reopened, and remembers opt-outs")
+def _():
+    d = tempfile.mkdtemp()
+    path = Path(d) / "reopen.sqlite3"
+    L = Ledger(path)
+    L.record(guild_id=1, user_id=100, event_type="message")
+    L.forget(200)
+    L.close()
+    L2 = Ledger(path)
+    assert L2.counts(1)["events"] == 1
+    assert L2.is_opted_out(200), "opt-out did not survive a restart"
+    L2.close()
+
+
+@test("the bot asks for members but never message content")
+def _():
+    # Reading message content is a privileged intent needing annual
+    # reapplication past 10k users, and the ledger does not need it.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "intents.members = True" in src
+    assert "intents.message_content = False" in src, \
+        "the ledger must never request MESSAGE_CONTENT"
+
+
+# ---------------------------------------------------------------------------
 print("\nweb layer")
 
 # The real server on a spare port, driven over real HTTP. This needs no test
