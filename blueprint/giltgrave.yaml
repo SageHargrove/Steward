@@ -116,28 +116,6 @@ roles:
       - MUTE_MEMBERS
       - MOVE_MEMBERS
 
-  # Somebody you are trying out. Can calm a room down and clean up, but cannot
-  # kick or ban, so a bad hire cannot cost you members.
-  - name: Trial Mod
-    note: "Can delete messages and time people out. Cannot kick or ban."
-    color: 0x5E8C7B
-    hoist: true
-    mentionable: true
-    permissions:
-      - VIEW_CHANNEL
-      - SEND_MESSAGES
-      - SEND_MESSAGES_IN_THREADS
-      - CREATE_PUBLIC_THREADS
-      - EMBED_LINKS
-      - ATTACH_FILES
-      - ADD_REACTIONS
-      - READ_MESSAGE_HISTORY
-      - MANAGE_MESSAGES
-      - MODERATE_MEMBERS
-      - CONNECT
-      - SPEAK
-      - MUTE_MEMBERS
-
   # Streamers and video makers who join. Worth its own role because the build
   # plan's outreach track needs a way to reach exactly these people, and a
   # mentionable role is the only compliant way to do that. Discord prohibits
@@ -323,8 +301,6 @@ overwrite_presets:
     - role: Dev
       allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
     - role: Admin
-      allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
-    - role: Trial Mod
       allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
     - role: Mod
       allow: [VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY, EMBED_LINKS, ATTACH_FILES]
