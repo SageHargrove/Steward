@@ -705,6 +705,134 @@ def calendar_view(days: int = 120):
     }
 
 
+@app.get("/api/audit")
+def audit(request: Request):
+    """Compare the live server against what the tool expects of it.
+
+    Everything else in this page describes what it is about to do. This is the
+    only thing that reads back what is actually there, which is the only
+    honest answer to "am I finished?".
+    """
+    sys.path.insert(0, str(STEWARD))
+    import calendar_engine
+
+    session = session_of(request)
+    guild_id = (request.query_params.get("guild") or "").strip()
+    if not guild_id:
+        raise HTTPException(400, "Pick a server first.")
+    try:
+        live = core.read_guild(session["token"], guild_id)
+    except core.Failed as e:
+        raise HTTPException(400, f"Could not read the server: {str(e)[:200]}")
+
+    chans = {c["name"] for c in live["channels"]}
+    forums = {c["name"] for c in live["channels"] if c["type"] == "forum"}
+    roles = {r["name"] for r in live["roles"]}
+
+    env = read_env()
+    problems, notes, good = [], [], []
+
+    # -- the calendar has somewhere to post ------------------------------
+    cal_file = active_calendar()
+    if cal_file.exists():
+        bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() else {}
+        variables = {k: (v or "") for k, v in (bp.get("variables") or {}).items()}
+        cal = calendar_engine.load(cal_file, variables,
+                                   anchor_override=env.get("LAUNCH_DATE"))
+        missing = {}
+        for post in cal.beats + cal.recurring:
+            ch = post.get("channel")
+            if ch and ch not in chans:
+                missing.setdefault(ch, []).append(post.get("id"))
+        for ch, ids in sorted(missing.items()):
+            problems.append({
+                "what": f"#{ch} does not exist, and {len(ids)} scheduled post(s) "
+                        f"aim at it",
+                "fix": f"Either make a channel called {ch}, or open those posts "
+                       f"in the list below and point them somewhere else. "
+                       f"({', '.join(ids[:4])})"})
+        if not missing and (cal.beats or cal.recurring):
+            good.append(f"All {len(cal.beats) + len(cal.recurring)} scheduled "
+                        f"posts have a channel that exists")
+
+        for post in cal.beats + cal.recurring:
+            m = post.get("mention")
+            if m and m != "everyone" and m not in roles:
+                problems.append({
+                    "what": f"'{post.get('id')}' pings @{m}, which is not a role here",
+                    "fix": f"Make a role called {m}, or clear the Pings box on "
+                           f"that post."})
+        if not cal.anchor:
+            problems.append({
+                "what": "No launch day is set, so nothing dated T-minus will "
+                        "ever post",
+                "fix": "Put a date in the Launch day box above."})
+        else:
+            good.append(f"Launch day is {cal.anchor.isoformat()}")
+
+    # -- the bot's own channels ------------------------------------------
+    for key, default, why in (
+            ("REPORT_CHANNEL", "steward-reports",
+             "the weekly digest, and where scheduled posts wait for approval"),
+            ("MOD_CHANNEL", "mod-log", "the moderation log"),
+            ("BUG_FORUM", "bug-reports", "where /playtest-report files bugs")):
+        name = env.get(key, default)
+        if name not in chans:
+            problems.append({
+                "what": f"#{name} does not exist, and it is where {why} goes",
+                "fix": f"Make it, or set {key} in steward\\.env to a channel "
+                       f"you do have."})
+        elif key == "BUG_FORUM" and name not in forums:
+            problems.append({
+                "what": f"#{name} exists but is not a forum channel, so "
+                        f"/playtest-report cannot file into it",
+                "fix": "Forum channels need Community mode on. Rebuild it in "
+                       "step 5, or point BUG_FORUM at a forum you have."})
+        else:
+            good.append(f"#{name} exists")
+
+    playtest_role = env.get("PLAYTEST_ROLE", "Ping Me For Playtests")
+    if playtest_role not in roles:
+        problems.append({
+            "what": f"There is no @{playtest_role} role, so /playtest-join "
+                    f"cannot give anyone one",
+            "fix": "Make the role, or set PLAYTEST_ROLE in steward\\.env."})
+    else:
+        good.append(f"@{playtest_role} exists")
+
+    # -- drift from the blueprint ----------------------------------------
+    if (BLUEPRINTS / "default.yaml").exists():
+        bp = core.load(BLUEPRINTS / "default.yaml")
+        want = {c["name"] for cat in (bp.get("categories") or [])
+                for c in (cat.get("channels") or [])}
+        gone = sorted(want - chans)
+        if gone:
+            notes.append({
+                "what": f"{len(gone)} channel(s) in the blueprint are not in "
+                        f"this server: {', '.join(gone[:8])}",
+                "fix": "Not a problem if you renamed or removed them on "
+                       "purpose. It only means the blueprint and the server "
+                       "have drifted, so a rebuild would put them back."})
+
+    # -- levels ------------------------------------------------------------
+    levels = (core.load(BLUEPRINTS / "default.yaml").get("levels") or {}) \
+        if (BLUEPRINTS / "default.yaml").exists() else {}
+    if levels.get("enabled", True):
+        want = [r["role"] for r in (levels.get("rewards") or [])]
+        gone = [r for r in want if r not in roles]
+        if gone:
+            problems.append({
+                "what": f"Level rewards point at role(s) that do not exist: "
+                        f"{', '.join(gone)}",
+                "fix": "Make them, or change the level rewards in step 4. "
+                       "Members will hit those levels and get nothing."})
+        elif want:
+            good.append(f"All {len(want)} level reward roles exist")
+
+    return {"ok": not problems, "problems": problems, "notes": notes,
+            "good": good, "channels": len(chans), "roles": len(roles)}
+
+
 @app.get("/api/calendar/templates")
 def calendar_templates_api():
     return {"active": active_calendar().stem,

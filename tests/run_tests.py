@@ -1733,6 +1733,23 @@ def _():
     assert _app.looks_like_a_blueprint({"roles": [{"name": "x"}]})
 
 
+@test("the audit reads the server rather than describing it")
+def _():
+    # Every other panel says what it would write. This is the only one that
+    # reads back, which is the only honest answer to "am I finished?".
+    src = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    body = src[src.index("def audit("):src.index("def calendar_templates_api")]
+    assert "core.read_guild" in body, "the audit does not read the live server"
+    assert "session_of(request)" in body, "the audit is not behind the token"
+    # Every problem has to say how to fix it, or it is just a complaint.
+    import re as _re
+    for m in _re.finditer(r'problems\.append\(\{', body):
+        chunk = body[m.start():m.start() + 700]
+        assert '"fix"' in chunk, f"a problem with no fix: {chunk[:120]}"
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'id="s9b"' in html and "function runAudit" in html
+
+
 @test("the page starts with every section folded")
 def _():
     # Nine open sections is a wall of text. Nine headings is a table of

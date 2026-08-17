@@ -633,9 +633,26 @@
   </div>
 </section>
 
-<!-- 9. manual ----------------------------------------------------------- -->
+<!-- 9. is it working ----------------------------------------------------- -->
+<section class="step" id="s9b">
+  <div class="head"><div class="num"><span>9</span></div><h2>Check it works</h2>
+    <span class="peek">Read the server back and find what is missing</span>
+    <div style="margin-left:auto" class="row">
+      <button onclick="runAudit(this)" id="auditbtn">Check my server</button>
+    </div>
+  <span class="chev">&#9660;</span></div>
+  <div class="body">
+    <div class="callout">Everything above says what it is <b>about to</b> do.
+      This reads your server back and checks the things that fail quietly: a
+      scheduled post aimed at a channel you deleted, a level reward pointing at
+      a role that is not there, a ping for a role nobody has.</div>
+    <div id="auditout"><div class="hint">Not checked yet.</div></div>
+  </div>
+</section>
+
+<!-- 10. manual ---------------------------------------------------------- -->
 <section class="step" id="s9">
-  <div class="head"><div class="num"><span>9</span></div><h2>The rest, by hand</h2><span class="peek">The steps no API can perform</span><span class="chev">&#9660;</span></div>
+  <div class="head"><div class="num"><span>10</span></div><h2>The rest, by hand</h2><span class="peek">The steps no API can perform</span><span class="chev">&#9660;</span></div>
   <div class="body">
     <div class="callout">None of this can be automated by any tool. Installing a bot needs
       a human to press Authorize, and the Discord settings below have no API at all. Every
@@ -1798,6 +1815,44 @@ async function applyUpdate(hasDirty){
    which meant scrolling past sixty rows to change one line. */
 
 let POSTS = null;
+
+/* ---- is it working ---------------------------------------------------
+   The only part of this page that reads the server back rather than
+   describing what it would write to it. */
+
+async function runAudit(btn){
+  if(!GUILD){
+    $('#auditout').innerHTML = `<div class="msg warn">Connect and pick a server
+      first, in steps 1 and 3.</div>`;
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Reading the server...';
+  let r;
+  try{ r = await api('/api/audit?guild=' + encodeURIComponent(GUILD)); }
+  catch(e){
+    $('#auditout').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    btn.disabled = false; btn.textContent = 'Check my server'; return;
+  }
+  btn.disabled = false; btn.textContent = 'Check my server';
+
+  const block = (items, cls) => items.map(i =>
+    `<div class="msg ${cls}"><b>${esc(i.what)}</b><br>
+       <span style="opacity:.85">${esc(i.fix)}</span></div>`).join('');
+
+  $('#auditout').innerHTML =
+    (r.ok
+      ? `<div class="msg ok"><b>Nothing is broken.</b> Read ${r.channels}
+           channels and ${r.roles} roles.</div>`
+      : `<div class="msg err"><b>${r.problems.length} thing(s) would fail.</b>
+           Each one says how to fix it.</div>`)
+    + block(r.problems, 'err')
+    + block(r.notes, 'warn')
+    + (r.good.length
+        ? `<div class="hint" style="margin-top:10px">Checked and fine:<ul
+             style="margin:5px 0 0 16px">${
+             r.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul></div>`
+        : '');
+}
 
 async function loadCalendar(btn){
   // A button that does nothing visible has failed, whether or not it worked.
