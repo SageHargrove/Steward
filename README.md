@@ -122,7 +122,9 @@ python tests\run_tests.py                           # 197 checks, no framework
 | Updates | version compare, backup-before-overwrite and fast-forward exercised against a throwaway pair of repos |
 | Server | applied against a live guild. Roles, channels, Community mode, AutoMod and onboarding all created; the calendar and playtest commands have not yet run against one |
 
-Section 0 of [SETUP.md](SETUP.md) is the first thing that does.
+Section 0 of [SETUP.md](SETUP.md) is the first thing that does, and
+[docs/whats-left.md](docs/whats-left.md) is what stands between this and
+somebody else using it.
 
 ## What cannot be automated, and why
 
