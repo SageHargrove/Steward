@@ -731,7 +731,7 @@ if __name__ == "__main__":
         print(f"\n  Something is already using port {PORT}.")
         print(f"  If the setup page is already open, use it: {url}")
         print("  Otherwise close the other program, or start this one with a")
-        print(f"  different port:   set PORT=8771 && python app.py\n")
+        print("  different port:   set PORT=8771 && python app.py\n")
         raise SystemExit(1)
 
     banner = (

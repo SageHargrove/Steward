@@ -1225,7 +1225,7 @@ async def leaderboard(interaction: discord.Interaction, page: int = 1):
                      f"({row['xp']:,} XP)")
 
     total = client.ledger.ranked_count(interaction.guild_id)
-    e = discord.Embed(title=f"Leaderboard", description="\n".join(lines),
+    e = discord.Embed(title="Leaderboard", description="\n".join(lines),
                       colour=0xC9A227)
     e.set_footer(text=f"Page {page} of {max(1, (total + 9) // 10)}  ·  {total} ranked")
     await interaction.response.send_message(embed=e)
