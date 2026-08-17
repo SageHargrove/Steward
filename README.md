@@ -75,6 +75,39 @@ clicking. The bot never sends an unsolicited direct message to anyone.
 
 ## For developers
 
+The planning documents are in [docs/build-plan.md](docs/build-plan.md) and
+[docs/roadmap.md](docs/roadmap.md). The rest of the repository is the
+implementation.
+
+```
+blueprint/default.yaml      the server spec. Channels, roles, permissions,
+                            forum tags, onboarding prompts, AutoMod rules
+blueprint/content-calendar.yaml   what gets posted and when, dated relative
+                            to launch rather than to the calendar
+provision/core.py           load, template, customize, validate, apply.
+                            The CLI and the page both import this
+provision/provision.py      command-line wrapper
+provision/updates.py        version, update check, update apply
+ui/app.py                   the local setup page
+steward/                    the bot. Ledger, levels, digest, moderation log,
+                            calendar engine, playtest pipeline, decay
+install/                    Start Menu shortcuts, and an Inno Setup script
+tools/build_dist.py         assemble the no-Python-needed download
+tools/release.py            cut a version: bump, tag, push, publish
+VERSION                     the single source of truth for what you are on
+SETUP.md                    the runbook
+```
+
+The page is nine numbered steps, with the Developer Portal walkthrough built in
+so it assumes you have never made a bot before, and it generates your invite
+link once you paste a token. The CLI does the same job with flags.
+
+```powershell
+python tools\build_dist.py --clean --zip     # the release download, 29 MB zipped
+python tools\release.py 0.4.0 --notes "..."  # bump, tag, push, publish
+python tests\run_tests.py                    # 197 checks, no framework needed
+```
+
 ## State
 
 | | |
