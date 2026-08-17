@@ -189,6 +189,19 @@ intents.voice_states = True
 intents.message_content = False
 
 
+def calendar_mtimes() -> tuple:
+    """When the calendar and its overrides were last written, so a change can
+    be noticed without watching the filesystem."""
+    import calendar_engine
+    out = []
+    for f in (CALENDAR, str(calendar_engine.overrides_path(CALENDAR))):
+        try:
+            out.append(os.path.getmtime(f))
+        except OSError:
+            out.append(0.0)
+    return tuple(out)
+
+
 def load_calendar(path: str, blueprint: dict):
     """The content calendar, filled in with the blueprint's own variables so
     one calendar file serves any game without its prose being edited."""
@@ -274,6 +287,7 @@ class Steward(discord.Client):
         self.blueprint = read_blueprint(BLUEPRINT)
         self.levels = Levels(self.ledger, self.blueprint.get("levels") or {})
         self.calendar = load_calendar(CALENDAR, self.blueprint)
+        self.calendar_stamp = calendar_mtimes()
         self.started_at = int(time.time())
         # user id -> when they joined voice, for paying out on leave
         self.voice_since: dict[int, int] = {}
@@ -309,6 +323,23 @@ class Steward(discord.Client):
         except discord.HTTPException as e:
             log.warning("could not remove attribution roles from %s: %s", member.id, e)
         return False
+
+    def refresh_calendar(self) -> bool:
+        """Re-read the calendar if either file has changed on disk.
+
+        The calendar was read once at startup and never again, so an edit made
+        in the setup page did not reach a running bot. /calendar-reload fixed
+        it, but needing to know that is the bug: the draft showed the old
+        wording and would have posted the old wording, with nothing anywhere
+        saying the two had diverged.
+        """
+        now = calendar_mtimes()
+        if now == self.calendar_stamp:
+            return False
+        self.calendar = load_calendar(CALENDAR, self.blueprint)
+        self.calendar_stamp = now
+        log.info("calendar changed on disk, re-read it")
+        return True
 
     async def setup_hook(self):
         await self.tree.sync()
@@ -928,6 +959,8 @@ class Steward(discord.Client):
         return True
 
     def find_beat(self, beat_id: str, fire_date: str):
+        # Re-read first. Approving a draft has to post what the calendar says
+        # now, and the draft in front of somebody may be hours old.
         """Re-read the beat off the calendar at approval time rather than
         storing a copy, so fixing a typo in the file fixes the pending draft.
 
@@ -936,6 +969,7 @@ class Steward(discord.Client):
         of season with /calendar-run, which is the only way to look at a T-140
         beat in August, so every test draft could be posted and never approved.
         """
+        self.refresh_calendar()
         from datetime import date as _date
         y, m, d = (int(x) for x in fire_date.split("-"))
         return self.calendar.find(beat_id, _date(y, m, d))
@@ -1072,6 +1106,7 @@ class Steward(discord.Client):
 
     @tasks.loop(hours=1)
     async def calendar_tick(self):
+        self.refresh_calendar()
         if not self.calendar.anchor and not self.calendar.recurring:
             return
         # The calendar's own clock. post_hour: 17 should mean five in the
@@ -1322,6 +1357,7 @@ def staff_only(interaction) -> bool:
                      description="What the content calendar has coming. Staff only.")
 @app_commands.describe(days="How far ahead to look. Default 60.")
 async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
+    client.refresh_calendar()
     if not staff_only(interaction):
         await interaction.response.send_message("Staff only.", ephemeral=True)
         return
@@ -1370,6 +1406,7 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
 @app_commands.describe(
     beat="Which beat to draft now. Leave blank to run everything due today.")
 async def calendar_run(interaction: discord.Interaction, beat: str | None = None):
+    client.refresh_calendar()
     if not staff_only(interaction):
         await interaction.response.send_message("Staff only.", ephemeral=True)
         return

@@ -2241,6 +2241,48 @@ def _drive(fn):
     return _aio.run(fn(b, _Guild()))
 
 
+@test("an edit made while the bot runs reaches the next draft")
+def _():
+    """The calendar was read once at startup and never again.
+
+    An edit made in the setup page therefore did not reach a running bot: the
+    draft showed the old wording, approving it would have posted the old
+    wording, and nothing anywhere said the two had diverged. /calendar-reload
+    fixed it, but having to know that is the bug.
+    """
+    import tempfile, time as _t, yaml as _y
+    async def go(b, g):
+        from datetime import date as _d
+        today = _d(2026, 8, 17)
+        first = b.client.calendar.find("launch-day", today)
+        assert first is not None
+
+        # Somebody edits it in the page. Nothing restarts.
+        path = Path(ce.overrides_path(b.CALENDAR))
+        data = _y.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        data = data or {}
+        rows = data.get("posts") or data.get("beats") or []
+        rows = [r for r in rows if r.get("id") != "launch-day"]
+        rows.append({"id": "launch-day", "body": "EDITED WHILE RUNNING"})
+        data["posts"] = rows
+        _t.sleep(0.02)                      # mtime resolution
+        path.write_text(_y.safe_dump(data, sort_keys=False), encoding="utf-8")
+        try:
+            assert b.client.refresh_calendar(), "the change on disk went unnoticed"
+            after = b.client.calendar.find("launch-day", today)
+            assert after.beat["body"] == "EDITED WHILE RUNNING", after.beat["body"]
+
+            # And approval re-reads on its own, so a draft made hours ago
+            # cannot publish text the calendar no longer contains.
+            b.client.calendar_stamp = (0, 0)
+            found = b.client.find_beat("launch-day", "2026-08-17")
+            assert found.beat["body"] == "EDITED WHILE RUNNING"
+        finally:
+            path.unlink(missing_ok=True)
+        return True
+    assert _drive(go)
+
+
 @test("a beat drafted out of season can still be approved")
 def _():
     # /calendar-run drafts a beat dated today, which is the only way to look at
