@@ -13,7 +13,7 @@ your bot token never leaves your computer.
 ## Getting it
 
 **Windows, no Python needed.** Download `Steward-<version>-windows.zip` from
-[the releases page](https://github.com/SageHargrove/CommunityOps/releases),
+[the releases page](https://github.com/SageHargrove/Steward/releases),
 unzip it anywhere, and double-click **`Steward.bat`**. Your browser opens on
 the setup page. Run `INSTALL.bat` once if you want it on the Start Menu.
 
@@ -103,9 +103,9 @@ so it assumes you have never made a bot before, and it generates your invite
 link once you paste a token. The CLI does the same job with flags.
 
 ```powershell
-python toolsuild_dist.py --clean --zip           # just the download, 29 MB zipped
-python toolselease.py 0.4.1 --notes "..." --build # bump, tag, push, publish, attach
-python tests\run_tests.py                    # 197 checks, no framework needed
+python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
+python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
+python tests\run_tests.py                           # 197 checks, no framework
 ```
 
 ## State
