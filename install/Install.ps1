@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Icon = Join-Path $Root 'brand\steward.ico'
-$FolderName = 'Server Setup for Discord'
+$FolderName = 'Steward'
 
 function New-Shortcut {
     param($Path, $Target, $WorkDir, $Description)
@@ -27,8 +27,8 @@ function New-Shortcut {
 }
 
 Write-Host ''
-Write-Host '  Server Setup for Discord' -ForegroundColor White
-Write-Host '  ------------------------'
+Write-Host '  Steward' -ForegroundColor White
+Write-Host '  -------'
 Write-Host ''
 
 # Refuse rather than make shortcuts that point at nothing. A dead Start Menu
@@ -57,7 +57,7 @@ $Programs = [Environment]::GetFolderPath('Programs')
 $Dest = Join-Path $Programs $FolderName
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 
-New-Shortcut -Path (Join-Path $Dest 'Server Setup for Discord.lnk') `
+New-Shortcut -Path (Join-Path $Dest 'Steward.lnk') `
     -Target (Join-Path $Root 'START.bat') -WorkDir $Root `
     -Description 'Set up and run your Discord community server'
 
@@ -77,14 +77,14 @@ Write-Host "  Added to the Start Menu under '$FolderName'." -ForegroundColor Gre
 $answer = Read-Host '  Put a shortcut on the desktop as well? (y/N)'
 if ($answer -match '^(y|yes)$') {
     $desktop = [Environment]::GetFolderPath('Desktop')
-    New-Shortcut -Path (Join-Path $desktop 'Server Setup for Discord.lnk') `
+    New-Shortcut -Path (Join-Path $desktop 'Steward.lnk') `
         -Target (Join-Path $Root 'START.bat') -WorkDir $Root `
         -Description 'Set up and run your Discord community server'
     Write-Host '  Added to the desktop.' -ForegroundColor Green
 }
 
 Write-Host ''
-Write-Host '  Press the Windows key and start typing "Server Setup".'
+Write-Host '  Press the Windows key and start typing "Steward".'
 Write-Host ''
 Write-Host '  Nothing was copied or registered. The shortcuts point at this'
 Write-Host "  folder ($Root), so updating the files updates what they launch."

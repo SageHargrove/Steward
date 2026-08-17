@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title Server Setup for Discord
+title Steward
 cd /d "%~dp0"
 
 echo.
-echo   Server Setup for Discord
+echo   Steward
 echo   ========================
 echo.
 

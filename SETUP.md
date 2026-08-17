@@ -100,7 +100,7 @@ fail loudly if you re-run it, which is the correct behaviour.
 
 ## 1. Apply the blueprint
 
-### The easy way: Server Setup for Discord
+### The easy way: Steward
 
 ```powershell
 C:\CommunityOps\START.bat
@@ -337,7 +337,7 @@ pasting.
 
 ## 7. The seven jobs, and where they stand
 
-The build order is from the community-ops build plan. All seven are built.
+The build order is from the build plan. All seven are built.
 
 | # | Thing | State | The reason it sat where it did |
 |---|---|---|---|
@@ -395,7 +395,8 @@ only checks when pressed. Updating copies any file you have edited into
 `backups/` before replacing it, so an edited blueprint is never lost, and it
 installs new dependencies so an update cannot half-apply.
 
-To publish a version: `python toolselease.py 0.2.2 --notes "what changed"`.
+To publish a version: `python tools
+elease.py 0.2.2 --notes "what changed"`.
 
 ---
 

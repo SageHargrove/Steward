@@ -4,9 +4,8 @@
 
 Double-click **`INSTALL.bat`** in the folder above this one.
 
-It adds a Start Menu folder called *Server Setup for Discord* and offers a
-desktop shortcut. Then press the Windows key, type "Server Setup", and press
-Enter.
+It adds a Start Menu folder called *Steward* and offers a desktop shortcut.
+Then press the Windows key, type "Steward", and press Enter.
 
 Nothing is copied, registered, or written outside your own Start Menu, and it
 needs no administrator rights. The shortcuts point at the files where they

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Server Setup for Discord, on Linux and macOS.
+# Steward, on Linux and macOS.
 #
 # The Windows equivalent is START.bat. Everything below this launcher is plain
 # Python and works the same on either: the two places the operating systems
@@ -9,8 +9,8 @@ set -euo pipefail
 cd "$(dirname "$0")/ui"
 
 echo
-echo "  Server Setup for Discord"
-echo "  ========================"
+echo "  Steward"
+echo "  ======="
 echo
 
 if ! command -v python3 >/dev/null 2>&1; then

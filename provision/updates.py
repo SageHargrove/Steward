@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +37,10 @@ TIMEOUT = 12
 # this is belt and braces, but the cost of being wrong is somebody's bot token
 # and an activity history that Discord cannot rebuild.
 PROTECTED = ("steward/.env", "steward/data", "backups")
+
+# Where a downloaded copy looks for updates. A git checkout reads its own
+# remote instead; this is the fallback for everyone who never had one.
+DEFAULT_SLUG = "SageHargrove/Steward"
 
 
 def version() -> str:
@@ -135,7 +140,7 @@ def check_release(slug: str) -> dict:
     url = f"https://api.github.com/repos/{slug}/releases/latest"
     req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
-        "User-Agent": "CommunityOps-update-check"})
+        "User-Agent": "Steward-update-check"})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             data = json.load(r)
@@ -166,12 +171,7 @@ def check() -> dict:
         out.setdefault("method", "git")
         out["slug"] = remote_slug()
         return out
-    slug = remote_slug()
-    if not slug:
-        return {"ok": False, "method": "none", "current": version(),
-                "error": "This copy did not come from git and has no update "
-                         "channel configured, so it cannot check for updates."}
-    return check_release(slug)
+    return check_release(remote_slug() or DEFAULT_SLUG)
 
 
 # --------------------------------------------------------------------------
@@ -198,15 +198,96 @@ def back_up(files: list[str]) -> str | None:
     return str(dest) if dest.exists() else None
 
 
+# Never replaced by an update, whatever arrives in the archive. The first two
+# are the reason: a bot token and an activity history Discord cannot rebuild.
+# The third is the interpreter the running process is executing from, which
+# Windows will not let anything overwrite anyway.
+KEEP_ON_UPDATE = ("steward/.env", "steward/data", "backups", "python")
+
+
+def apply_release() -> dict:
+    """Update a copy that came from a downloaded release rather than from git.
+
+    Downloads the release zip, unpacks it beside the install, and copies it
+    over the top. Everything replaced is copied into backups/ first, and the
+    paths in KEEP_ON_UPDATE are never touched at all.
+
+    The bundled interpreter is left alone on purpose. Windows locks a running
+    executable, so replacing `python/` from inside a process running out of it
+    cannot work; a Python change means a fresh download rather than an update.
+    """
+    slug = remote_slug() or DEFAULT_SLUG
+    info = check_release(slug)
+    if not info.get("ok"):
+        return {"ok": False, "restart": False,
+                "log": [info.get("error", "Could not reach the update server.")]}
+    if not info.get("behind"):
+        return {"ok": True, "restart": False, "changed": False,
+                "log": [f"Already on the latest version ({version()})."]}
+
+    url = f"https://github.com/{slug}/archive/refs/tags/v{info['latest']}.zip"
+    log = [f"Downloading {info['latest']}..."]
+    try:
+        with urllib.request.urlopen(url, timeout=300) as r:
+            blob = r.read()
+    except Exception as e:                                   # noqa: BLE001
+        return {"ok": False, "restart": False, "log": log + [
+            f"The download failed ({type(e).__name__}).",
+            f"Download it by hand instead: {info.get('url') or url}"]}
+
+    import io
+    import tempfile
+    staging = Path(tempfile.mkdtemp(prefix="steward-update-"))
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            z.extractall(staging)
+    except zipfile.BadZipFile:
+        return {"ok": False, "restart": False,
+                "log": log + ["The download was not a valid archive."]}
+
+    roots = [p for p in staging.iterdir() if p.is_dir()]
+    if len(roots) != 1:
+        return {"ok": False, "restart": False,
+                "log": log + ["The archive was not laid out as expected."]}
+    new = roots[0]
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+    backup = BACKUPS / stamp
+    replaced = 0
+    for src in sorted(new.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(new).as_posix()
+        if any(rel == k or rel.startswith(k + "/") for k in KEEP_ON_UPDATE):
+            continue
+        dest = ROOT / rel
+        if dest.exists():
+            keep = backup / rel
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, keep)
+            replaced += 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(src, dest)
+        except OSError as e:
+            return {"ok": False, "restart": False, "log": log + [
+                f"Could not replace {rel}: {e}",
+                f"Everything already replaced is copied in {backup}."]}
+
+    shutil.rmtree(staging, ignore_errors=True)
+    log.append(f"Updated to {version()}. {replaced} file(s) replaced, "
+               f"previous copies in backups/{stamp}.")
+    log.append("Your settings, your ledger and any playtest keys were left "
+               "untouched.")
+    return {"ok": True, "restart": True, "changed": True, "log": log,
+            "version": version()}
+
+
 def apply(discard_local=False) -> dict:
     """Fast-forward to the remote. Returns a log rather than raising, because
     the page shows it and half of these failures are things a person can fix."""
     if not is_git_checkout():
-        info = check()
-        return {"ok": False, "log": [
-            "This copy did not come from git, so it cannot update itself.",
-            "Download the latest release and run its installer.",
-            info.get("url") or ""], "restart": False}
+        return apply_release()
 
     log = []
     dirty = dirty_files()

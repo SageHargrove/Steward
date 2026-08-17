@@ -15,7 +15,7 @@
 ;
 ; Read "The Python problem" at the bottom before shipping this to anyone.
 
-#define AppName        "Server Setup for Discord"
+#define AppName        "Steward"
 #define AppShortName   "CommunityOps"
 ; Kept in step with the VERSION file by hand. tools/release.py bumps that
 ; one; this line is the only other place a version number lives.
@@ -34,7 +34,7 @@ DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\brand\steward.ico
 UninstallDisplayName={#AppName}
 OutputDir=dist
-OutputBaseFilename=CommunityOps-Setup-{#AppVersion}
+OutputBaseFilename=Steward-Setup-{#AppVersion}
 SetupIconFile=..\brand\steward.ico
 Compression=lzma2/max
 SolidCompression=yes

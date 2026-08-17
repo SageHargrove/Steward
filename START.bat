@@ -1,11 +1,11 @@
 @echo off
 setlocal
-title Server Setup for Discord
+title Steward
 cd /d "%~dp0ui"
 
 echo.
-echo   Server Setup for Discord
-echo   ========================
+echo   Steward
+echo   =======
 echo.
 echo   This is the only file you need to run. Everything else, including
 echo   starting and restarting the bot, is a button on the page.

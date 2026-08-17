@@ -7,11 +7,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-$FolderName = 'Server Setup for Discord'
+$FolderName = 'Steward'
 $Programs = [Environment]::GetFolderPath('Programs')
 $Desktop = [Environment]::GetFolderPath('Desktop')
 $Dest = Join-Path $Programs $FolderName
-$DesktopLink = Join-Path $Desktop 'Server Setup for Discord.lnk'
+$DesktopLink = Join-Path $Desktop 'Steward.lnk'
 
 $removed = 0
 if (Test-Path $Dest) {

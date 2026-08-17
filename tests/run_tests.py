@@ -2395,6 +2395,121 @@ def _():
         assert r.returncode != 0, f"release.py accepted {bad!r}"
 
 
+@test("a downloaded copy updates without touching anyone's data")
+def _():
+    """The release path, driven end to end against a fake install.
+
+    The archive deliberately contains a .env, a ledger and an interpreter. A
+    naive extract-over-the-top would replace all three, which would hand the
+    user somebody else's bot token, destroy an activity history Discord cannot
+    rebuild, and try to overwrite the running interpreter.
+    """
+    import io, shutil, tempfile, zipfile, urllib.request
+    home = Path(tempfile.mkdtemp(prefix="fakeinstall-"))
+    (home / "ui").mkdir(parents=True)
+    (home / "steward" / "data").mkdir(parents=True)
+    (home / "python").mkdir()
+    (home / "blueprint").mkdir()
+    (home / "VERSION").write_text("0.1.0\n", encoding="utf-8")
+    (home / "ui" / "app.py").write_text("# OLD\n", encoding="utf-8")
+    (home / "blueprint" / "default.yaml").write_text("mine: edited\n", encoding="utf-8")
+    (home / "steward" / ".env").write_text("DISCORD_TOKEN=theirs\n", encoding="utf-8")
+    (home / "steward" / "data" / "l.sqlite3").write_text("LEDGER", encoding="utf-8")
+    (home / "python" / "python.exe").write_text("INTERPRETER", encoding="utf-8")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("Steward-0.4.0/VERSION", "0.4.0\n")
+        z.writestr("Steward-0.4.0/ui/app.py", "# NEW\n")
+        z.writestr("Steward-0.4.0/blueprint/default.yaml", "shipped: default\n")
+        z.writestr("Steward-0.4.0/steward/.env", "DISCORD_TOKEN=NOT_THEIRS\n")
+        z.writestr("Steward-0.4.0/steward/data/l.sqlite3", "SOMEBODY ELSES")
+        z.writestr("Steward-0.4.0/python/python.exe", "DIFFERENT")
+
+    class _Resp:
+        def read(self): return buf.getvalue()
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    saved = (updates.ROOT, updates.VERSION_FILE, updates.BACKUPS,
+             updates.check_release, updates.is_git_checkout,
+             urllib.request.urlopen)
+    try:
+        updates.ROOT = home
+        updates.VERSION_FILE = home / "VERSION"
+        updates.BACKUPS = home / "backups"
+        updates.check_release = lambda slug: {
+            "ok": True, "behind": 1, "latest": "0.4.0", "current": "0.1.0"}
+        updates.is_git_checkout = lambda: False
+        urllib.request.urlopen = lambda *a, **k: _Resp()
+        res = updates.apply()
+    finally:
+        (updates.ROOT, updates.VERSION_FILE, updates.BACKUPS,
+         updates.check_release, updates.is_git_checkout,
+         urllib.request.urlopen) = saved
+
+    try:
+        assert res["ok"] and res["restart"], res
+        assert (home / "ui" / "app.py").read_text().strip() == "# NEW", "code not updated"
+        assert (home / "VERSION").read_text().strip() == "0.4.0"
+
+        env = (home / "steward" / ".env").read_text()
+        assert "theirs" in env, "the update overwrote the user's bot token"
+        led = (home / "steward" / "data" / "l.sqlite3").read_text()
+        assert led == "LEDGER", "the update destroyed the activity history"
+        py = (home / "python" / "python.exe").read_text()
+        assert py == "INTERPRETER", "the update replaced the running interpreter"
+
+        # An edited blueprint is replaced, but only after being copied aside.
+        assert (home / "blueprint" / "default.yaml").read_text().strip() \
+            == "shipped: default"
+        kept = list((home / "backups").rglob("default.yaml"))
+        assert kept and kept[0].read_text().strip() == "mine: edited", \
+            "the edited blueprint was replaced without a backup"
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+@test("the paths an update must never replace are all listed")
+def _():
+    for p in ("steward/.env", "steward/data", "backups", "python"):
+        assert p in updates.KEEP_ON_UPDATE, f"{p} is not protected from an update"
+
+
+@test("the packaged build ships no secrets and no dev-only files")
+def _():
+    # Reads the build script rather than building, which takes minutes and
+    # needs the network. What matters is that steward/ is copied file by file:
+    # a blanket copytree would take .env and data/ with it.
+    src = (ROOT / "tools" / "build_dist.py").read_text(encoding="utf-8")
+    trees = re.search(r"COPY_TREES = \[(.*?)\]", src, re.S).group(1)
+    for forbidden in ('"steward"', "'steward'", '"tests"', '"backups"'):
+        assert forbidden not in trees,             f"build_dist copies {forbidden} wholesale, which would ship secrets"
+    assert "STEWARD_FILES" in src and "*.py" in src
+    # And the reason has to stay written down.
+    assert ".env" in src and "data" in src
+
+
+@test("the packaged build leaves matplotlib out")
+def _():
+    # It is 115 MB of a 70 MB product for one image a week, and the digest
+    # already falls back to a text sparkline. The page installs it on request.
+    src = (ROOT / "tools" / "build_dist.py").read_text(encoding="utf-8")
+    assert "requirements-charts.txt is deliberately not here" in src
+    assert (ROOT / "steward" / "requirements-charts.txt").exists()
+    core = (ROOT / "steward" / "requirements.txt").read_text(encoding="utf-8")
+    assert "matplotlib" not in core, "matplotlib is back in the core requirements"
+
+
+@test("the embeddable interpreter gets site-packages switched on")
+def _():
+    # python3xx._pth leaves site-packages out by default, so every dependency
+    # installed into the bundled interpreter is invisible and the failure looks
+    # like a broken install rather than one commented-out line.
+    src = (ROOT / "tools" / "build_dist.py").read_text(encoding="utf-8")
+    assert "#import site" in src and "_pth" in src
+
+
 @test("the installer version matches VERSION")
 def _():
     # A .iss cannot read a file at compile time, so it carries its own copy and

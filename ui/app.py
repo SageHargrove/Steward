@@ -1,5 +1,5 @@
 """
-Server Setup for Discord: a local UI over the community-ops blueprint.
+Steward: set up and run a Discord community server.
 
     python app.py            then open http://127.0.0.1:8770
 
@@ -40,7 +40,7 @@ BLUEPRINTS = HERE.parent / "blueprint"
 PORT = int(os.environ.get("PORT", "8770"))
 ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
-app = FastAPI(title="Server Setup for Discord", docs_url=None, redoc_url=None)
+app = FastAPI(title="Steward", docs_url=None, redoc_url=None)
 
 # session id -> {"token": str, "bot": dict}. Process memory only.
 SESSIONS: dict[str, dict] = {}
@@ -523,6 +523,50 @@ def ledger_install():
     return {"ok": proc.returncode == 0, "log": "\n".join(tail)}
 
 
+def charts_available() -> bool:
+    """Whether the interpreter running the bot can draw the digest chart.
+
+    Asked of a subprocess rather than by importing matplotlib here: importing
+    it into the web server costs a second and some memory to answer a question
+    about a different process.
+    """
+    try:
+        r = subprocess.run([sys.executable, "-c", "import matplotlib"],
+                           capture_output=True, timeout=60)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+@app.get("/api/charts")
+def charts_status():
+    return {"installed": charts_available()}
+
+
+@app.post("/api/charts/install")
+def charts_install():
+    """Add matplotlib on request.
+
+    It is not in the download because it brings numpy, PIL and fontTools with
+    it: 115 MB for one image a week, when the digest already falls back to the
+    same numbers and a text sparkline. Anyone who wants the picture can have it
+    in a minute without everyone else paying for the download.
+    """
+    req = STEWARD / "requirements-charts.txt"
+    if not req.exists():
+        raise HTTPException(400, f"No {req.name} beside the bot.")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+             "-r", str(req)],
+            capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise HTTPException(400, f"Could not install: {e}")
+    tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
+    return {"ok": proc.returncode == 0, "installed": charts_available(),
+            "log": "\n".join(tail)}
+
+
 # --------------------------------------------------------------------------
 # The content calendar
 # --------------------------------------------------------------------------
@@ -741,7 +785,7 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     banner = (
-        f"\n  Server Setup for Discord\n"
+        f"\n  Steward\n"
         f"  {url}\n\n"
         "  KEEP THIS WINDOW OPEN while you use the page.\n"
         "  Closing it stops the setup page, and the page will say it cannot\n"

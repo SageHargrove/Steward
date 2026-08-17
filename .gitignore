@@ -21,3 +21,6 @@ brand/fonts/
 
 # Copies of files an update was about to overwrite.
 backups/
+
+# Built distributions.
+dist/

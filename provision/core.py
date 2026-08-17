@@ -846,7 +846,7 @@ class Client:
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bot {token}",
-            "User-Agent": "CommunityOpsProvisioner (https://github.com/, 1.0)",
+            "User-Agent": "Steward (https://github.com/, 1.0)",
             "Content-Type": "application/json",
         })
 

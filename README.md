@@ -1,4 +1,4 @@
-# community-ops
+# Steward
 
 A Discord community server, the automation behind it, and the reusable
 thing both become.
@@ -14,7 +14,7 @@ blueprint/content-calendar.yaml   what gets posted and when, dated relative
 provision/core.py           load, template, customize, validate, apply.
                             The CLI and the UI both import this
 provision/provision.py      command-line wrapper
-ui/app.py                   Server Setup for Discord, the local UI
+ui/app.py                   Steward, the local UI
 steward/                    the bot. Ledger, levels, digest, moderation log,
                             calendar engine, playtest pipeline
 install/                    Start Menu shortcuts, and an Inno Setup script
@@ -24,7 +24,7 @@ VERSION                     the single source of truth for what you are on
 SETUP.md                    the runbook. Start there
 ```
 
-**Server Setup for Discord is the easy path.** Run `INSTALL.bat` once to put
+**Steward is the easy path.** Run `INSTALL.bat` once to put
 it on the Start Menu, then launch it from there, or run `START.bat` directly.
 Nine numbered steps, with the Developer Portal walkthrough built in so it
 assumes you have never made a bot before, and it generates your invite link

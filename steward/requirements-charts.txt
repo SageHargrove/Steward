@@ -1,0 +1,7 @@
+# Charts in the weekly digest. Deliberately separate from requirements.txt.
+#
+# matplotlib brings numpy and PIL and fontTools with it, which is 115 MB of the
+# download for one image a week. Without them the digest still posts, with the
+# same numbers and a text sparkline in place of the picture, so this is an
+# extra rather than a dependency. The setup page has a button that installs it.
+matplotlib>=3.8

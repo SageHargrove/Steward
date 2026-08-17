@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Server Setup for Discord</title>
+<title>Steward</title>
 <style>
   /* Discord's own neutral greys, so this reads as belonging beside the app.
      Blue appears on the primary button and nowhere else. */
@@ -303,8 +303,8 @@
 <div id="stale" class="stale" style="display:none"></div>
 
 <header>
-  <h1>Server Setup for Discord</h1>
-  <div class="sub">Build a server from a blueprint, without clicking through a hundred settings</div>
+  <h1>Steward</h1>
+  <div class="sub">Discord community server setup and automation. Build a server from a blueprint, without clicking through a hundred settings.</div>
   <div class="ver">
     <span id="verlabel">version ...</span>
     <button class="ghost small" onclick="checkUpdate()" id="updbtn">Check for updates</button>
@@ -567,6 +567,7 @@
     <div class="ledgerhead"><span class="dot off" id="ldot"></span>
       <span id="lstate">Checking...</span></div>
     <div class="hint" id="lhint"></div>
+    <div class="hint" id="charthint" style="margin-top:9px"></div>
     <pre class="log" id="llog" style="display:none"></pre>
   </div>
 </section>
@@ -1971,6 +1972,35 @@ async function restartLedger(){
   }
 }
 
+async function renderCharts(){
+  let r;
+  try{ r = await api('/api/charts'); }catch(e){ return; }
+  $('#charthint').innerHTML = r.installed
+    ? 'Weekly digest charts are <b>on</b>.'
+    : `Weekly digest charts are <b>off</b>, so the digest shows the same numbers
+       with a text sparkline instead of a picture. Turning them on downloads
+       about 115&nbsp;MB, which is why it is not included.
+       <button class="ghost small" onclick="installCharts()" id="chartbtn"
+               style="margin-left:6px">Turn on charts</button>`;
+}
+
+async function installCharts(){
+  const b = $('#chartbtn');
+  b.disabled = true; b.textContent = 'Downloading...';
+  const log = $('#llog');
+  log.style.display = ''; log.textContent = 'Installing matplotlib. This takes a minute.';
+  try{
+    const r = await api('/api/charts/install', {method:'POST', body:'{}'});
+    log.textContent = r.log || (r.ok ? 'Done.' : 'Failed.');
+    if(r.installed) log.textContent +=
+      '\n\nRestart the bot, from the button above, to start drawing charts.';
+  }catch(e){
+    log.textContent = e.message;
+  }
+  b.disabled = false; b.textContent = 'Turn on charts';
+  renderCharts();
+}
+
 async function installLedger(){
   const b = $('#instbtn');
   b.disabled = true; b.textContent = 'Installing...';
@@ -2052,6 +2082,7 @@ function copyStep(i, btn){
 loadManual();
 loadCalendar();
 showVersion();
+renderCharts();
 </script>
 </body>
 </html>
