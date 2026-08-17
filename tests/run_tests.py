@@ -1813,8 +1813,10 @@ def _():
     # anywhere but steward/ picked up no settings at all and quietly fell back
     # to every default, including the wrong calendar.
     src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
-    assert "load_dotenv()" not in src, "the env file is still searched for"
-    assert "load_dotenv(os.path.join(" in src
+    calls = [l.strip() for l in src.splitlines()
+             if l.startswith("load_dotenv(")]
+    assert calls, "bot.py never loads its settings file"
+    assert all("os.path.join(" in c for c in calls),         f"the env file is still searched for rather than named: {calls}"
 
 
 @test("what you filled in is remembered where the bot can read it")
