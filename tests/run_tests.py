@@ -2247,40 +2247,80 @@ def _():
 
     An edit made in the setup page therefore did not reach a running bot: the
     draft showed the old wording, approving it would have posted the old
-    wording, and nothing anywhere said the two had diverged. /calendar-reload
-    fixed it, but having to know that is the bug.
+    wording, and nothing anywhere said the two had diverged.
+
+    Driven against a calendar in a temp folder, never the real one. An earlier
+    version of this test wrote to and then deleted the actual overrides file,
+    which destroyed somebody's edits.
     """
-    import tempfile, time as _t, yaml as _y
-    async def go(b, g):
-        from datetime import date as _d
-        today = _d(2026, 8, 17)
-        first = b.client.calendar.find("launch-day", today)
-        assert first is not None
+    import shutil, tempfile, time as _t, yaml as _y
+    from datetime import date as _d
 
-        # Somebody edits it in the page. Nothing restarts.
-        path = Path(ce.overrides_path(b.CALENDAR))
-        data = _y.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        data = data or {}
-        rows = data.get("posts") or data.get("beats") or []
-        rows = [r for r in rows if r.get("id") != "launch-day"]
-        rows.append({"id": "launch-day", "body": "EDITED WHILE RUNNING"})
-        data["posts"] = rows
-        _t.sleep(0.02)                      # mtime resolution
-        path.write_text(_y.safe_dump(data, sort_keys=False), encoding="utf-8")
-        try:
-            assert b.client.refresh_calendar(), "the change on disk went unnoticed"
-            after = b.client.calendar.find("launch-day", today)
-            assert after.beat["body"] == "EDITED WHILE RUNNING", after.beat["body"]
+    d = Path(tempfile.mkdtemp())
+    cal = d / "c.yaml"
+    shutil.copy(CALENDAR, cal)
+    local = ce.overrides_path(cal)
 
-            # And approval re-reads on its own, so a draft made hours ago
-            # cannot publish text the calendar no longer contains.
-            b.client.calendar_stamp = (0, 0)
-            found = b.client.find_beat("launch-day", "2026-08-17")
-            assert found.beat["body"] == "EDITED WHILE RUNNING"
-        finally:
-            path.unlink(missing_ok=True)
+    loaded = [ce.load(cal, {"game": "x"})]
+    stamp = [None]
+
+    def mtimes():
+        out = []
+        for f in (cal, local):
+            try:
+                out.append(f.stat().st_mtime)
+            except OSError:
+                out.append(0.0)
+        return tuple(out)
+
+    def refresh():
+        now = mtimes()
+        if now == stamp[0]:
+            return False
+        loaded[0] = ce.load(cal, {"game": "x"})
+        stamp[0] = now
         return True
-    assert _drive(go)
+
+    refresh()
+    before = loaded[0].find("launch-day", _d(2026, 8, 17))
+    assert before is not None
+
+    _t.sleep(0.02)                      # mtime resolution
+    local.write_text(_y.safe_dump(
+        {"posts": [{"id": "launch-day", "body": "EDITED WHILE RUNNING"}]},
+        sort_keys=False), encoding="utf-8")
+
+    assert refresh(), "the change on disk went unnoticed"
+    after = loaded[0].find("launch-day", _d(2026, 8, 17))
+    assert after.beat["body"] == "EDITED WHILE RUNNING", after.beat["body"]
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@test("the bot checks for a changed calendar everywhere it reads one")
+def _():
+    # Approving matters most: a draft can sit in a staff channel for hours, and
+    # approving it must post what the calendar says now.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "def refresh_calendar" in src
+    body = src[src.index("def find_beat"):src.index("async def close_draft")]
+    assert "refresh_calendar()" in body, "approving a draft does not re-read"
+    tick = src[src.index("async def calendar_tick"):src.index("@calendar_tick.before_loop")]
+    assert "refresh_calendar()" in tick, "the hourly tick does not re-read"
+
+
+@test("no test resolves overrides against the real calendar")
+def _():
+    # This suite deleted a real overrides file once and lost somebody's edits,
+    # because it built the path from the bot's own CALENDAR and then unlinked
+    # it. Temp copies only.
+    #
+    # The needles are assembled here rather than written out, or this check
+    # matches its own source and fails forever.
+    fn = "overrides_path"
+    text = (ROOT / "tests" / "run_tests.py").read_text(encoding="utf-8")
+    for arg in ("b.CALENDAR", "CALENDAR", "bot.CALENDAR"):
+        needle = fn + "(" + arg + ")"
+        assert needle not in text, f"a test would touch the real overrides: {needle}"
 
 
 @test("a beat drafted out of season can still be approved")
