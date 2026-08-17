@@ -5,3 +5,6 @@ PyYAML>=6.0.2
 # Charts in the weekly digest. Optional: without it the digest still posts, with
 # the numbers and a text sparkline instead of an image.
 matplotlib>=3.8
+# The IANA timezone database. Windows does not ship one, so without this
+# a content calendar set to anything but UTC silently falls back to UTC.
+tzdata>=2024.1; sys_platform == 'win32'

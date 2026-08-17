@@ -1677,6 +1677,27 @@ def _():
     assert "launch-day" not in [o.id for o in due]
 
 
+@test("the timezone setting actually changes when beats fire")
+def _():
+    # It was read from the file, documented as controlling the hour, and then
+    # never used: every beat fired on UTC hours whatever the file said. A
+    # setting that lies is worse than no setting.
+    utc = ce.Calendar({"meta": {"timezone": "UTC"}})
+    chi = ce.Calendar({"meta": {"timezone": "America/Chicago"}})
+    assert chi.tz_problem is None, chi.tz_problem
+    assert utc.now().utcoffset() != chi.now().utcoffset(),         "the timezone made no difference to the clock"
+
+
+@test("an unknown timezone warns and falls back rather than refusing to load")
+def _():
+    # A bot that will not start because of a timezone is worse than one an
+    # hour out, and Windows ships no IANA database at all without tzdata.
+    cal = ce.Calendar({"meta": {"timezone": "Not/AZone"}})
+    assert cal.tz_problem and "UTC" in cal.tz_problem
+    assert cal.now() is not None
+    assert any("Not/AZone" in w for w in cal.validate()["warnings"])
+
+
 @test("a calendar with no launch date fires nothing")
 def _():
     spec = _yaml.safe_load(CALENDAR.read_text("utf-8"))

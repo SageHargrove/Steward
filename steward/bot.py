@@ -1044,7 +1044,9 @@ class Steward(discord.Client):
     async def calendar_tick(self):
         if not self.calendar.anchor and not self.calendar.recurring:
             return
-        now = datetime.now(timezone.utc)
+        # The calendar's own clock. post_hour: 17 should mean five in the
+        # afternoon where the person who wrote it lives, not 17:00 UTC.
+        now = self.calendar.now()
         if now.hour < self.calendar.post_hour:
             return
         today = now.date()
@@ -1295,7 +1297,7 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
         return
 
     cal = client.calendar
-    today = datetime.now(timezone.utc).date()
+    today = cal.now().date()
     if not cal.beats and not cal.recurring:
         await interaction.response.send_message(
             f"No content calendar loaded. Steward looked in `{CALENDAR}`.",
@@ -1342,7 +1344,7 @@ async def calendar_run(interaction: discord.Interaction, beat: str | None = None
         await interaction.response.send_message("Staff only.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    today = datetime.now(timezone.utc).date()
+    today = client.calendar.now().date()
 
     if beat:
         occ = client.calendar.find(beat, today)

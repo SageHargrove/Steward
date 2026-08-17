@@ -14,7 +14,7 @@ catches up exactly once per beat instead of either replaying or skipping.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday",
             "saturday", "sunday"]
@@ -78,11 +78,38 @@ class Calendar:
         meta = spec.get("meta") or {}
         self.name = meta.get("name", "Content calendar")
         self.timezone = meta.get("timezone", "UTC")
+        self.tz, self.tz_problem = self._zone(self.timezone)
         self.post_hour = int(meta.get("post_hour", 17))
         self.anchor = self._anchor(meta.get("anchor"))
         self.variables = variables or {}
         self.beats = list(spec.get("beats") or [])
         self.recurring = list(spec.get("recurring") or [])
+
+    @staticmethod
+    def _zone(name: str):
+        """The timezone beats are timed against.
+
+        Windows does not ship the IANA database, so `ZoneInfo("Europe/London")`
+        raises there unless the `tzdata` package is installed. It is in
+        requirements.txt for that reason, and this still falls back to UTC with
+        an explanation rather than refusing to load the calendar: a bot that
+        will not start because of a timezone is worse than one an hour out.
+        """
+        if not name or name.upper() == "UTC":
+            return timezone.utc, None
+        try:
+            from zoneinfo import ZoneInfo
+            return ZoneInfo(name), None
+        except Exception as e:                               # noqa: BLE001
+            return timezone.utc, (
+                f"timezone {name!r} could not be loaded ({type(e).__name__}), so "
+                f"beats are timed against UTC. Install the 'tzdata' package, or "
+                f"set meta.timezone to UTC to silence this.")
+
+    def now(self) -> datetime:
+        """The current time where the calendar says it lives, so post_hour
+        means the hour a person would recognise."""
+        return datetime.now(self.tz)
 
     @staticmethod
     def _anchor(value) -> date | None:
@@ -192,6 +219,9 @@ class Calendar:
         errors, warnings = [], []
         seen = set()
         every_beat = [(b, False) for b in self.beats] + [(b, True) for b in self.recurring]
+
+        if self.tz_problem:
+            warnings.append(self.tz_problem)
 
         if not self.anchor and any(_OFFSET.match(str(b.get("when", "")))
                                    for b in self.beats):
