@@ -1,12 +1,17 @@
 """Cut a version.
 
-    python tools/release.py 0.2.1
-    python tools/release.py 0.2.1 --notes "Fixed the calendar double-posting"
-    python tools/release.py --dry-run 0.3.0
+    python tools/release.py 0.4.1
+    python tools/release.py 0.4.1 --notes "Fixed the calendar double-posting"
+    python tools/release.py 0.4.1 --build      also build and attach the download
+    python tools/release.py --dry-run 0.5.0
 
 Bumps VERSION, commits it, tags it, and pushes. With the GitHub CLI installed
 it also publishes a release, which is what makes the update check work for
 anyone who is not running from a checkout.
+
+With --build it also assembles the no-Python-needed download and attaches it.
+Without that the release page offers only source archives, which are no use at
+all to somebody who does not have Python, which is most of the audience.
 
 The version number is the whole point of the ceremony. Without one, "are you
 on the latest?" has no answer, and every bug report starts with an argument
@@ -40,6 +45,8 @@ def main():
     ap = argparse.ArgumentParser(description="Cut a version and push it.")
     ap.add_argument("version", help="the new version, like 0.2.1")
     ap.add_argument("--notes", default="", help="one line for the release notes")
+    ap.add_argument("--build", action="store_true",
+                    help="also build the download and attach it to the release")
     ap.add_argument("--dry-run", action="store_true",
                     help="print what would happen and change nothing")
     args = ap.parse_args()
@@ -114,7 +121,23 @@ def main():
     r = run("gh", "release", "create", tag, "--title", tag, "--notes", notes,
             check=False)
     if r.returncode == 0:
-        print(f"  Published the release for {tag}.\n")
+        print(f"  Published the release for {tag}.")
+        if args.build:
+            # Without this the release page offers only source archives, which
+            # are no use to somebody who does not have Python.
+            print("  Building the download. This takes a few minutes.")
+            b = run(sys.executable, str(ROOT / "tools" / "build_dist.py"),
+                    "--clean", "--zip", check=False, capture=False)
+            zip_path = ROOT / "dist" / f"Steward-{new}-windows.zip"
+            if b.returncode == 0 and zip_path.exists():
+                u = run("gh", "release", "upload", tag, str(zip_path), "--clobber",
+                        check=False)
+                print(f"  Attached {zip_path.name}." if u.returncode == 0 else
+                      f"  Could not attach it: {(u.stderr or '').strip()[:200]}")
+            else:
+                print("  The build failed, so nothing was attached. The tag and "
+                      "the release are still published.")
+        print()
     else:
         print("\n  The tag is pushed but publishing the release failed:")
         print("  " + (r.stderr or r.stdout).strip()[:400])

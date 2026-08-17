@@ -103,8 +103,8 @@ so it assumes you have never made a bot before, and it generates your invite
 link once you paste a token. The CLI does the same job with flags.
 
 ```powershell
-python tools\build_dist.py --clean --zip     # the release download, 29 MB zipped
-python tools\release.py 0.4.0 --notes "..."  # bump, tag, push, publish
+python toolsuild_dist.py --clean --zip           # just the download, 29 MB zipped
+python toolselease.py 0.4.1 --notes "..." --build # bump, tag, push, publish, attach
 python tests\run_tests.py                    # 197 checks, no framework needed
 ```
 
