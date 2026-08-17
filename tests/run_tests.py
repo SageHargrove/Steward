@@ -2133,6 +2133,31 @@ def _():
         assert wanted in names, f"/{wanted} is not registered. Have: {names}"
 
 
+@test("commands are pushed to each server, not only globally")
+def _():
+    # A global command change sits in Discord's cache for up to an hour, so a
+    # renamed option leaves people typing the old name and being told the
+    # command is outdated. A guild command replaces the global one of the same
+    # name and appears at once.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "copy_global_to" in src, "commands are only ever synced globally"
+    body = src[src.index("async def sync_commands"):src.index("# -- backfill")]
+    assert "for guild in self.guilds" in body
+    assert "sync(guild=guild)" in body
+    ready = src[src.index("async def on_ready"):][:400]
+    assert "sync_commands()" in ready, "on_ready does not push the commands"
+
+
+@test("the calendar-run option is called post")
+def _():
+    # It was called beat, which is the word this whole rename removed.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    block = src[src.index('name="calendar-run"'):src.index("async def calendar_run") + 200]
+    assert "post=" in block, "the describe still names the old option"
+    assert "post: str | None" in block, "the parameter is not called post"
+    assert 'autocomplete("post")' in src
+
+
 @test("every command touching interaction.guild is marked guild_only")
 def _():
     # In a DM interaction.guild is None and the command dies on an attribute

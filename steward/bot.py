@@ -342,6 +342,10 @@ class Steward(discord.Client):
         return True
 
     async def setup_hook(self):
+        # Global commands only. They reach servers the bot has not seen yet,
+        # but Discord caches them for up to an hour, which is why a renamed
+        # option shows the old name and then "this command is outdated". The
+        # per-guild copy in on_ready is what makes a change appear at once.
         await self.tree.sync()
         # Registered before anything else so a draft posted last week still has
         # working buttons after a restart.
@@ -352,10 +356,29 @@ class Steward(discord.Client):
         self.calendar_tick.start()
         self.pulse.start()
 
+    async def sync_commands(self):
+        """Copy the commands into every server the bot is in.
+
+        A guild command replaces the global one of the same name and appears
+        immediately, where a global change can sit in Discord's cache for an
+        hour. Without this, renaming an option leaves people typing the old
+        name and being told the command is outdated.
+        """
+        for guild in self.guilds:
+            try:
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                log.info("%s: commands updated", guild.name)
+            except discord.HTTPException as e:
+                log.warning("%s: could not update commands (%s). They will "
+                            "still arrive once Discord's cache expires.",
+                            guild.name, e)
+
     # -- backfill ---------------------------------------------------------
 
     async def on_ready(self):
         log.info("connected as %s (Steward v%s)", self.user, VERSION)
+        await self.sync_commands()
         for guild in self.guilds:
             seeded = 0
             async for member in guild.fetch_members(limit=None):
