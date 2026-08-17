@@ -80,7 +80,21 @@ def main():
         return
 
     updates.VERSION_FILE.write_text(new + "\n", encoding="utf-8")
-    run("git", "add", "VERSION")
+    staged = ["VERSION"]
+
+    # The Inno Setup script carries its own copy, because a .iss cannot read a
+    # file at compile time. Bumped here so the two cannot drift apart, and a
+    # test fails if they ever do.
+    iss = ROOT / "install" / "setup.iss"
+    if iss.exists():
+        text = iss.read_text(encoding="utf-8")
+        bumped = re.sub(r'(#define AppVersion\s+")[^"]*(")',
+                        lambda m: m.group(1) + new + m.group(2), text, count=1)
+        if bumped != text:
+            iss.write_text(bumped, encoding="utf-8")
+            staged.append("install/setup.iss")
+
+    run("git", "add", *staged)
     run("git", "commit", "-m", f"Release {new}\n\n{notes}")
     run("git", "tag", "-a", tag, "-m", notes)
     run("git", "push", "origin", branch)

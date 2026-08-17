@@ -25,22 +25,23 @@ SETUP.md                    the runbook. Start there
 ```
 
 **Server Setup for Discord is the easy path.** Run `INSTALL.bat` once to put
-it on the Start Menu, then launch it from there. Or run `START.bat` directly.
-Nine
-numbered steps, with the Developer Portal walkthrough built in so it assumes
-you have never made a bot before, and it generates your invite link once you
-paste a token. The CLI does the same job with flags.
+it on the Start Menu, then launch it from there, or run `START.bat` directly.
+Nine numbered steps, with the Developer Portal walkthrough built in so it
+assumes you have never made a bot before, and it generates your invite link
+once you paste a token. The CLI does the same job with flags.
 
 ## State
 
 | | |
 |---|---|
-| Blueprint | validates clean: 10 roles, 21 channels, 7 categories, 5 AutoMod rules, 3 onboarding prompts |
+| Blueprint | validates clean: 24 roles, 20 channels, 7 categories, 5 AutoMod rules, 3 onboarding prompts |
 | Core | verified against a stubbed Discord API: phase ordering, idempotency (second run makes 0 creates, 45 updates), dry-run writes nothing |
 | UI | boots and serves; connect / invite / refresh / customize / apply / cleanup all exercised against a stubbed API |
 | Ledger | logic smoke-tested against a temp database |
-| Calendar | 20 beats resolve against a 2027-03-01 launch and validate against the blueprint's own channels and roles |
+| Calendar | 17 one-off beats and 3 recurring, resolving against a 2027-03-01 launch and validated against the blueprint's own channels and roles |
 | Playtest | key issuance, reissue, revoke and forget-me exercised against a temp database |
+| Decay | the maths exercised against seeded ledgers, including the quiet-week and dominant-channel cases |
+| Updates | version compare, backup-before-overwrite and fast-forward exercised against a throwaway pair of repos |
 | Server | **not created.** Nothing here has touched real Discord |
 
 Section 0 of [SETUP.md](SETUP.md) is the first thing that does.
@@ -113,19 +114,27 @@ reapplication once the app passes 10,000 users.
 
 ## Playbook artifacts
 
-The documentation is the deliverable, not the notes. Six files, written in the
-same sitting as the work, not reconstructed afterward. Three exist:
+The documentation is the deliverable, not the notes. Written in the same sitting
+as the work, not reconstructed afterward. All of them now exist:
 
 - [x] `blueprint/default.yaml` — the machine-readable server spec
 - [x] `SETUP.md` — the runbook, including the manual steps and why they are manual
-- [ ] `onboarding-flow.md` — the questions, why each one, what each answer grants,
-      and what changed when you changed them
 - [x] `blueprint/content-calendar.yaml` — T-minus-relative beats. The single
       most reusable artifact in the set, and the one the calendar engine reads
-- [ ] `moderation.md` — escalation ladder and what you actually had to intervene on
-- [ ] `playtest-pipeline.md` — recruitment, gating, key handling, feedback routing
-- [ ] `outreach-tracker.csv` — creators and press. A tracking artifact, not an
-      automation: outreach by Discord DM is prohibited
+- [x] [docs/onboarding-flow.md](docs/onboarding-flow.md) — the three questions,
+      what each answer grants, and the API rule that forced the design
+- [x] [docs/moderation.md](docs/moderation.md) — AutoMod config, the real API
+      limits, the escalation ladder, what is left to humans
+- [x] [docs/playtest-pipeline.md](docs/playtest-pipeline.md) — recruitment,
+      gating, key handling, feedback routing, and the Steam constraints
+- [x] [docs/outreach.md](docs/outreach.md) + `docs/outreach-tracker.csv` —
+      creators and press. A tracking artifact, not an automation: outreach by
+      Discord DM is prohibited
+
+Three of them end with a section that is deliberately empty: what actually
+happened. Those get filled in as it happens, and they are the half a studio
+would pay for. The config above is copyable; the record of what the rules turned
+out to be wrong about is not.
 
 The discipline that makes or breaks this is writing the reusable version in the
 same sitting you do the thing. After launch you write a worse version from
@@ -480,7 +489,7 @@ python tests
 un_tests.py
 ```
 
-151 checks, no test framework to install. `tests/fake_discord.py` stands in for
+167 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

@@ -2177,6 +2177,22 @@ def _():
         assert r.returncode != 0, f"release.py accepted {bad!r}"
 
 
+@test("the installer version matches VERSION")
+def _():
+    # A .iss cannot read a file at compile time, so it carries its own copy and
+    # the two drift. release.py bumps both; this catches a hand edit that did not.
+    iss = (ROOT / "install" / "setup.iss").read_text(encoding="utf-8")
+    declared = re.search(r'#define AppVersion\s+"([^"]+)"', iss).group(1)
+    assert declared == updates.version(),         f"setup.iss says {declared}, VERSION says {updates.version()}"
+
+
+@test("the release tool bumps both places")
+def _():
+    src = (ROOT / "tools" / "release.py").read_text(encoding="utf-8")
+    assert "setup.iss" in src, "release.py does not touch the installer version"
+    assert "AppVersion" in src
+
+
 @test("backups are gitignored, or the next update sees them as edits")
 def _():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")

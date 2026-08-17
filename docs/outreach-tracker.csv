@@ -1,0 +1,2 @@
+name,kind,platform,url,audience_size,fit_notes,contact_method,contact_handle,first_contacted,followed_up,replied,covered,coverage_url,coverage_date,wishlists_72h,status,notes
+EXAMPLE - delete this row,creator,YouTube,https://youtube.com/@example,45000,"Covers roguelikes and deckbuilders. Played three games in this space last quarter, so the fit is real rather than category-level.",email,business@example.com,2026-09-01,2026-09-22,2026-10-14,,,,"","replied","Asked for a build in November. Do not chase before then."
