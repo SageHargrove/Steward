@@ -146,7 +146,8 @@ the parts a studio would pay for.
 ```powershell
 # the only file you need to run. Everything else is a button on the page,
 # including starting, stopping and restarting the bot.
-START.bat
+START.bat          # Windows
+./start.sh         # Linux and macOS
 
 # or the command line
 cd provision
@@ -489,7 +490,7 @@ python tests
 un_tests.py
 ```
 
-188 checks, no test framework to install. `tests/fake_discord.py` stands in for
+192 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.
@@ -511,6 +512,17 @@ server, so a failure here is worth reading rather than deleting:
   created**, whatever the browser asks for.
 - **The token never appears in a response**, cross-origin posts are refused,
   and the blueprint loader cannot be walked out of its folder.
+
+## Licence
+
+MIT, in [LICENSE](LICENSE). The code and the documentation are covered; the
+name **Steward** and the arch mark in `brand/` are deliberately not, which is
+the usual arrangement. Fork the code, use your own name and mark, and nobody
+downloading your fork is confused about who wrote it or who to ask for help.
+
+The typefaces are all SIL Open Font License, so commercial use and embedding
+in a logo are both fine. They are not committed; `brand/getfonts.py` fetches
+them.
 
 ## Backups, and the one file that is both
 

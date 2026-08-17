@@ -2444,6 +2444,26 @@ def _():
         assert must in p.read_text(encoding="utf-8"), f"{bat} does not run {must}"
 
 
+@test("the bot survives the page that started it, on either platform")
+def _():
+    # Detaching is spelled differently on Windows and POSIX. Without the POSIX
+    # half the ledger dies with the setup page, which is the one thing it must
+    # never do: Discord cannot hand back activity from a period when nothing
+    # was listening.
+    src = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    body = src[src.index("def ledger_start"):src.index("def ledger_stop")]
+    assert "DETACHED_PROCESS" in body, "no Windows detach"
+    assert "start_new_session" in body, "no POSIX detach"
+
+
+@test("there is a launcher for both platforms")
+def _():
+    for name in ("START.bat", "start.sh"):
+        p = ROOT / name
+        assert p.exists(), f"{name} is missing"
+        assert "app.py" in p.read_text(encoding="utf-8")
+
+
 @test("the icon carries every size Windows asks for")
 def _():
     # Windows picks a frame by context: 256 for the large-icon view, 32 for the

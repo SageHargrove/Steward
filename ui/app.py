@@ -387,17 +387,20 @@ def ledger_start():
         raise HTTPException(400, "No steward/.env yet. Add the bot token first.")
 
     LEDGER_LOG.parent.mkdir(parents=True, exist_ok=True)
-    creation = 0
+    # Detached and in its own process group, so closing the setup page leaves
+    # the ledger recording. Windows and POSIX spell that differently, and
+    # without the POSIX half the bot dies with the page that started it.
+    creation, extra = 0, {}
     if os.name == "nt":
-        # Detached and in its own process group, so closing the setup page
-        # leaves the ledger recording.
         creation = getattr(subprocess, "DETACHED_PROCESS", 0) | \
                    getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        extra["start_new_session"] = True
     try:
         with open(LEDGER_LOG, "w", encoding="utf-8") as out:
             subprocess.Popen([sys.executable, "-u", "bot.py"], cwd=str(STEWARD),
                              stdout=out, stderr=subprocess.STDOUT,
-                             creationflags=creation, close_fds=True)
+                             creationflags=creation, close_fds=True, **extra)
     except OSError as e:
         raise HTTPException(400, f"Could not start it: {e}")
     return {"ok": True}
@@ -484,12 +487,15 @@ def restart_self():
     env = dict(os.environ)
     env["PORT"] = str(PORT)
     env["COPS_WAIT_FOR_PORT"] = "1"
-    creation = 0
+    creation, extra = 0, {}
     if os.name == "nt":
         creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    else:
+        # The replacement has to outlive this process, which is about to exit.
+        extra["start_new_session"] = True
     try:
         subprocess.Popen([sys.executable, "app.py"], cwd=str(HERE), env=env,
-                         creationflags=creation, close_fds=True)
+                         creationflags=creation, close_fds=True, **extra)
     except OSError as e:
         raise HTTPException(400, f"Could not start the replacement: {e}")
 
