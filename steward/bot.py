@@ -226,16 +226,16 @@ def load_calendar(path: str, blueprint: dict):
         log.info("calendar loaded but no launch date is set, so nothing will fire. "
                  "Set meta.anchor in %s or LAUNCH_DATE in the environment.", path)
     else:
-        log.info("calendar: %d beats and %d recurring, launch %s",
-                 report["beats"], report["recurring"], report["anchor"])
+        log.info("calendar: %d posts and %d recurring, launch %s",
+                 report["posts"], report["recurring"], report["anchor"])
     return cal
 
 
-class BeatApproval(discord.ui.View):
-    """Approve or skip a drafted beat.
+class PostApproval(discord.ui.View):
+    """Approve or skip a drafted post.
 
-    The custom ids are fixed rather than carrying the beat in them, because a
-    custom id caps at 100 characters and a beat id is written by whoever edits
+    The custom ids are fixed rather than carrying the post in them, because a
+    custom id caps at 100 characters and a post id is written by whoever edits
     the calendar. The message id is the key instead, and it is already stored.
     """
 
@@ -253,14 +253,14 @@ class BeatApproval(discord.ui.View):
                                               interaction.message.id)
         if not run or run["status"] != "drafted":
             await interaction.response.send_message(
-                "That beat has already been decided.", ephemeral=True)
+                "That post has already been decided.", ephemeral=True)
             return
 
         await interaction.response.defer()
         if approve:
-            await client.publish_beat(interaction, run)
+            await client.publish_post(interaction, run)
         else:
-            client.ledger.calendar_decide(interaction.guild.id, run["beat_id"],
+            client.ledger.calendar_decide(interaction.guild.id, run["post_id"],
                                           run["fire_date"], "skipped",
                                           interaction.user.id)
             await client.close_draft(interaction.message,
@@ -345,7 +345,7 @@ class Steward(discord.Client):
         await self.tree.sync()
         # Registered before anything else so a draft posted last week still has
         # working buttons after a restart.
-        self.add_view(BeatApproval())
+        self.add_view(PostApproval())
         self.nightly_purge.start()
         self.heartbeat.start()
         self.weekly_digest.start()
@@ -883,36 +883,36 @@ class Steward(discord.Client):
 
     # -- the calendar -----------------------------------------------------
 
-    def beat_embed(self, beat: dict, when, colour=None) -> discord.Embed:
+    def post_embed(self, post: dict, when, colour=None) -> discord.Embed:
         t = self.calendar.t_minus(when)
         stamp = when.isoformat() + (f"  (T{t:+d})" if t is not None else "")
         e = discord.Embed(
-            title=beat.get("title") or beat.get("id"),
-            description=beat.get("body", "")[:4000],
+            title=post.get("title") or post.get("id"),
+            description=post.get("body", "")[:4000],
             colour=colour or discord.Color.blurple())
-        e.set_footer(text=f"{beat.get('id')} · {stamp}")
+        e.set_footer(text=f"{post.get('id')} · {stamp}")
         return e
 
-    async def draft_beat(self, guild, occ) -> bool:
-        """Put a beat in front of a human. Nothing reaches members from here."""
-        beat = occ.beat
+    async def draft_post(self, guild, occ) -> bool:
+        """Put a post in front of a human. Nothing reaches members from here."""
+        post = occ.post
         staff = discord.utils.get(guild.text_channels, name=REPORT_CHANNEL)
         if staff is None:
             log.warning("calendar: no #%s to draft %s into", REPORT_CHANNEL, occ.id)
             return False
 
-        target_name = beat.get("channel")
+        target_name = post.get("channel")
         target = discord.utils.get(guild.text_channels, name=target_name) \
             or discord.utils.get(guild.forums, name=target_name)
 
-        # Reminders are the beat. They are for staff, they name a deadline or a
+        # Reminders are the post. They are for staff, they name a deadline or a
         # task, and holding one for approval would mean approving your own
         # to-do list.
-        if beat.get("kind") == "reminder":
+        if post.get("kind") == "reminder":
             if not self.ledger.calendar_record(guild.id, occ.id, occ.date.isoformat(),
                                                "published"):
                 return False
-            e = self.beat_embed(beat, occ.date, discord.Color.dark_gold())
+            e = self.post_embed(post, occ.date, discord.Color.dark_gold())
             e.title = f"Reminder: {e.title}"
             await staff.send(embed=e,
                              allowed_mentions=discord.AllowedMentions.none())
@@ -927,23 +927,23 @@ class Steward(discord.Client):
                         target_name)
             return False
 
-        e = self.beat_embed(beat, occ.date)
-        mention = beat.get("mention")
+        e = self.post_embed(post, occ.date)
+        mention = post.get("mention")
         lines = [f"Due today, for **#{target_name}**."]
         if mention:
             lines.append(f"It mentions **@{mention}**, so approving it pings people.")
-        if beat.get("event"):
+        if post.get("event"):
             lines.append(f"It also creates the scheduled event "
-                         f"**{beat['event'].get('name')}**.")
+                         f"**{post['event'].get('name')}**.")
 
         # Claim it before posting. If the send fails the row still exists and
-        # the beat is not retried forever against a channel that will not take it.
+        # the post is not retried forever against a channel that will not take it.
         if not self.ledger.calendar_record(guild.id, occ.id, occ.date.isoformat(),
                                            "drafted"):
             return False
         try:
             msg = await staff.send(
-                content="\n".join(lines), embed=e, view=BeatApproval(),
+                content="\n".join(lines), embed=e, view=PostApproval(),
                 allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException as ex:
             self.ledger.calendar_decide(guild.id, occ.id, occ.date.isoformat(),
@@ -952,27 +952,27 @@ class Steward(discord.Client):
             return False
         self.ledger.db.execute(
             "UPDATE calendar_runs SET draft_id = ? WHERE guild_id = ? "
-            "AND beat_id = ? AND fire_date = ?",
+            "AND post_id = ? AND fire_date = ?",
             (msg.id, guild.id, occ.id, occ.date.isoformat()))
         self.ledger.db.commit()
         log.info("calendar: drafted %s for #%s", occ.id, target_name)
         return True
 
-    def find_beat(self, beat_id: str, fire_date: str):
+    def find_post(self, post_id: str, fire_date: str):
         # Re-read first. Approving a draft has to post what the calendar says
         # now, and the draft in front of somebody may be hours old.
-        """Re-read the beat off the calendar at approval time rather than
+        """Re-read the post off the calendar at approval time rather than
         storing a copy, so fixing a typo in the file fixes the pending draft.
 
         Looked up by id, not by what happens to fall on that date. Asking the
         schedule what is due on the draft's date fails for anything drafted out
         of season with /calendar-run, which is the only way to look at a T-140
-        beat in August, so every test draft could be posted and never approved.
+        post in August, so every test draft could be posted and never approved.
         """
         self.refresh_calendar()
         from datetime import date as _date
         y, m, d = (int(x) for x in fire_date.split("-"))
-        return self.calendar.find(beat_id, _date(y, m, d))
+        return self.calendar.find(post_id, _date(y, m, d))
 
     async def close_draft(self, message, note: str, colour):
         """Retire an approval message so it cannot be clicked twice."""
@@ -984,24 +984,24 @@ class Steward(discord.Client):
         except discord.HTTPException:
             pass
 
-    async def publish_beat(self, interaction, run: dict):
+    async def publish_post(self, interaction, run: dict):
         guild = interaction.guild
-        occ = self.find_beat(run["beat_id"], run["fire_date"])
+        occ = self.find_post(run["post_id"], run["fire_date"])
         if occ is None:
-            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+            self.ledger.calendar_decide(guild.id, run["post_id"], run["fire_date"],
                                         "failed", interaction.user.id,
-                                        note="beat is no longer in the calendar")
+                                        note="post is no longer in the calendar")
             await self.close_draft(interaction.message,
-                                   "That beat is no longer in the calendar file.",
+                                   "That post is no longer in the calendar file.",
                                    discord.Color.dark_red())
             return
 
-        beat = occ.beat
-        name = beat.get("channel")
+        post = occ.post
+        name = post.get("channel")
         channel = discord.utils.get(guild.text_channels, name=name) \
             or discord.utils.get(guild.forums, name=name)
         if channel is None:
-            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+            self.ledger.calendar_decide(guild.id, run["post_id"], run["fire_date"],
                                         "failed", interaction.user.id,
                                         note=f"no channel #{name}")
             await self.close_draft(interaction.message,
@@ -1009,14 +1009,14 @@ class Steward(discord.Client):
                                    discord.Color.dark_red())
             return
 
-        content, allowed = self.mention_for(guild, beat.get("mention"))
-        body = beat.get("body", "")
-        title = beat.get("title")
+        content, allowed = self.mention_for(guild, post.get("mention"))
+        body = post.get("body", "")
+        title = post.get("title")
 
         try:
             if isinstance(channel, discord.ForumChannel):
                 thread = await channel.create_thread(
-                    name=(title or beat.get("id"))[:100], content=body[:2000],
+                    name=(title or post.get("id"))[:100], content=body[:2000],
                     allowed_mentions=allowed)
                 posted = thread.message
             else:
@@ -1033,19 +1033,19 @@ class Steward(discord.Client):
                         log.info("calendar: %s posted but not published: %s",
                                  occ.id, ex)
         except discord.HTTPException as ex:
-            self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+            self.ledger.calendar_decide(guild.id, run["post_id"], run["fire_date"],
                                         "failed", interaction.user.id,
                                         note=str(ex)[:200])
             await self.close_draft(interaction.message,
                                    f"Discord refused it: {ex}", discord.Color.dark_red())
             return
 
-        event_note = await self.make_event(guild, beat, occ.date)
-        self.ledger.calendar_decide(guild.id, run["beat_id"], run["fire_date"],
+        event_note = await self.make_event(guild, post, occ.date)
+        self.ledger.calendar_decide(guild.id, run["post_id"], run["fire_date"],
                                     "published", interaction.user.id,
                                     published_id=posted.id)
         self.ledger.record(guild_id=guild.id, user_id=interaction.user.id,
-                           event_type="calendar_published", beat=occ.id)
+                           event_type="calendar_published", post=occ.id)
         await self.close_draft(
             interaction.message,
             f"Posted in {channel.mention} by {interaction.user.mention}.{event_note}",
@@ -1066,8 +1066,8 @@ class Steward(discord.Client):
             return "", discord.AllowedMentions.none()
         return role.mention, discord.AllowedMentions(roles=[role])
 
-    async def make_event(self, guild, beat: dict, when) -> str:
-        spec = beat.get("event")
+    async def make_event(self, guild, post: dict, when) -> str:
+        spec = post.get("event")
         if not spec:
             return ""
         # Discord caps a server at 100 scheduled events. Worth checking rather
@@ -1101,7 +1101,7 @@ class Steward(discord.Client):
             return f" Scheduled event **{spec['name']}** created."
         except discord.HTTPException as ex:
             log.warning("calendar: could not create the event for %s: %s",
-                        beat.get("id"), ex)
+                        post.get("id"), ex)
             return f" The event could not be created: {ex}"
 
     @tasks.loop(hours=1)
@@ -1120,7 +1120,7 @@ class Steward(discord.Client):
                 if self.ledger.calendar_seen(guild.id, occ.id, occ.date.isoformat()):
                     continue
                 try:
-                    await self.draft_beat(guild, occ)
+                    await self.draft_post(guild, occ)
                 except Exception as e:                       # noqa: BLE001
                     log.warning("calendar: %s failed: %s", occ.id, e)
 
@@ -1364,7 +1364,7 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
 
     cal = client.calendar
     today = cal.now().date()
-    if not cal.beats and not cal.recurring:
+    if not cal.posts and not cal.recurring:
         await interaction.response.send_message(
             f"No content calendar loaded. Steward looked in `{CALENDAR}`.",
             ephemeral=True)
@@ -1382,7 +1382,7 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
     pending = client.ledger.calendar_pending(interaction.guild_id)
     if pending:
         lines += ["", f"**Waiting on you: {len(pending)}**"]
-        lines += [f"- `{p['beat_id']}` drafted {p['fire_date']}" for p in pending[:8]]
+        lines += [f"- `{p['post_id']}` drafted {p['fire_date']}" for p in pending[:8]]
 
     upcoming = cal.upcoming(today, max(1, min(days, 400)))
     lines += ["", f"**Next {len(upcoming)} in {days} days**"]
@@ -1390,8 +1390,8 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
         lines.append("Nothing scheduled in that window.")
     for occ in upcoming[:20]:
         t = cal.t_minus(occ.date)
-        tag = "reminder" if occ.beat.get("kind") == "reminder" else \
-            f"#{occ.beat.get('channel')}"
+        tag = "reminder" if occ.post.get("kind") == "reminder" else \
+            f"#{occ.post.get('channel')}"
         stamp = f"T{t:+d}" if t is not None else occ.date.isoformat()
         lines.append(f"- `{occ.date.isoformat()}` ({stamp}) **{occ.id}** into {tag}")
     if len(upcoming) > 20:
@@ -1402,10 +1402,10 @@ async def calendar_cmd(interaction: discord.Interaction, days: int = 60):
 
 @app_commands.guild_only()
 @client.tree.command(name="calendar-run",
-                     description="Draft a beat right now instead of waiting. Staff only.")
+                     description="Draft a post right now instead of waiting. Staff only.")
 @app_commands.describe(
-    beat="Which beat to draft now. Leave blank to run everything due today.")
-async def calendar_run(interaction: discord.Interaction, beat: str | None = None):
+    post="Which post to draft now. Leave blank to run everything due today.")
+async def calendar_run(interaction: discord.Interaction, post: str | None = None):
     client.refresh_calendar()
     if not staff_only(interaction):
         await interaction.response.send_message("Staff only.", ephemeral=True)
@@ -1413,25 +1413,30 @@ async def calendar_run(interaction: discord.Interaction, beat: str | None = None
     await interaction.response.defer(ephemeral=True)
     today = client.calendar.now().date()
 
-    if beat:
-        occ = client.calendar.find(beat, today)
+    if post:
+        occ = client.calendar.find(post, today)
         if occ is None:
             ids = ", ".join(f"`{i}`" for i in client.calendar.ids()[:25])
             await interaction.followup.send(
-                f"No beat called `{beat}`.\n\nThere is: {ids}", ephemeral=True)
+                f"No post called `{post}`.\n\nThere is: {ids}", ephemeral=True)
             return
+        # Naming a post is an explicit request for it, so any record of it
+        # having gone out today is cleared first. The per-day memory exists to
+        # stop the hourly tick repeating itself, not to stop a person asking
+        # twice, and refusing the second ask made testing an edit impossible.
         seen = client.ledger.calendar_seen(interaction.guild_id, occ.id,
                                            today.isoformat())
+        again = ""
         if seen:
-            await interaction.followup.send(
-                f"`{beat}` was already handled today ({seen['status']}). Beats are "
-                f"remembered per day, so try again tomorrow or pick another one.",
-                ephemeral=True)
-            return
-        ok = await client.draft_beat(interaction.guild, occ)
+            client.ledger.calendar_forget(interaction.guild_id, occ.id,
+                                          today.isoformat())
+            again = (f" It had already been {seen['status']} today; that record "
+                     f"was cleared so you could look at it again.")
+        ok = await client.draft_post(interaction.guild, occ)
         await interaction.followup.send(
-            f"Drafted `{beat}` into #{REPORT_CHANNEL}. Approve or skip it there."
-            if ok else f"Could not draft `{beat}`. Check the console for why.",
+            f"Drafted `{post}` into #{REPORT_CHANNEL}. Approve or skip it there."
+            + again
+            if ok else f"Could not draft `{post}`. Check the console for why.",
             ephemeral=True)
         return
 
@@ -1443,18 +1448,18 @@ async def calendar_run(interaction: discord.Interaction, beat: str | None = None
              if not client.ledger.calendar_seen(interaction.guild_id, o.id,
                                                 o.date.isoformat())]
     for occ in fresh:
-        await client.draft_beat(interaction.guild, occ)
+        await client.draft_post(interaction.guild, occ)
     await interaction.followup.send(
-        f"{len(due)} beat(s) due in the last week, {len(fresh)} not yet handled. "
+        f"{len(due)} post(s) due in the last week, {len(fresh)} not yet handled. "
         f"Drafted those into #{REPORT_CHANNEL}."
         if fresh else
-        f"{len(due)} beat(s) due in the last week and all of them are already "
-        f"handled. Use `/calendar` to see what is coming, or name a beat to "
+        f"{len(due)} post(s) due in the last week and all of them are already "
+        f"handled. Use `/calendar` to see what is coming, or name a post to "
         f"draft one now for a look.", ephemeral=True)
 
 
-@calendar_run.autocomplete("beat")
-async def _beat_choices(interaction: discord.Interaction, current: str):
+@calendar_run.autocomplete("post")
+async def _post_choices(interaction: discord.Interaction, current: str):
     out = [i for i in client.calendar.ids() if current.lower() in i.lower()]
     return [app_commands.Choice(name=i, value=i) for i in out[:25]]
 
@@ -1470,7 +1475,7 @@ async def calendar_reload(interaction: discord.Interaction):
     report = client.calendar.validate(
         channels=blueprint_channels(client.blueprint),
         roles=[r["name"] for r in (client.blueprint.get("roles") or [])])
-    lines = [f"Reloaded `{CALENDAR}`: {report['beats']} beats, "
+    lines = [f"Reloaded `{CALENDAR}`: {report['posts']} posts, "
              f"{report['recurring']} recurring."]
     for e in report["errors"][:6]:
         lines.append(f"ERROR  {e}")

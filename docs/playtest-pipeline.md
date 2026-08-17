@@ -110,7 +110,7 @@ looking for the things only volume finds.
 
 **Native Playtest, from T-84.** No cap, no keys, no admin.
 
-The calendar has beats for all three at `playtest-signup-open`,
+The calendar has posts for all three at `playtest-signup-open`,
 `playtest-wave-one` and `wider-playtest`.
 
 ---

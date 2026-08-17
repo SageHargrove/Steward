@@ -314,7 +314,7 @@ the whole mechanic: it costs nothing and people genuinely care.
 ### What to watch in the first fortnight
 
 Run `/ledger-status` weekly and write the four numbers down by hand. They are
-tiny and that is fine. Small honest numbers with a clean methodology beat big
+tiny and that is fine. Small honest numbers with a clean methodology post big
 vague ones, and the case study is built from the series, not the snapshot.
 
 ---
@@ -370,12 +370,12 @@ than being resolved against a guess.
 
 ```
 /calendar                       what is scheduled, and how far out T-0 is
-/calendar-run beat:launch-day   draft one now, without waiting for its date
+/calendar-run post:launch-day   draft one now, without waiting for its date
 /calendar-reload                re-read the file after editing it
 ```
 
-When a beat comes due it is drafted into `#steward-reports` with **Approve and
-post** and **Skip**. Nothing reaches members until somebody clicks. Beats
+When a post comes due it is drafted into `#steward-reports` with **Approve and
+post** and **Skip**. Nothing reaches members until somebody clicks. Posts
 marked `kind: reminder` skip the approval and go straight to staff, because
 approving your own to-do list is theatre.
 

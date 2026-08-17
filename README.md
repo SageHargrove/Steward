@@ -198,7 +198,7 @@ python tests\run_tests.py                           # 212 checks, no framework
 | Core | verified against a stubbed Discord API: phase ordering, idempotency (second run makes 0 creates, 45 updates), dry-run writes nothing |
 | UI | boots and serves; connect / invite / refresh / customize / apply / cleanup all exercised against a stubbed API |
 | Ledger | logic smoke-tested against a temp database |
-| Calendar | 18 one-off beats and 3 recurring, resolving against a 2027-03-01 launch and validated against the blueprint's own channels and roles |
+| Calendar | 18 one-off posts and 3 recurring, resolving against a 2027-03-01 launch and validated against the blueprint's own channels and roles |
 | Playtest | key issuance, reissue, revoke and forget-me exercised against a temp database |
 | Decay | the maths exercised against seeded ledgers, including the quiet-week and dominant-channel cases |
 | Updates | version compare, backup-before-overwrite and fast-forward exercised against a throwaway pair of repos |
@@ -281,7 +281,7 @@ as the work, not reconstructed afterward. All of them now exist:
 
 - [x] `blueprint/default.yaml` — the machine-readable server spec
 - [x] `SETUP.md` — the runbook, including the manual steps and why they are manual
-- [x] `blueprint/content-calendar.yaml` — T-minus-relative beats. The single
+- [x] `blueprint/content-calendar.yaml` — T-minus-relative posts. The single
       most reusable artifact in the set, and the one the calendar engine reads
 - [x] [docs/onboarding-flow.md](docs/onboarding-flow.md) — the three questions,
       what each answer grants, and the API rule that forced the design
@@ -467,31 +467,31 @@ are security-critical and hard, and a half-built version is worse than none.
 `blueprint/calendars/` holds the calendars. Dates are
 offsets from launch (`T-140`, `T+45`) rather than calendar dates, which is the
 difference between a product and a config file: `T-42` redeploys to any launch,
-`2026-09-14` describes exactly one. A handful of beats are absolute anyway,
+`2026-09-14` describes exactly one. A handful of posts are absolute anyway,
 because Steam Next Fest registration closes when Valve says it closes.
 
-**Nothing reaches members without a human clicking.** When a beat comes due
+**Nothing reaches members without a human clicking.** When a post comes due
 Steward drafts it into the staff channel with Approve and Skip buttons, showing
 which channel it is bound for and warning when approving it will ping a role.
 An announcement that has already gone out cannot be unsent, so the last check is
 a person.
 
-Beats are of two kinds. A `post` is drafted for approval. A `reminder` goes
+Posts are of two kinds. A `post` is drafted for approval. A `reminder` goes
 straight to staff and stops there, because approving your own to-do list is
 theatre. The Steam Direct 30-day clock, the Next Fest deadline and the
 two-weeks-of-velocity window are reminders.
 
 Three things that took a second pass to get right:
 
-- **A beat is claimed in the database before it is posted**, not after. The
-  primary key is `(guild, beat, date)`, so two ticks racing each other or a
+- **A post is claimed in the database before it is posted**, not after. The
+  primary key is `(guild, post, date)`, so two ticks racing each other or a
   crash mid-send cannot produce the same post twice.
 - **Due-checking looks back seven days, not forever.** Otherwise installing the
-  bot in November fires every beat since September at once. Anything older is
+  bot in November fires every post since September at once. Anything older is
   treated as missed rather than late, which is what a person would have wanted.
-- **The buttons carry fixed custom ids** and the beat is looked up by message
-  id. Encoding the beat into the id caps at 100 characters and breaks the moment
-  someone names a beat something long. A draft from last week still works after
+- **The buttons carry fixed custom ids** and the post is looked up by message
+  id. Encoding the post into the id caps at 100 characters and breaks the moment
+  someone names a post something long. A draft from last week still works after
   a restart.
 
 **Every post is editable in the page.** Wording, channel, date, who it
@@ -504,7 +504,7 @@ calendar clean enough to redeploy to the next project. Posts are matched by id,
 
 The launch date lives in `steward/.env` as `LAUNCH_DATE`, not in the calendar
 file, so the file stays the part you redeploy. Step 8 of the setup page sets it
-and shows the resulting schedule. With no date set, every relative beat is
+and shows the resulting schedule. With no date set, every relative post is
 dormant rather than fired against a guess.
 
 ## The playtest pipeline

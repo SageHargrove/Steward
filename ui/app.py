@@ -688,18 +688,18 @@ def calendar_view(days: int = 120):
         "anchor": report["anchor"],
         "override": bool(anchor),
         "t_minus": cal.t_minus(today),
-        "counts": {"beats": report["beats"], "recurring": report["recurring"]},
+        "counts": {"posts": report["posts"], "recurring": report["recurring"]},
         "errors": report["errors"],
         "warnings": report["warnings"],
         "upcoming": [{
             "date": o.date.isoformat(),
             "t": cal.t_minus(o.date),
             "id": o.id,
-            "kind": o.beat.get("kind", "post"),
-            "channel": o.beat.get("channel"),
-            "title": o.beat.get("title") or o.id,
-            "mention": o.beat.get("mention"),
-            "event": bool(o.beat.get("event")),
+            "kind": o.post.get("kind", "post"),
+            "channel": o.post.get("channel"),
+            "title": o.post.get("title") or o.id,
+            "mention": o.post.get("mention"),
+            "event": bool(o.post.get("event")),
             "recurring": o.recurring,
         } for o in upcoming[:60]],
     }
@@ -740,7 +740,7 @@ def audit(request: Request):
         cal = calendar_engine.load(cal_file, variables,
                                    anchor_override=env.get("LAUNCH_DATE"))
         missing = {}
-        for post in cal.beats + cal.recurring:
+        for post in cal.posts + cal.recurring:
             ch = post.get("channel")
             if ch and ch not in chans:
                 missing.setdefault(ch, []).append(post.get("id"))
@@ -751,11 +751,11 @@ def audit(request: Request):
                 "fix": f"Either make a channel called {ch}, or open those posts "
                        f"in the list below and point them somewhere else. "
                        f"({', '.join(ids[:4])})"})
-        if not missing and (cal.beats or cal.recurring):
-            good.append(f"All {len(cal.beats) + len(cal.recurring)} scheduled "
+        if not missing and (cal.posts or cal.recurring):
+            good.append(f"All {len(cal.posts) + len(cal.recurring)} scheduled "
                         f"posts have a channel that exists")
 
-        for post in cal.beats + cal.recurring:
+        for post in cal.posts + cal.recurring:
             m = post.get("mention")
             if m and m != "everyone" and m not in roles:
                 problems.append({
@@ -858,12 +858,12 @@ def calendar_set_template(payload: dict = Body(...)):
             "note": "Steward picks this up on restart, or with /calendar-reload."}
 
 
-@app.get("/api/calendar/beats")
-def calendar_beats():
-    """Every beat, as written, so the page can put it in a textarea.
+@app.get("/api/calendar/posts")
+def calendar_posts():
+    """Every post, as written, so the page can put it in a textarea.
 
     Deliberately unsubstituted: `{{game}}` has to survive a round trip through
-    the editor, or saving any beat would freeze this deployment's game name
+    the editor, or saving any post would freeze this deployment's game name
     into a file whose whole purpose is being reusable.
     """
     sys.path.insert(0, str(STEWARD))
@@ -871,7 +871,7 @@ def calendar_beats():
     import yaml
 
     if not active_calendar().exists():
-        return {"present": False, "beats": []}
+        return {"present": False, "posts": []}
     with open(active_calendar(), encoding="utf-8") as fh:
         spec = yaml.safe_load(fh) or {}
     local_file = calendar_engine.overrides_path(active_calendar())
@@ -960,9 +960,9 @@ def dump_yaml(data: dict) -> str:
                      default_flow_style=False, width=88)
 
 
-@app.post("/api/calendar/beat")
-def calendar_save_beat(payload: dict = Body(...)):
-    """Save one beat's edits into content-calendar.local.yaml.
+@app.post("/api/calendar/post")
+def calendar_save_post(payload: dict = Body(...)):
+    """Save one post's edits into content-calendar.local.yaml.
 
     Never into the shipped file. Rewriting that would destroy its comments,
     and an update replaces it, so edits written there would be lost every
@@ -997,9 +997,9 @@ def calendar_save_beat(payload: dict = Body(...)):
             if v not in (None, ""):
                 entry[k] = v
         if not entry.get("body"):
-            raise HTTPException(400, "A beat needs something to post.")
+            raise HTTPException(400, "A post needs something to post.")
         if not entry.get("channel"):
-            raise HTTPException(400, "A beat needs a channel to post in.")
+            raise HTTPException(400, "A post needs a channel to post in.")
 
     rows = [b for b in local[which] if b.get("id") != bid]
     other = "recurring" if which == "posts" else "posts"
@@ -1011,8 +1011,8 @@ def calendar_save_beat(payload: dict = Body(...)):
     return {"ok": True, "file": local_file.name}
 
 
-@app.post("/api/calendar/beat/reset")
-def calendar_reset_beat(payload: dict = Body(...)):
+@app.post("/api/calendar/post/reset")
+def calendar_reset_post(payload: dict = Body(...)):
     """Drop an edit and go back to what shipped."""
     sys.path.insert(0, str(STEWARD))
     import calendar_engine

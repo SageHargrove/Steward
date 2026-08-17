@@ -8,7 +8,7 @@ Nothing here talks to Discord. It answers two questions, both pure: what does
 the schedule look like between these dates, and what became due. The bot does
 the posting, and it dedupes against the ledger rather than against a
 last-checked timestamp, so a bot that was switched off for a fortnight
-catches up exactly once per beat instead of either replaying or skipping.
+catches up exactly once per post instead of either replaying or skipping.
 """
 
 from __future__ import annotations
@@ -59,11 +59,11 @@ def substitute(text, values: dict) -> str:
 
 
 class Occurrence:
-    """One beat on one day."""
+    """One post on one day."""
 
-    def __init__(self, beat: dict, when: date, recurring=False):
-        self.beat, self.date, self.recurring = beat, when, recurring
-        self.id = beat.get("id", "")
+    def __init__(self, post: dict, when: date, recurring=False):
+        self.post, self.date, self.recurring = post, when, recurring
+        self.id = post.get("id", "")
 
     @property
     def key(self) -> str:
@@ -85,12 +85,12 @@ class Calendar:
         self.variables = variables or {}
         # `posts:` is the name now. `beats:` was content-marketing jargon and
         # is still read, so a calendar written before the rename still loads.
-        self.beats = list(spec.get("posts") or spec.get("beats") or [])
+        self.posts = list(spec.get("posts") or spec.get("beats") or [])
         self.recurring = list(spec.get("recurring") or [])
 
     @staticmethod
     def _zone(name: str):
-        """The timezone beats are timed against.
+        """The timezone posts are timed against.
 
         Windows does not ship the IANA database, so `ZoneInfo("Europe/London")`
         raises there unless the `tzdata` package is installed. It is in
@@ -106,7 +106,7 @@ class Calendar:
         except Exception as e:                               # noqa: BLE001
             return timezone.utc, (
                 f"timezone {name!r} could not be loaded ({type(e).__name__}), so "
-                f"beats are timed against UTC. Install the 'tzdata' package, or "
+                f"posts are timed against UTC. Install the 'tzdata' package, or "
                 f"set meta.timezone to UTC to silence this.")
 
     def now(self) -> datetime:
@@ -127,10 +127,10 @@ class Calendar:
 
     @property
     def configured(self) -> bool:
-        """A calendar with beats but no launch date does nothing, on purpose.
-        Firing relative beats against a guessed anchor is worse than silence."""
+        """A calendar with posts but no launch date does nothing, on purpose.
+        Firing relative posts against a guessed anchor is worse than silence."""
         return bool(self.anchor) or not any(
-            _OFFSET.match(str(b.get("when", ""))) for b in self.beats)
+            _OFFSET.match(str(b.get("when", ""))) for b in self.posts)
 
     def t_minus(self, when: date) -> int | None:
         return (when - self.anchor).days if self.anchor else None
@@ -140,22 +140,22 @@ class Calendar:
     def occurrences(self, start: date, end: date) -> list[Occurrence]:
         """Everything scheduled in [start, end], in date order."""
         out: list[Occurrence] = []
-        for beat in self.beats:
+        for post in self.posts:
             try:
-                when = parse_when(beat.get("when"), self.anchor)
+                when = parse_when(post.get("when"), self.anchor)
             except BadDate:
                 continue                    # validate() reports it; do not fire it
             if start <= when <= end:
-                out.append(Occurrence(self.fill(beat), when))
-        for beat in self.recurring:
-            out.extend(self._recur(beat, start, end))
+                out.append(Occurrence(self.fill(post), when))
+        for post in self.recurring:
+            out.extend(self._recur(post, start, end))
         return sorted(out, key=lambda o: (o.date, o.id))
 
-    def _recur(self, beat: dict, start: date, end: date) -> list[Occurrence]:
-        every = str(beat.get("every", "")).strip().lower()
+    def _recur(self, post: dict, start: date, end: date) -> list[Occurrence]:
+        every = str(post.get("every", "")).strip().lower()
         try:
-            lo = parse_when(beat["from"], self.anchor) if beat.get("from") else None
-            hi = parse_when(beat["until"], self.anchor) if beat.get("until") else None
+            lo = parse_when(post["from"], self.anchor) if post.get("from") else None
+            hi = parse_when(post["until"], self.anchor) if post.get("until") else None
         except BadDate:
             return []
         lo, hi = max(start, lo or start), min(end, hi or end)
@@ -171,17 +171,17 @@ class Calendar:
             days = []
             while first <= hi:
                 days.append(first)
-                first += timedelta(days=7 * int(beat.get("weeks", 1) or 1))
+                first += timedelta(days=7 * int(post.get("weeks", 1) or 1))
         else:
             return []                       # validate() explains why
-        filled = self.fill(beat)
+        filled = self.fill(post)
         return [Occurrence(filled, d, recurring=True) for d in days] + out
 
     def due(self, today: date, lookback: int = 7) -> list[Occurrence]:
         """What should have gone out by now.
 
         The window exists so that installing the bot in November does not fire
-        every beat since September at once. Anything older than the window is
+        every post since September at once. Anything older than the window is
         treated as missed rather than late, which is almost always what a human
         would have wanted.
         """
@@ -190,23 +190,23 @@ class Calendar:
     def upcoming(self, today: date, days: int = 60) -> list[Occurrence]:
         return self.occurrences(today + timedelta(days=1), today + timedelta(days=days))
 
-    def find(self, beat_id: str, when: date) -> Occurrence | None:
-        """One named beat, dated to whatever day you ask for. This is how a
-        beat gets tested without waiting months for its real date."""
-        for beat in self.beats:
-            if beat.get("id") == beat_id:
-                return Occurrence(self.fill(beat), when)
-        for beat in self.recurring:
-            if beat.get("id") == beat_id:
-                return Occurrence(self.fill(beat), when, recurring=True)
+    def find(self, post_id: str, when: date) -> Occurrence | None:
+        """One named post, dated to whatever day you ask for. This is how a
+        post gets tested without waiting months for its real date."""
+        for post in self.posts:
+            if post.get("id") == post_id:
+                return Occurrence(self.fill(post), when)
+        for post in self.recurring:
+            if post.get("id") == post_id:
+                return Occurrence(self.fill(post), when, recurring=True)
         return None
 
     def ids(self) -> list[str]:
-        return [b.get("id", "") for b in self.beats + self.recurring if b.get("id")]
+        return [b.get("id", "") for b in self.posts + self.recurring if b.get("id")]
 
-    def fill(self, beat: dict) -> dict:
+    def fill(self, post: dict) -> dict:
         out = {}
-        for k, v in beat.items():
+        for k, v in post.items():
             if isinstance(v, str):
                 out[k] = substitute(v, self.variables)
             elif isinstance(v, dict):
@@ -221,67 +221,67 @@ class Calendar:
                  roles: list[str] | None = None) -> dict:
         errors, warnings = [], []
         seen = set()
-        every_beat = [(b, False) for b in self.beats] + [(b, True) for b in self.recurring]
+        every_post = [(b, False) for b in self.posts] + [(b, True) for b in self.recurring]
 
         if self.tz_problem:
             warnings.append(self.tz_problem)
 
         if not self.anchor and any(_OFFSET.match(str(b.get("when", "")))
-                                   for b in self.beats):
+                                   for b in self.posts):
             warnings.append(
-                "No launch date set, so every T-minus beat is dormant. Set "
+                "No launch date set, so every T-minus post is dormant. Set "
                 "meta.anchor, or LAUNCH_DATE in the environment.")
 
-        for beat, is_recurring in every_beat:
-            bid = beat.get("id")
+        for post, is_recurring in every_post:
+            bid = post.get("id")
             if not bid:
-                errors.append(f"a beat has no id: {str(beat)[:60]}")
+                errors.append(f"a post has no id: {str(post)[:60]}")
                 continue
             if bid in seen:
-                errors.append(f"two beats share the id {bid!r}. Ids are how a "
-                              f"posted beat is remembered, so they must be unique")
+                errors.append(f"two posts share the id {bid!r}. Ids are how a "
+                              f"posted post is remembered, so they must be unique")
             seen.add(bid)
 
             if is_recurring:
-                every = str(beat.get("every", "")).strip().lower()
+                every = str(post.get("every", "")).strip().lower()
                 if every not in WEEKDAYS and every != "daily":
-                    errors.append(f"{bid}: 'every: {beat.get('every')}' is not a "
+                    errors.append(f"{bid}: 'every: {post.get('every')}' is not a "
                                   f"weekday or 'daily'")
             else:
                 try:
-                    parse_when(beat.get("when"), self.anchor or date(2000, 1, 1))
+                    parse_when(post.get("when"), self.anchor or date(2000, 1, 1))
                 except BadDate as e:
                     errors.append(f"{bid}: {e}")
 
-            kind = beat.get("kind", "post")
+            kind = post.get("kind", "post")
             if kind not in ("post", "reminder"):
                 errors.append(f"{bid}: kind is {kind!r}, which is neither 'post' "
                               f"nor 'reminder'")
 
-            if not beat.get("body"):
+            if not post.get("body"):
                 errors.append(f"{bid}: has nothing to post")
-            if not beat.get("channel"):
+            if not post.get("channel"):
                 errors.append(f"{bid}: has no channel to post in")
-            elif channels is not None and beat["channel"] not in channels:
-                warnings.append(f"{bid}: posts to #{beat['channel']}, which is not "
+            elif channels is not None and post["channel"] not in channels:
+                warnings.append(f"{bid}: posts to #{post['channel']}, which is not "
                                 f"in the blueprint. It will be skipped if the "
                                 f"channel does not exist")
 
-            mention = beat.get("mention")
+            mention = post.get("mention")
             if mention and mention != "everyone" and roles is not None \
                     and mention not in roles:
                 warnings.append(f"{bid}: mentions @{mention}, which is not a role "
                                 f"in the blueprint")
             if mention == "everyone":
                 warnings.append(f"{bid}: uses @everyone. Discord will deliver that "
-                                f"to every member, so make sure the beat earns it")
+                                f"to every member, so make sure the post earns it")
 
-            ev = beat.get("event")
+            ev = post.get("event")
             if ev and not ev.get("name"):
                 errors.append(f"{bid}: has an event with no name")
 
         return {"errors": errors, "warnings": warnings,
-                "beats": len(self.beats), "recurring": len(self.recurring),
+                "posts": len(self.posts), "recurring": len(self.recurring),
                 "anchor": self.anchor.isoformat() if self.anchor else None}
 
 
@@ -301,8 +301,8 @@ def merge(spec: dict, local: dict) -> dict:
     time. And keeping them apart means the shipped calendar stays a clean thing
     to redeploy to the next project, which is the whole point of it.
 
-    Beats are matched by id. Any field can be overridden, `enabled: false`
-    hides a shipped beat without deleting it, and an id that is not in the
+    Posts are matched by id. Any field can be overridden, `enabled: false`
+    hides a shipped post without deleting it, and an id that is not in the
     original is simply added.
     """
     def rows(d, key):

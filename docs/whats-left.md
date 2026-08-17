@@ -29,7 +29,7 @@ Before flipping it:
 The calendar and playtest commands have never executed against real Discord.
 Everything else has. Restart the bot, then:
 
-    /calendar-run beat:launch-day     drafts into #steward-reports
+    /calendar-run post:launch-day     drafts into #steward-reports
     /playtest-open wave:test
     /playtest-issue wave:test member:@you
 

@@ -1624,19 +1624,19 @@ def _():
         assert not missing, f"{t.name}: {missing}"
 
 
-@test("every beat names a channel and has something to say")
+@test("every post names a channel and has something to say")
 def _():
     cal = fresh_calendar()
-    for beat in cal.beats + cal.recurring:
-        assert beat.get("id"), beat
-        assert beat.get("channel"), beat["id"]
-        assert beat.get("body", "").strip(), beat["id"]
+    for post in cal.posts + cal.recurring:
+        assert post.get("id"), post
+        assert post.get("channel"), post["id"]
+        assert post.get("body", "").strip(), post["id"]
 
 
-@test("beat ids are unique, because the id is what stops a repost")
+@test("post ids are unique, because the id is what stops a repost")
 def _():
     cal = fresh_calendar()
-    ids = [b["id"] for b in cal.beats + cal.recurring]
+    ids = [b["id"] for b in cal.posts + cal.recurring]
     assert len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1]
 
 
@@ -1645,12 +1645,12 @@ def _():
     cal = fresh_calendar()
     occ = [o for o in cal.occurrences(ANCHOR, ANCHOR) if o.id == "launch-day"]
     assert occ, "launch-day does not land on T-0"
-    body = occ[0].beat["title"] + occ[0].beat["body"]
+    body = occ[0].post["title"] + occ[0].post["body"]
     assert "Testgame" in body, body[:120]
     assert "{{" not in body, "an unfilled placeholder reached the post"
 
 
-@test("recurring beats land on the weekday they name")
+@test("recurring posts land on the weekday they name")
 def _():
     cal = fresh_calendar()
     start = ANCHOR - _td(days=120)
@@ -1661,7 +1661,7 @@ def _():
     assert len(got) == 4, len(got)
 
 
-@test("recurring beats stop at their until date")
+@test("recurring posts stop at their until date")
 def _():
     cal = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "recurring": [
         {"id": "x", "every": "monday", "channel": "general", "body": "hi",
@@ -1683,10 +1683,10 @@ def _():
     assert "launch-day" not in [o.id for o in due]
 
 
-@test("the timezone setting actually changes when beats fire")
+@test("the timezone setting actually changes when posts fire")
 def _():
     # It was read from the file, documented as controlling the hour, and then
-    # never used: every beat fired on UTC hours whatever the file said. A
+    # never used: every post fired on UTC hours whatever the file said. A
     # setting that lies is worse than no setting.
     utc = ce.Calendar({"meta": {"timezone": "UTC"}})
     chi = ce.Calendar({"meta": {"timezone": "America/Chicago"}})
@@ -1704,19 +1704,19 @@ def _():
     assert any("Not/AZone" in w for w in cal.validate()["warnings"])
 
 
-@test("an edit overrides a shipped beat without touching the shipped file")
+@test("an edit overrides a shipped post without touching the shipped file")
 def _():
     # Edits go in a separate file on purpose. Writing them back would destroy
     # the shipped calendar's comments, and an update replaces that file, so
     # anything written there would be lost on the next update.
     base = {"meta": {"anchor": "2027-03-01"},
-            "beats": [{"id": "a", "when": "T-10", "channel": "general", "body": "shipped"}]}
+            "posts": [{"id": "a", "when": "T-10", "channel": "general", "body": "shipped"}]}
     local = {"posts": [{"id": "a", "body": "mine", "title": "Mine"}]}
     out = ce.merge(base, local)
     assert out["posts"][0]["body"] == "mine"
     assert out["posts"][0]["title"] == "Mine"
     assert out["posts"][0]["when"] == "T-10", "an unedited field was lost"
-    assert base["beats"][0]["body"] == "shipped", "merge mutated the original"
+    assert base["posts"][0]["body"] == "shipped", "merge mutated the original"
 
 
 @test("the calendar is not offered as a server blueprint")
@@ -1783,25 +1783,25 @@ def _():
 
 @test("a calendar written with the old 'beats:' key still loads")
 def _():
-    # The key was renamed to posts because "beats" is jargon. Anything already
+    # The key was renamed to posts because "posts" is jargon. Anything already
     # written has to keep working, including override files.
-    old = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
-    assert len(ce.Calendar(old).beats) == 1
+    old = {"posts": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
+    assert len(ce.Calendar(old).posts) == 1
     out = ce.merge(old, {"posts": [{"id": "a", "body": "edited"}]})
     assert out["posts"][0]["body"] == "edited"
 
 
-@test("a shipped beat can be hidden without being deleted")
+@test("a shipped post can be hidden without being deleted")
 def _():
-    base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"},
+    base = {"posts": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"},
                       {"id": "b", "when": "T-2", "channel": "g", "body": "y"}]}
     out = ce.merge(base, {"posts": [{"id": "a", "enabled": False}]})
     assert [b["id"] for b in out["posts"]] == ["b"]
 
 
-@test("a beat of your own is added at the end")
+@test("a post of your own is added at the end")
 def _():
-    base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
+    base = {"posts": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
     out = ce.merge(base, {"posts": [{"id": "mine", "when": "T-3",
                                      "channel": "g", "body": "z"}]})
     assert [b["id"] for b in out["posts"]] == ["a", "mine"]
@@ -1825,13 +1825,13 @@ def _():
 def _():
     import tempfile
     d = Path(tempfile.mkdtemp())
-    base = ("meta: {anchor: '2027-03-01'}" + chr(10) + "beats:" + chr(10)
+    base = ("meta: {anchor: '2027-03-01'}" + chr(10) + "posts:" + chr(10)
             + "  - {id: a, when: T-1, channel: g, body: x}" + chr(10))
     (d / "c.yaml").write_text(base, encoding="utf-8")
     (d / "c.local.yaml").write_text("this: [is not" + chr(10) + "  valid yaml",
                                     encoding="utf-8")
     cal = ce.load(d / "c.yaml")
-    assert len(cal.beats) == 1, "a broken edit file took the whole calendar down"
+    assert len(cal.posts) == 1, "a broken edit file took the whole calendar down"
 
 
 @test("a calendar with no launch date fires nothing")
@@ -1842,16 +1842,16 @@ def _():
     assert cal.anchor is None
     relative = [o for o in cal.occurrences(_date(2020, 1, 1), _date(2030, 1, 1))
                 if not o.recurring]
-    # Only the handful written as absolute dates survive; every T-minus beat
+    # Only the handful written as absolute dates survive; every T-minus post
     # is dormant rather than fired against a guessed anchor.
-    assert all(str(o.beat.get("when", "")).startswith("20") for o in relative), \
+    assert all(str(o.post.get("when", "")).startswith("20") for o in relative), \
         [o.id for o in relative]
     assert cal.validate()["warnings"], "no warning about the missing launch date"
 
 
-@test("an unparseable beat is reported and never fired")
+@test("an unparseable post is reported and never fired")
 def _():
-    cal = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "beats": [
+    cal = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "posts": [
         {"id": "bad", "when": "soon", "channel": "general", "body": "x"}]})
     assert cal.validate()["errors"], "a bad date passed validation"
     assert not cal.occurrences(_date(2020, 1, 1), _date(2030, 1, 1))
@@ -1860,9 +1860,9 @@ def _():
 @test("kind is post or reminder and nothing else")
 def _():
     cal = fresh_calendar()
-    for beat in cal.beats + cal.recurring:
-        assert beat.get("kind", "post") in ("post", "reminder"), beat["id"]
-    bad = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "beats": [
+    for post in cal.posts + cal.recurring:
+        assert post.get("kind", "post") in ("post", "reminder"), post["id"]
+    bad = ce.Calendar({"meta": {"anchor": "2027-03-01"}, "posts": [
         {"id": "b", "when": "T-1", "kind": "shout", "channel": "g", "body": "x"}]})
     assert bad.validate()["errors"]
 
@@ -1902,23 +1902,23 @@ def _():
 print("\ncalendar storage")
 
 
-@test("a beat can only be claimed once")
+@test("a post can only be claimed once")
 def _():
     L = fresh_ledger()
-    assert L.calendar_record(1, "beat", "2027-01-01", "drafted") is True
+    assert L.calendar_record(1, "post", "2027-01-01", "drafted") is True
     # The second claim is the one that matters: two ticks racing, or a restart
-    # mid-post, must not put the same beat out twice.
-    assert L.calendar_record(1, "beat", "2027-01-01", "drafted") is False
+    # mid-post, must not put the same post out twice.
+    assert L.calendar_record(1, "post", "2027-01-01", "drafted") is False
 
 
-@test("the same beat can fire again on a different day")
+@test("the same post can fire again on a different day")
 def _():
     L = fresh_ledger()
     assert L.calendar_record(1, "weekly", "2027-01-02", "drafted")
     assert L.calendar_record(1, "weekly", "2027-01-09", "drafted")
 
 
-@test("only a drafted beat can be decided, so two clicks cannot double-post")
+@test("only a drafted post can be decided, so two clicks cannot double-post")
 def _():
     L = fresh_ledger()
     L.calendar_record(1, "b", "2027-01-01", "drafted")
@@ -1932,18 +1932,18 @@ def _():
 def _():
     L = fresh_ledger()
     L.calendar_record(1, "b", "2027-01-01", "drafted", draft_id=555)
-    assert L.calendar_by_draft(1, 555)["beat_id"] == "b"
+    assert L.calendar_by_draft(1, 555)["post_id"] == "b"
     assert L.calendar_by_draft(1, 999) is None
     assert L.calendar_by_draft(2, 555) is None
 
 
-@test("pending beats are listed for the calendar command")
+@test("pending posts are listed for the calendar command")
 def _():
     L = fresh_ledger()
     L.calendar_record(1, "a", "2027-01-01", "drafted")
     L.calendar_record(1, "b", "2027-01-02", "published")
     pending = L.calendar_pending(1)
-    assert [p["beat_id"] for p in pending] == ["a"]
+    assert [p["post_id"] for p in pending] == ["a"]
 
 
 # ---------------------------------------------------------------------------
@@ -2088,10 +2088,10 @@ def _():
 
 @test("every calendar post sets allowed_mentions explicitly")
 def _():
-    # A beat body containing the literal word @everyone would otherwise ping
+    # A post body containing the literal word @everyone would otherwise ping
     # the whole server. This shipped as a real bug once already.
     src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
-    body = src[src.index("async def draft_beat"):src.index("def mention_for")]
+    body = src[src.index("async def draft_post"):src.index("def mention_for")]
     for call in re.finditer(r"await \w+\.(send|create_thread)\(", body):
         tail = body[call.end():call.end() + 400]
         assert "allowed_mentions" in tail, f"unguarded send near: {tail[:80]!r}"
@@ -2102,7 +2102,7 @@ def _():
     src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
     assert 'custom_id="cal:approve"' in src and 'custom_id="cal:skip"' in src
     assert "timeout=None" in src, "a view with a timeout stops working on restart"
-    assert "add_view(BeatApproval())" in src, "the view is never re-registered"
+    assert "add_view(PostApproval())" in src, "the view is never re-registered"
 
 
 @test("bot.py imports and every command is registered")
@@ -2148,28 +2148,28 @@ def _():
             f"/{name} reads interaction.guild but is not guild_only"
 
 
-@test("a beat can be found by name so it can be tested out of season")
+@test("a post can be found by name so it can be tested out of season")
 def _():
-    # Without this the only way to see a beat is to wait for its date, which
-    # for a T-140 beat is months. /calendar-run leans on it.
+    # Without this the only way to see a post is to wait for its date, which
+    # for a T-140 post is months. /calendar-run leans on it.
     cal = fresh_calendar()
     occ = cal.find("launch-day", _date(2026, 9, 1))
     assert occ is not None and occ.date == _date(2026, 9, 1)
-    assert "{{" not in occ.beat["body"], "find() skipped the placeholder fill"
-    assert cal.find("no-such-beat", _date(2026, 9, 1)) is None
+    assert "{{" not in occ.post["body"], "find() skipped the placeholder fill"
+    assert cal.find("no-such-post", _date(2026, 9, 1)) is None
     assert "launch-day" in cal.ids() and "screenshot-saturday" in cal.ids()
 
 
-@test("the calendar claims a beat before posting it")
+@test("the calendar claims a post before posting it")
 def _():
-    # If the send fails after the claim, the beat is marked failed. If the claim
+    # If the send fails after the claim, the post is marked failed. If the claim
     # came second, a crash between send and claim would repost it every hour.
     src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
-    body = src[src.index("async def draft_beat"):src.index("def find_beat")]
+    body = src[src.index("async def draft_post"):src.index("def find_post")]
     claim = body.index("calendar_record(guild.id, occ.id, occ.date.isoformat(),\n"
                        "                                           \"drafted\")")
     send = body.index("msg = await staff.send(")
-    assert claim < send, "the beat is posted before it is claimed"
+    assert claim < send, "the post is posted before it is claimed"
 
 # ---------------------------------------------------------------------------
 print("\ncalendar, end to end")
@@ -2292,7 +2292,7 @@ def _():
 
     assert refresh(), "the change on disk went unnoticed"
     after = loaded[0].find("launch-day", _d(2026, 8, 17))
-    assert after.beat["body"] == "EDITED WHILE RUNNING", after.beat["body"]
+    assert after.post["body"] == "EDITED WHILE RUNNING", after.post["body"]
     shutil.rmtree(d, ignore_errors=True)
 
 
@@ -2302,7 +2302,7 @@ def _():
     # approving it must post what the calendar says now.
     src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
     assert "def refresh_calendar" in src
-    body = src[src.index("def find_beat"):src.index("async def close_draft")]
+    body = src[src.index("def find_post"):src.index("async def close_draft")]
     assert "refresh_calendar()" in body, "approving a draft does not re-read"
     tick = src[src.index("async def calendar_tick"):src.index("@calendar_tick.before_loop")]
     assert "refresh_calendar()" in tick, "the hourly tick does not re-read"
@@ -2323,17 +2323,83 @@ def _():
         assert needle not in text, f"a test would touch the real overrides: {needle}"
 
 
-@test("a beat drafted out of season can still be approved")
+@test("naming a post re-drafts it even if it already went out today")
 def _():
-    # /calendar-run drafts a beat dated today, which is the only way to look at
-    # a T-140 beat in August. Approval used to ask the schedule what was due on
+    # The per-day record exists to stop the hourly tick repeating itself. It
+    # was also refusing a person who asked twice, which made it impossible to
+    # look at an edit: "already handled today, try again tomorrow".
+    L = fresh_ledger()
+    assert L.calendar_record(1, "launch-day", "2026-08-17", "skipped")
+    assert L.calendar_seen(1, "launch-day", "2026-08-17")
+    assert L.calendar_forget(1, "launch-day", "2026-08-17") is True
+    assert L.calendar_seen(1, "launch-day", "2026-08-17") is None
+    assert L.calendar_record(1, "launch-day", "2026-08-17", "drafted")
+    assert L.calendar_forget(1, "nothing-here", "2026-08-17") is False
+
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    body = src[src.index("async def calendar_run"):src.index("@calendar_run.autocomplete")]
+    assert "calendar_forget" in body, "/calendar-run still refuses a repeat"
+
+
+@test("a database from before the rename still opens")
+def _():
+    # calendar_runs.beat_id became post_id. Anybody upgrading has rows under
+    # the old name, and losing them would let every past post fire again.
+    import sqlite3 as _sq, tempfile
+    d = Path(tempfile.mkdtemp())
+    db = d / "old.sqlite3"
+    con = _sq.connect(db)
+    con.executescript(
+        "CREATE TABLE calendar_runs (guild_id INTEGER NOT NULL, "
+        "beat_id TEXT NOT NULL, fire_date TEXT NOT NULL, status TEXT NOT NULL, "
+        "draft_id INTEGER, published_id INTEGER, decided_by INTEGER, "
+        "decided_at INTEGER, note TEXT, created_at INTEGER NOT NULL, "
+        "PRIMARY KEY (guild_id, beat_id, fire_date)); "
+        "INSERT INTO calendar_runs VALUES "
+        "(1,'launch-day','2026-08-17','skipped',9,NULL,7,1,NULL,1);")
+    con.commit()
+    con.close()
+
+    L = Ledger(db)
+    cols = [r["name"] for r in L.db.execute("PRAGMA table_info(calendar_runs)")]
+    assert "post_id" in cols and "beat_id" not in cols, cols
+    row = L.calendar_seen(1, "launch-day", "2026-08-17")
+    assert row and row["status"] == "skipped", "the old row was lost"
+
+
+@test("nothing user-facing still says beat")
+def _():
+    # It is content-marketing jargon and it confused the one person using it.
+    word = "b" + "eat"
+    for rel in ("ui/static/index.html", "README.md", "SETUP.md",
+                "steward/bot.py", "steward/calendar_engine.py", "ui/app.py"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), 1):
+            low = line.lower()
+            if word not in low:
+                continue
+            # The YAML key is still read so old files keep working, and the
+            # ordinary English verb is allowed.
+            allowed = ('get("beats"', 'pop("beats"', '"beats", "recurring"',
+                       "'beats:'", "`beats:`", "beats burning", "beats answering",
+                       "beats most alternatives", "heartbeat",
+                       "beat_id", "content-marketing jargon")
+            if any(ok in line for ok in allowed):
+                continue
+            raise AssertionError(f"{rel}:{i} still says it: {line.strip()[:90]}")
+
+
+@test("a post drafted out of season can still be approved")
+def _():
+    # /calendar-run drafts a post dated today, which is the only way to look at
+    # a T-140 post in August. Approval used to ask the schedule what was due on
     # that date, found nothing, and refused every test draft it had just made.
     async def go(b, g):
         from datetime import date as _d
         today = _d(2026, 8, 17)
         occ = b.client.calendar.find("launch-day", today)
         assert occ is not None, "launch-day is not in the calendar"
-        assert await b.client.draft_beat(g, occ), "draft failed"
+        assert await b.client.draft_post(g, occ), "draft failed"
         run = b.client.ledger.calendar_by_draft(1, 1)
         assert run and run["status"] == "drafted"
 
@@ -2343,22 +2409,22 @@ def _():
                 id=7, mention="@me",
                 guild_permissions=_types.SimpleNamespace(manage_guild=True)),
             message=_types.SimpleNamespace(id=1, embeds=[], edit=_noop))
-        await b.client.publish_beat(inter, run)
+        await b.client.publish_post(inter, run)
 
         ann = g.text_channels[1]
-        assert len(ann.sent) == 1, "the beat never reached its channel"
+        assert len(ann.sent) == 1, "the post never reached its channel"
         after = b.client.ledger.calendar_seen(1, "launch-day", "2026-08-17")
         assert after["status"] == "published", after
         return True
     assert _drive(go)
 
 
-@test("the draft warns before a beat that pings the whole server")
+@test("the draft warns before a post that pings the whole server")
 def _():
     async def go(b, g):
         from datetime import date as _d
         occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
-        await b.client.draft_beat(g, occ)
+        await b.client.draft_post(g, occ)
         body = g.text_channels[0].sent[0][0]
         assert "pings people" in body, body
         assert "#announcements" in body, body
@@ -2366,14 +2432,14 @@ def _():
     assert _drive(go)
 
 
-@test("an approved beat is crossposted from an announcement channel")
+@test("an approved post is crossposted from an announcement channel")
 def _():
     # Announcement channels can be followed by other servers, which is free
     # reach and the reason #devlog and #announcements are that type.
     async def go(b, g):
         from datetime import date as _d
         occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
-        await b.client.draft_beat(g, occ)
+        await b.client.draft_post(g, occ)
         run = b.client.ledger.calendar_by_draft(1, 1)
         inter = _types.SimpleNamespace(
             guild=g, guild_id=1,
@@ -2381,7 +2447,7 @@ def _():
                 id=7, mention="@me",
                 guild_permissions=_types.SimpleNamespace(manage_guild=True)),
             message=_types.SimpleNamespace(id=1, embeds=[], edit=_noop))
-        await b.client.publish_beat(inter, run)
+        await b.client.publish_post(inter, run)
         assert g.text_channels[1].published, "not crossposted"
         return True
     assert _drive(go)
@@ -2392,7 +2458,7 @@ def _():
     async def go(b, g):
         from datetime import date as _d
         occ = b.client.calendar.find("launch-week", _d(2026, 8, 17))
-        await b.client.draft_beat(g, occ)
+        await b.client.draft_post(g, occ)
         row = b.client.ledger.calendar_seen(1, "launch-week", "2026-08-17")
         assert row["status"] == "published", row
         staff = g.text_channels[0]
@@ -2404,17 +2470,17 @@ def _():
     assert _drive(go)
 
 
-@test("a beat aimed at a channel that does not exist fails once, not forever")
+@test("a post aimed at a channel that does not exist fails once, not forever")
 def _():
     async def go(b, g):
         from datetime import date as _d
         g.text_channels = [_Chan("steward-reports")]      # no #announcements
         occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
-        await b.client.draft_beat(g, occ)
+        await b.client.draft_post(g, occ)
         row = b.client.ledger.calendar_seen(1, "launch-day", "2026-08-17")
         assert row["status"] == "failed", row
         # Recorded, so the hourly tick does not retry it every hour all week.
-        assert await b.client.draft_beat(g, occ) is False
+        assert await b.client.draft_post(g, occ) is False
         return True
     assert _drive(go)
 

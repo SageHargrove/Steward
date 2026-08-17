@@ -260,26 +260,26 @@
   .calanchor{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
     margin-bottom:14px}
   .calanchor input{width:150px; padding:5px 8px}
-  .beatlist{border-top:1px solid var(--line-soft); margin-top:16px; padding-top:12px}
-  .beat{border-bottom:1px solid var(--line-soft)}
-  .beat .bh{display:flex; gap:10px; align-items:baseline; padding:8px 2px;
+  .postlist{border-top:1px solid var(--line-soft); margin-top:16px; padding-top:12px}
+  .post{border-bottom:1px solid var(--line-soft)}
+  .post .bh{display:flex; gap:10px; align-items:baseline; padding:8px 2px;
     cursor:pointer; font-size:13px}
-  .beat .bh:hover{background:rgba(255,255,255,.02)}
-  .beat .bid{color:var(--fg); min-width:190px; font-size:13px}
-  .beat .bwhen{color:var(--dim); font-size:12px; min-width:150px;
+  .post .bh:hover{background:rgba(255,255,255,.02)}
+  .post .bid{color:var(--fg); min-width:190px; font-size:13px}
+  .post .bwhen{color:var(--dim); font-size:12px; min-width:150px;
     font-variant-numeric:tabular-nums}
-  .beat .tmin{color:var(--dimmer); font-size:11.5px; margin-left:6px}
-  .beat .bsum{color:var(--dimmer); font-size:12px; overflow:hidden;
+  .post .tmin{color:var(--dimmer); font-size:11.5px; margin-left:6px}
+  .post .bsum{color:var(--dimmer); font-size:12px; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; flex:1}
-  .beat.off .bid, .beat.off .bsum{text-decoration:line-through; opacity:.55}
-  .beat .edit{display:none; padding:4px 2px 16px}
-  .beat.open .edit{display:block}
-  .beat .edit label{display:block; font-size:11.5px; color:var(--dim);
+  .post.off .bid, .post.off .bsum{text-decoration:line-through; opacity:.55}
+  .post .edit{display:none; padding:4px 2px 16px}
+  .post.open .edit{display:block}
+  .post .edit label{display:block; font-size:11.5px; color:var(--dim);
     margin:9px 0 3px; text-transform:uppercase; letter-spacing:.04em}
-  .beat .edit input, .beat .edit textarea, .beat .edit select{width:100%;
+  .post .edit input, .post .edit textarea, .post .edit select{width:100%;
     padding:6px 9px; font-size:13px}
-  .beat .edit textarea{min-height:112px; font-family:inherit; line-height:1.5}
-  .beat .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px}
+  .post .edit textarea{min-height:112px; font-family:inherit; line-height:1.5}
+  .post .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px}
   .badge{font-size:10.5px; padding:1px 6px; border-radius:3px; border:1px solid var(--line);
     color:var(--dimmer)}
   .badge.mine{border-color:#3f7d54; color:#8fd6a0}
@@ -630,7 +630,7 @@
       comes due, the bot drafts it into your staff channel with Approve and Skip
       buttons.</div>
     <div id="calbody"></div>
-    <div class="beatlist" id="beatlist"></div>
+    <div class="postlist" id="postlist"></div>
   </div>
 </section>
 
@@ -1888,7 +1888,7 @@ async function loadCalendar(btn){
     return;
   }
   CAL = r;
-  try{ POSTS = await api('/api/calendar/beats'); }
+  try{ POSTS = await api('/api/calendar/posts'); }
   catch(e){ POSTS = null; }
   if(POSTS){ CAL.template = POSTS.template; CAL.templates = POSTS.templates; }
   renderCalendar();
@@ -1963,7 +1963,7 @@ function postSummary(p){
 }
 
 function renderPosts(){
-  if(!POSTS || !POSTS.present){ $('#beatlist').innerHTML = ''; return; }
+  if(!POSTS || !POSTS.present){ $('#postlist').innerHTML = ''; return; }
   const rows = POSTS.posts.map((p, i) => {
     const tags = [];
     if(p.edited) tags.push('<span class="badge mine">edited</span>');
@@ -1974,7 +1974,7 @@ function renderPosts(){
     const when = p.next
       ? `${p.next}<span class="tmin"> T${p.t >= 0 ? '+' : ''}${p.t}</span>`
       : '<span class="tmin">not scheduled</span>';
-    return `<div class="beat ${p.hidden ? 'off' : ''}" id="beat${i}">
+    return `<div class="post ${p.hidden ? 'off' : ''}" id="post${i}">
       <div class="bh" onclick="togglePost(${i})">
         <span class="bwhen">${when}</span>
         <span class="bid">${esc(p.title || p.id)}</span>
@@ -1985,7 +1985,7 @@ function renderPosts(){
     </div>`;
   }).join('');
 
-  $('#beatlist').innerHTML = `
+  $('#postlist').innerHTML = `
     <div class="row" style="justify-content:space-between; align-items:baseline;
                             margin-bottom:6px">
       <b style="font-size:13.5px">Everything it will post</b>
@@ -2046,7 +2046,7 @@ function postForm(p, i){
 }
 
 function togglePost(i){
-  const el = document.getElementById('beat' + i);
+  const el = document.getElementById('post' + i);
   if(el) el.classList.toggle('open');
 }
 
@@ -2062,7 +2062,7 @@ async function savePost(i){
   const msg = $('#bmsg' + i);
   msg.textContent = 'Saving...';
   try{
-    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify(payload)});
+    await api('/api/calendar/post', {method:'POST', body: JSON.stringify(payload)});
   }catch(e){ msg.innerHTML = `<span style="color:#f5c2c3">${esc(e.message)}</span>`; return; }
   await loadCalendar();
   const j = POSTS.posts.findIndex(x => x.id === p.id);
@@ -2077,7 +2077,7 @@ async function hidePost(i){
   const p = POSTS.posts[i];
   if(p.hidden) return removePost(i);
   if(!confirm(`Stop "${p.id}" being posted?\n\nIt is not deleted, and you can put it back.`)) return;
-  await api('/api/calendar/beat',
+  await api('/api/calendar/post',
             {method:'POST', body: JSON.stringify({id: p.id, list: p.list, hidden: true})});
   await loadCalendar();
 }
@@ -2087,7 +2087,7 @@ async function removePost(i){
   const mine = !p.shipped;
   if(!confirm(mine ? `Remove "${p.id}"?`
                    : `Put "${p.id}" back the way it shipped, losing your changes?`)) return;
-  await api('/api/calendar/beat/reset', {method:'POST', body: JSON.stringify({id: p.id})});
+  await api('/api/calendar/post/reset', {method:'POST', body: JSON.stringify({id: p.id})});
   await loadCalendar();
 }
 
@@ -2096,7 +2096,7 @@ async function newPost(){
     .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if(!id) return;
   try{
-    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify({
+    await api('/api/calendar/post', {method:'POST', body: JSON.stringify({
       id, list: 'posts', kind: 'post', when: 'T-30', channel: 'announcements',
       body: 'Write what this should say.'})});
   }catch(e){ alert(e.message); return; }
@@ -2104,7 +2104,7 @@ async function newPost(){
   const i = POSTS.posts.findIndex(p => p.id === id);
   if(i >= 0){
     togglePost(i);
-    document.getElementById('beat' + i).scrollIntoView({block:'center', behavior:'smooth'});
+    document.getElementById('post' + i).scrollIntoView({block:'center', behavior:'smooth'});
   }
 }
 

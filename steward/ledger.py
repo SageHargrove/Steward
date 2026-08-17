@@ -83,13 +83,13 @@ CREATE TABLE IF NOT EXISTS xp (
 );
 CREATE INDEX IF NOT EXISTS ix_xp_board ON xp (guild_id, xp DESC);
 
--- One row per calendar beat per day it was due. The primary key is what stops
--- a beat firing twice, which matters more than it sounds: the alternative is a
+-- One row per calendar post per day it was due. The primary key is what stops
+-- a post firing twice, which matters more than it sounds: the alternative is a
 -- last-checked timestamp, and any bot that was off over a weekend then either
 -- replays everything or silently drops it.
 CREATE TABLE IF NOT EXISTS calendar_runs (
     guild_id     INTEGER NOT NULL,
-    beat_id      TEXT    NOT NULL,
+    post_id      TEXT    NOT NULL,
     fire_date    TEXT    NOT NULL,          -- ISO date, the day it came due
     status       TEXT    NOT NULL,          -- drafted | published | skipped | failed
     draft_id     INTEGER,                   -- the approval message in staff
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS calendar_runs (
     decided_at   INTEGER,
     note         TEXT,
     created_at   INTEGER NOT NULL,
-    PRIMARY KEY (guild_id, beat_id, fire_date)
+    PRIMARY KEY (guild_id, post_id, fire_date)
 );
 CREATE INDEX IF NOT EXISTS ix_cal_status ON calendar_runs (guild_id, status);
 
@@ -159,6 +159,14 @@ class Ledger:
         for column, decl in (("attribution", "TEXT"),):
             if column not in have:
                 self.db.execute(f"ALTER TABLE members ADD COLUMN {column} {decl}")
+        # calendar_runs.beat_id became post_id. SQLite has renamed columns
+        # since 3.25 and Python has shipped newer than that for years, so this
+        # is a rename rather than a copy of the whole table.
+        cal = {r["name"] for r in self.db.execute("PRAGMA table_info(calendar_runs)")}
+        if "beat_id" in cal and "post_id" not in cal:
+            self.db.execute(
+                "ALTER TABLE calendar_runs RENAME COLUMN beat_id TO post_id")
+
         have_xp = {r["name"] for r in self.db.execute("PRAGMA table_info(xp)")}
         for column, decl in (("voice_seconds", "INTEGER NOT NULL DEFAULT 0"),):
             if have_xp and column not in have_xp:
@@ -264,31 +272,31 @@ class Ledger:
 
     # -- the calendar -----------------------------------------------------
 
-    def calendar_seen(self, guild_id: int, beat_id: str, fire_date: str) -> dict | None:
+    def calendar_seen(self, guild_id: int, post_id: str, fire_date: str) -> dict | None:
         row = self.db.execute(
-            "SELECT * FROM calendar_runs WHERE guild_id = ? AND beat_id = ? "
-            "AND fire_date = ?", (guild_id, beat_id, fire_date)).fetchone()
+            "SELECT * FROM calendar_runs WHERE guild_id = ? AND post_id = ? "
+            "AND fire_date = ?", (guild_id, post_id, fire_date)).fetchone()
         return dict(row) if row else None
 
-    def calendar_record(self, guild_id: int, beat_id: str, fire_date: str,
+    def calendar_record(self, guild_id: int, post_id: str, fire_date: str,
                         status: str, **fields) -> bool:
-        """Claim a beat. Returns False if it was already claimed, which is how
+        """Claim a post. Returns False if it was already claimed, which is how
         two ticks racing each other still only post once."""
         now = int(time.time())
         try:
             self.db.execute(
-                "INSERT INTO calendar_runs (guild_id, beat_id, fire_date, status, "
+                "INSERT INTO calendar_runs (guild_id, post_id, fire_date, status, "
                 "  draft_id, published_id, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (guild_id, beat_id, fire_date, status, fields.get("draft_id"),
+                (guild_id, post_id, fire_date, status, fields.get("draft_id"),
                  fields.get("published_id"), fields.get("note"), now))
             self.db.commit()
             return True
         except sqlite3.IntegrityError:
             return False
 
-    def calendar_decide(self, guild_id: int, beat_id: str, fire_date: str,
+    def calendar_decide(self, guild_id: int, post_id: str, fire_date: str,
                         status: str, user_id: int | None = None, **fields) -> bool:
-        """Approve, skip, or mark failed. Only moves a beat that is still
+        """Approve, skip, or mark failed. Only moves a post that is still
         drafted, so two moderators clicking at once cannot double-post."""
         now = int(time.time())
         sets = ["status = ?", "decided_by = ?", "decided_at = ?"]
@@ -297,25 +305,38 @@ class Ledger:
             if column in fields:
                 sets.append(f"{column} = ?")
                 args.append(fields[column])
-        args += [guild_id, beat_id, fire_date]
+        args += [guild_id, post_id, fire_date]
         cur = self.db.execute(
             f"UPDATE calendar_runs SET {', '.join(sets)} "
-            f"WHERE guild_id = ? AND beat_id = ? AND fire_date = ? "
+            f"WHERE guild_id = ? AND post_id = ? AND fire_date = ? "
             f"AND status = 'drafted'", args)
         self.db.commit()
         return cur.rowcount > 0
 
     def calendar_by_draft(self, guild_id: int, draft_id: int) -> dict | None:
-        """Which beat a given approval message belongs to.
+        """Which post a given approval message belongs to.
 
         Looking it up by message id is why the buttons can carry fixed custom
-        ids. Encoding the beat into the id instead would cap at 100 characters
-        and break the moment somebody names a beat something long.
+        ids. Encoding the post into the id instead would cap at 100 characters
+        and break the moment somebody names a post something long.
         """
         row = self.db.execute(
             "SELECT * FROM calendar_runs WHERE guild_id = ? AND draft_id = ?",
             (guild_id, draft_id)).fetchone()
         return dict(row) if row else None
+
+    def calendar_forget(self, guild_id: int, post_id: str, fire_date: str) -> bool:
+        """Forget that a post went out on a day, so it can be drafted again.
+
+        Only reached by somebody naming a post explicitly. The per-day record
+        is there to stop the hourly tick repeating itself, not to stop a person
+        asking to see something twice.
+        """
+        cur = self.db.execute(
+            "DELETE FROM calendar_runs WHERE guild_id = ? AND post_id = ? "
+            "AND fire_date = ?", (guild_id, post_id, fire_date))
+        self.db.commit()
+        return cur.rowcount > 0
 
     def calendar_pending(self, guild_id: int) -> list[dict]:
         return [dict(r) for r in self.db.execute(
