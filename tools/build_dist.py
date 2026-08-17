@@ -47,7 +47,8 @@ COPY_TREES = [
     ("ui", ["__pycache__", "SETUP-UI.bat"]),
     ("provision", ["__pycache__"]),
     # The local override file is this machine's, not something to ship.
-    ("blueprint", ["__pycache__", "content-calendar.local.yaml"]),
+    ("blueprint", ["__pycache__", "content-calendar.local.yaml",
+                   "variables.local.yaml"]),
     ("docs", []),
     # The Start Menu shortcuts come along, so the zip can give somebody a
     # normal-looking install without an .exe and the SmartScreen panel that

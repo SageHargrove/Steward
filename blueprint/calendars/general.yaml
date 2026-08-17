@@ -125,7 +125,7 @@ posts:
   - id: launch-day
     when: T-0
     channel: announcements
-    title: "{{game}} is out"
+    title: "{{Game}} is out"
     body: |
       It is out.
 

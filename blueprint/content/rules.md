@@ -4,7 +4,7 @@
 
   A line containing only the split marker starts a new Discord message. Discord's
   hard limit is 2000 characters per message and the provisioner refuses to send
-  anything longer. {{game}} and the other blueprint variables work in here.
+  anything longer. {{Game}} and the other blueprint variables work in here.
 
   THIS IS A STARTING POINT, NOT A FINISHED POLICY. It is deliberately generic
   so it fits any game community. Things communities commonly add, and that are

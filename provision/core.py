@@ -154,11 +154,54 @@ def load(path: str | Path) -> dict:
 
 
 def declared_variables(bp: dict) -> dict:
-    """The `variables:` block, which is what the UI turns into form fields."""
-    return dict(bp.get("variables", {}))
+    """The `variables:` block, with anything filled in locally laid over it."""
+    out = dict(bp.get("variables", {}))
+    out.update({k: v for k, v in
+                variable_overrides(bp.get("_base_dir", ".")).items()
+                if k in out or v not in (None, "")})
+    return out
+
+def variable_overrides(base_dir) -> dict:
+    """Values somebody filled in, from `blueprint/variables.local.yaml`.
+
+    Kept out of the blueprint for the same reason the calendar edits are: that
+    file is what an update replaces and what you would redeploy to the next
+    project. The name of *this* game is not part of it.
+
+    Without this the name typed into the setup page lived only in the browser,
+    so the bot went on using the blueprint's placeholder and posted titles like
+    "the game is out".
+    """
+    import yaml
+    p = Path(base_dir) / "variables.local.yaml"
+    if not p.exists():
+        return {}
+    try:
+        return {k: v for k, v in (yaml.safe_load(p.read_text(encoding="utf-8"))
+                                  or {}).items() if isinstance(k, str)}
+    except Exception:                                        # noqa: BLE001
+        return {}
+
 
 
 _VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+
+def fill_placeholder(name: str, values: dict, whole: str) -> str:
+    """One {{placeholder}}, with capitalisation honoured.
+
+    `{{Game}}` gives the value with its first letter capitalised, so a
+    placeholder that opens a title or a sentence reads properly. Without this a
+    game called "the game" produced the title "the game is out", which looks
+    like a typo rather than a template.
+    """
+    if name in values:
+        return str(values[name])
+    lower = name[:1].lower() + name[1:]
+    if name[:1].isupper() and lower in values:
+        value = str(values[lower])
+        return value[:1].upper() + value[1:]
+    return whole
 
 
 def substitute(bp: dict, values: dict) -> dict:
@@ -171,7 +214,8 @@ def substitute(bp: dict, values: dict) -> dict:
 
     def walk(node):
         if isinstance(node, str):
-            return _VAR.sub(lambda m: str(merged.get(m.group(1), m.group(0))), node)
+            return _VAR.sub(
+                lambda m: fill_placeholder(m.group(1), merged, m.group(0)), node)
         if isinstance(node, list):
             return [walk(x) for x in node]
         if isinstance(node, dict):
@@ -191,7 +235,7 @@ SPLIT_MARKER = "%%SPLIT%%"
 
 
 def substitute_text(text: str, values: dict) -> str:
-    return _VAR.sub(lambda m: str(values.get(m.group(1), m.group(0))), text)
+    return _VAR.sub(lambda m: fill_placeholder(m.group(1), values, m.group(0)), text)
 
 
 def split_content(text: str) -> list[str]:

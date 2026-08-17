@@ -52,10 +52,26 @@ def parse_when(when, anchor: date | None) -> date:
 
 def substitute(text, values: dict) -> str:
     """The same {{placeholder}} filling the blueprint uses, so one calendar
-    serves any game without editing the prose."""
+    serves any game without editing the prose.
+
+    `{{Game}}` gives the value capitalised, for a placeholder that opens a
+    title or a sentence. A game called "the game" otherwise produced the title
+    "the game is out", which reads as a typo rather than a template.
+    """
     if not isinstance(text, str):
         return text
-    return _VAR.sub(lambda m: str(values.get(m.group(1), m.group(0))), text)
+
+    def fill(m):
+        name = m.group(1)
+        if name in values:
+            return str(values[name])
+        lower = name[:1].lower() + name[1:]
+        if name[:1].isupper() and lower in values:
+            value = str(values[lower])
+            return value[:1].upper() + value[1:]
+        return m.group(0)
+
+    return _VAR.sub(fill, text)
 
 
 class Occurrence:

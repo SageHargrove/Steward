@@ -102,7 +102,7 @@ posts:
   - id: launch-day
     when: T-0
     channel: announcements
-    title: "{{game}} is live"
+    title: "{{Game}} is live"
     body: |
       It is live. Go and play it.
 

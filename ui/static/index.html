@@ -947,24 +947,6 @@ async function loadExisting(){
   renderExisting();
 }
 
-/* Handlers reference items by index, never by interpolating a name into a JS
-   string literal. Blueprint text is arbitrary and an apostrophe in a rule name
-   would otherwise break the page. */
-function renderVars(){
-  VKEYS = Object.keys(INV.variables);
-  if(!VKEYS.length){ $('#vars').innerHTML = ''; return; }
-  $('#vars').innerHTML = `<div class="group"><div class="gh">Fill in the blanks</div>
-    <div style="padding:14px 13px 2px">
-      ${VKEYS.map((k,i) => `<label class="f"><span>${esc(k)}</span>
-        <input type="text" value="${esc(INV.variables[k])}"
-               oninput="setVar(${i}, this.value)"></label>`).join('')}
-      <div class="hint" style="margin:-8px 0 14px">Wherever the blueprint says
-        <code>{{${esc(VKEYS[0])}}}</code> it uses this instead. Change it once here rather
-        than editing channel descriptions one at a time.</div>
-    </div></div>`;
-}
-function setVar(i, val){ SEL.variables[VKEYS[i]] = val; refresh(); }
-
 function chip(ch){
   const t = [];
   if(ch.type !== 'text') t.push(`<span class="tag ${ch.type}">${ch.type}</span>`);
@@ -984,12 +966,32 @@ function renderVars(){
       ${VKEYS.map((k,i) => `<label class="f"><span>${esc(k)}</span>
         <input type="text" value="${esc(INV.variables[k])}"
                oninput="setVar(${i}, this.value)"></label>`).join('')}
-      <div class="hint" style="margin:-8px 0 14px">Wherever the blueprint says
-        <code>{{${esc(VKEYS[0])}}}</code> it uses this instead. Change it once here rather
-        than editing channel descriptions one at a time.</div>
+      <div class="row" style="margin:-4px 0 12px; gap:9px; align-items:baseline">
+        <button class="ghost small" onclick="saveVars(this)">Remember these</button>
+        <span class="hint" id="varmsg" style="margin:0">Wherever the blueprint says
+          <code>{{${esc(VKEYS[0])}}}</code> it uses this instead. <b>Remember these</b>
+          also hands them to the bot, so its scheduled posts say your name rather
+          than the placeholder.</span>
+      </div>
     </div></div>`;
 }
 function setVar(i, val){ SEL.variables[VKEYS[i]] = val; refresh(); }
+
+/* The page used to keep these in the browser, so a name filled in here was
+   applied to the server and then forgotten, and every post the bot wrote
+   afterwards still said "the game". */
+async function saveVars(btn){
+  const vars = {};
+  VKEYS.forEach(k => { vars[k] = (SEL.variables[k] ?? INV.variables[k] ?? ''); });
+  btn.disabled = true;
+  try{
+    await api('/api/variables', {method:'POST', body: JSON.stringify({variables: vars})});
+    flash('#varmsg', 'Saved. The bot uses these from its next restart.', 6000);
+  }catch(e){
+    $('#varmsg').innerHTML = `<span style="color:#f5c2c3">${esc(e.message)}</span>`;
+  }
+  btn.disabled = false;
+}
 
 /* ---------- what is already in the server ---------- */
 function renderExisting(){

@@ -82,7 +82,7 @@ posts:
   - id: release-day
     when: T-0
     channel: announcements
-    title: "{{game}} is out"
+    title: "{{Game}} is out"
     body: |
       The first public release of {{game}} is up.
 

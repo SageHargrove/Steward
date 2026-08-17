@@ -37,7 +37,10 @@ import modlog
 from ledger import Ledger
 from levels import Levels
 
-load_dotenv()
+# Named explicitly rather than searched for. load_dotenv() looks in the
+# current directory, so running the bot from anywhere but steward/ silently
+# picked up no settings at all and fell back to every default.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
 DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
@@ -137,11 +140,24 @@ log = logging.getLogger("steward")
 
 
 def read_blueprint(path: str) -> dict:
-    """The blueprint, so the bot and the server agree on names and rewards."""
+    """The blueprint, so the bot and the server agree on names and rewards.
+
+    Anything filled in on the setup page is laid over the top, from
+    variables.local.yaml beside it. Without that the name typed into the page
+    never reached the bot and every post said "the game".
+    """
     try:
         import yaml
         with open(path, encoding="utf-8") as fh:
-            return yaml.safe_load(fh) or {}
+            bp = yaml.safe_load(fh) or {}
+        local = os.path.join(os.path.dirname(path) or ".", "variables.local.yaml")
+        if os.path.exists(local):
+            with open(local, encoding="utf-8") as fh:
+                filled = yaml.safe_load(fh) or {}
+            bp["variables"] = {**(bp.get("variables") or {}),
+                               **{k: v for k, v in filled.items()
+                                  if v not in (None, "")}}
+        return bp
     except FileNotFoundError:
         log.warning("no blueprint at %s; levels and attribution roles are off", path)
     except Exception as e:                                   # noqa: BLE001

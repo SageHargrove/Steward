@@ -705,6 +705,52 @@ def calendar_view(days: int = 120):
     }
 
 
+VARIABLES_FILE = BLUEPRINTS / "variables.local.yaml"
+
+HEADER_VARIABLES = """# What you filled in on the setup page.
+#
+# Kept out of the blueprint on purpose: that file is what an update replaces
+# and what you would reuse on the next project, and the name of this game is
+# not part of it. Safe to edit or delete by hand.
+
+"""
+
+
+@app.get("/api/variables")
+def variables_get():
+    import yaml
+    saved = {}
+    if VARIABLES_FILE.exists():
+        saved = yaml.safe_load(VARIABLES_FILE.read_text(encoding="utf-8")) or {}
+    bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() else {}
+    return {"declared": core.declared_variables(bp), "saved": saved,
+            "file": VARIABLES_FILE.name}
+
+
+@app.post("/api/variables")
+def variables_save(payload: dict = Body(...)):
+    """Remember what somebody typed, so the bot uses it too.
+
+    The page kept these in the browser only, so the name filled in here was
+    applied to the server and then forgotten. Every scheduled post the bot
+    wrote afterwards still said the blueprint's placeholder.
+    """
+    values = payload.get("variables") or {}
+    if not isinstance(values, dict):
+        raise HTTPException(400, "Expected an object of variables.")
+    clean = {str(k): ("" if v is None else str(v)) for k, v in values.items()
+             if re.fullmatch(r"[a-zA-Z_][\w]*", str(k))}
+    clean = {k: v for k, v in clean.items() if v != ""}
+    if not clean:
+        VARIABLES_FILE.unlink(missing_ok=True)
+        return {"ok": True, "saved": {}}
+
+    header = HEADER_VARIABLES
+    VARIABLES_FILE.write_text(header + dump_yaml(clean), encoding="utf-8")
+    return {"ok": True, "saved": clean,
+            "note": "The bot uses these too, from its next restart."}
+
+
 @app.get("/api/audit")
 def audit(request: Request):
     """Compare the live server against what the tool expects of it.

@@ -1807,6 +1807,68 @@ def _():
     assert [b["id"] for b in out["posts"]] == ["a", "mine"]
 
 
+@test("the bot finds its settings from any directory")
+def _():
+    # load_dotenv() searches the current directory, so running the bot from
+    # anywhere but steward/ picked up no settings at all and quietly fell back
+    # to every default, including the wrong calendar.
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert "load_dotenv()" not in src, "the env file is still searched for"
+    assert "load_dotenv(os.path.join(" in src
+
+
+@test("what you filled in is remembered where the bot can read it")
+def _():
+    # The page kept these in the browser only, so a game name typed in step 4
+    # was applied to the server and then forgotten. Every scheduled post the
+    # bot wrote afterwards still said the blueprint's placeholder, which is how
+    # a launch announcement came out as "the game is out".
+    import tempfile, shutil
+    d = Path(tempfile.mkdtemp())
+    shutil.copy(BLUEPRINT, d / "default.yaml")
+    (d / "variables.local.yaml").write_text("game: Testgame" + chr(10),
+                                           encoding="utf-8")
+    bp = core.load(d / "default.yaml")
+    assert core.declared_variables(bp)["game"] == "Testgame",         core.declared_variables(bp)
+    # And with no local file the blueprint's own default still wins.
+    (d / "variables.local.yaml").unlink()
+    bp = core.load(d / "default.yaml")
+    assert core.declared_variables(bp)["game"] != "Testgame"
+
+
+@test("a capitalised placeholder gives a capitalised value")
+def _():
+    # {{game}} opening a title produced "the game is out", which reads as a
+    # typo rather than a template.
+    v = {"game": "the game"}
+    assert core.substitute_text("{{Game}} is out", v) == "The game is out"
+    assert core.substitute_text("about {{game}}", v) == "about the game"
+    assert core.substitute_text("{{Nope}} stays", v) == "{{Nope}} stays"
+    assert ce.substitute("{{Game}} is out", v) == "The game is out"
+
+
+@test("no post title starts with a lowercase placeholder")
+def _():
+    import yaml as _y
+    for t in TEMPLATES:
+        spec = _y.safe_load(t.read_text("utf-8")) or {}
+        rows = (spec.get("posts") or spec.get("beats") or []) + (spec.get("recurring") or [])
+        for row in rows:
+            title = row.get("title") or ""
+            assert not title.startswith("{{game}}"),                 f"{t.name}: '{row.get('id')}' opens with the lowercase form"
+
+
+@test("the page defines each function once")
+def _():
+    # A duplicated renderVars survived a splice and sat there as dead code.
+    import re as _re
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    names = _re.findall(r"^function (\w+)\(", html, _re.M)
+    names += _re.findall(r"^async function (\w+)\(", html, _re.M)
+    dupes = {n for n in names if names.count(n) > 1}
+    assert not dupes, f"defined more than once: {sorted(dupes)}"
+
+
 @test("the overrides file survives an update")
 def _():
     # It is this deployment's, like .env. An update that replaced it would
