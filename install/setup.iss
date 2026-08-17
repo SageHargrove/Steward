@@ -19,7 +19,7 @@
 #define AppShortName   "CommunityOps"
 ; Kept in step with the VERSION file by hand. tools/release.py bumps that
 ; one; this line is the only other place a version number lives.
-#define AppVersion     "0.2.1"
+#define AppVersion     "0.3.0"
 #define AppPublisher   "SageHargrove"
 #define AppExeName     "START.bat"
 
