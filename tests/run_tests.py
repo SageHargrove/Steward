@@ -1966,6 +1966,136 @@ def _():
     assert claim < send, "the beat is posted before it is claimed"
 
 # ---------------------------------------------------------------------------
+print("\ndecay detection")
+
+import decay                                             # noqa: E402
+
+DAY = 86400
+
+
+def seeded_ledger(plan, now=None):
+    """plan: {channel_id: [messages on day -N, ..., messages yesterday]}.
+    Day 0 in each list is the oldest."""
+    import time as _t
+    L = fresh_ledger()
+    now = now or int(_t.time())
+    span = max(len(v) for v in plan.values())
+    for cid, counts in plan.items():
+        for i, n in enumerate(counts):
+            ts = now - (span - i) * DAY + 3600
+            for k in range(n):
+                L.record(guild_id=1, user_id=1000 + k, channel_id=cid,
+                         event_type="message", ts=ts)
+    return L, now
+
+
+@test("the median ignores a single loud day")
+def _():
+    # A patch-notes day with forty messages would drag a mean up for a month,
+    # and every ordinary week after it would then read as decay.
+    assert decay.median([2, 2, 2, 2, 40]) == 2
+    assert decay.median([]) == 0
+    assert decay.median([1, 3]) == 2
+
+
+@test("it refuses to report before there is enough history")
+def _():
+    # This is the whole reason the feature was built last. On a young server
+    # the baseline is the launch spike and every channel looks like it is dying.
+    L, now = seeded_ledger({10: [5] * 14})
+    r = decay.analyse(L, 1, now=now)
+    assert r["ready"] is False
+    assert r["channels"] == []
+    assert "history" in r["why"]
+    assert r["need_days"] > r["have_days"]
+
+
+@test("a channel that genuinely went quiet is reported")
+def _():
+    # 60 days at 10 a day, then a week at 1.
+    L, now = seeded_ledger({10: [10] * 60 + [1] * 7})
+    r = decay.analyse(L, 1, now=now)
+    assert r["ready"], r["why"]
+    quiet = [c for c in r["channels"] if c["verdict"] == "quiet"]
+    assert len(quiet) == 1, r["channels"]
+    assert quiet[0]["channel_id"] == 10
+    assert quiet[0]["change_pct"] < -80, quiet[0]
+
+
+@test("a quiet week everywhere is not reported as every channel decaying")
+def _():
+    # Christmas. Everything halves. Nothing has gone wrong with any one
+    # channel, and a report that fires now is a report nobody trusts again.
+    plan = {c: [10] * 60 + [5] * 7 for c in (10, 11, 12, 13)}
+    L, now = seeded_ledger(plan)
+    r = decay.analyse(L, 1, now=now)
+    assert r["ready"]
+    assert not [c for c in r["channels"] if c["verdict"] == "quiet"], r["channels"]
+    assert r["server_change_pct"] < -40, r["server_change_pct"]
+
+
+@test("a channel falling faster than the server still gets caught")
+def _():
+    # Same quiet week, but one channel fell much further than the rest.
+    plan = {c: [10] * 60 + [5] * 7 for c in (10, 11, 12)}
+    plan[13] = [10] * 60 + [0] * 7
+    L, now = seeded_ledger(plan)
+    r = decay.analyse(L, 1, now=now)
+    quiet = [c for c in r["channels"] if c["verdict"] == "quiet"]
+    assert [c["channel_id"] for c in quiet] == [13], r["channels"]
+
+
+@test("a channel too quiet to have a trend is left alone")
+def _():
+    # One message a day can fall to zero because somebody took a holiday.
+    L, now = seeded_ledger({10: [10] * 60 + [10] * 7,      # keeps the server flat
+                            11: [1] * 60 + [0] * 7})
+    r = decay.analyse(L, 1, now=now)
+    assert 11 not in [c["channel_id"] for c in r["channels"]], r["channels"]
+
+
+@test("silent days count as zero rather than as missing data")
+def _():
+    # Skipping days with no messages would make a channel that went silent look
+    # like it has no data instead of no activity, which is the opposite reading.
+    rates = decay._rates({"2020-01-02": 5}, 3, 1577923200)   # 2020-01-02 UTC
+    assert len(rates) == 3
+    assert rates.count(0.0) == 2, rates
+
+
+@test("a channel that got busier is news too")
+def _():
+    L, now = seeded_ledger({10: [10] * 60 + [10] * 7,
+                            11: [3] * 60 + [12] * 7})
+    r = decay.analyse(L, 1, now=now)
+    busy = [c for c in r["channels"] if c["verdict"] == "busy"]
+    assert 11 in [c["channel_id"] for c in busy], r["channels"]
+
+
+@test("the digest says why rather than dropping the heading")
+def _():
+    L, now = seeded_ledger({10: [5] * 10})
+    r = decay.analyse(L, 1, now=now)
+    assert decay.summarise(r) == [], "a report that is not ready produced lines"
+    assert r["why"], "no explanation to show in its place"
+
+
+@test("the blueprint carries the decay settings")
+def _():
+    import yaml as _y
+    bp = _y.safe_load(BLUEPRINT.read_text(encoding="utf-8"))
+    cfg = bp.get("decay")
+    assert cfg, "the blueprint has no decay block"
+    for key in ("recent_days", "baseline_days", "min_history_days",
+                "min_baseline", "drop", "rise"):
+        assert key in cfg, f"decay.{key} is missing"
+    # The settings have to actually reach the code.
+    L, now = seeded_ledger({10: [10] * 60 + [1] * 7})
+    assert decay.analyse(L, 1, {"min_history_days": 999}, now=now)["ready"] is False
+    assert decay.analyse(L, 1, cfg, now=now)["ready"] is True
+
+
+# ---------------------------------------------------------------------------
 print("\nversions and updates")
 
 import updates                                          # noqa: E402

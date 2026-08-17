@@ -31,6 +31,7 @@ from discord.ext import tasks
 from dotenv import load_dotenv
 
 import calendar_engine
+import decay
 import digest
 import modlog
 from ledger import Ledger
@@ -744,6 +745,20 @@ class Steward(discord.Client):
                     f"`posters  {digest.spark(data['series']['posters'])}`"]),
                 inline=False)
 
+        report = decay.analyse(self.ledger, guild.id,
+                               self.blueprint.get("decay") or {})
+        lines = decay.summarise(
+            report, name_of=lambda cid: (
+                guild.get_channel(cid).mention if guild.get_channel(cid)
+                else "a deleted channel"))
+        if lines:
+            e.add_field(name="Channels against their own baseline",
+                        value="\n".join(lines)[:1024], inline=False)
+        elif not report["ready"]:
+            # Say why rather than leaving a heading out with no explanation.
+            e.add_field(name="Channels against their own baseline",
+                        value=f"Not yet. {report['why']}", inline=False)
+
         e.set_footer(text=f"{data['counts']['events']:,} events recorded")
         return e, data["chart"]
 
@@ -1373,6 +1388,38 @@ async def calendar_reload(interaction: discord.Interaction):
     for w in report["warnings"][:6]:
         lines.append(f"warn   {w}")
     await interaction.response.send_message("\n".join(lines)[:2000], ephemeral=True)
+
+
+@app_commands.guild_only()
+@client.tree.command(name="decay",
+                     description="Which channels are going quiet. Staff only.")
+async def decay_cmd(interaction: discord.Interaction):
+    if not staff_only(interaction):
+        await interaction.response.send_message("Staff only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    report = decay.analyse(client.ledger, interaction.guild_id,
+                           client.blueprint.get("decay") or {})
+    if not report["ready"]:
+        await interaction.followup.send(
+            f"**Not enough history yet.**\n{report['why']}\n\n"
+            f"There will be something here on "
+            f"<t:{int(time.time()) + (report['need_days'] - report['have_days']) * 86400}:D>.",
+            ephemeral=True)
+        return
+
+    lines = decay.summarise(
+        report, name_of=lambda cid: (
+            interaction.guild.get_channel(cid).mention
+            if interaction.guild.get_channel(cid) else "a deleted channel"))
+    w = report["window"]
+    head = (f"Last **{w['recent_days']} days** against the **{w['baseline_days']} "
+            f"days** before them, across {report['watched']} channel(s) busy "
+            f"enough to measure.")
+    await interaction.followup.send(
+        head + "\n\n" + ("\n".join(lines) if lines else "Nothing has moved much."),
+        ephemeral=True)
 
 
 # --------------------------------------------------------------------------

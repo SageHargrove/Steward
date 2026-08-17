@@ -848,6 +848,39 @@ levels:
     - { level: 75, role: "Tier 5" }
 
 # ---------------------------------------------------------------------------
+# Noticing a channel going quiet.
+#
+# Reported in the weekly digest, and on demand with /decay. It stays silent
+# until there is enough history to have an opinion, which is the honest
+# behaviour: a channel's baseline is what that channel normally does, and on a
+# new server "normally" is the launch spike. Run it early and every channel
+# looks like it is dying.
+#
+# The comparison is against the rest of the server as well as against the
+# channel's own past. If everywhere is quieter this week, flagging every
+# channel says nothing; what is worth reading is a channel falling faster than
+# the ones around it.
+# ---------------------------------------------------------------------------
+decay:
+  # The window being judged, and what it is judged against.
+  recent_days: 7
+  baseline_days: 28
+
+  # Nothing is reported at all until the ledger has this much history. Eight
+  # weeks is the point where a baseline stops being the opening fortnight.
+  min_history_days: 56
+
+  # Messages a day, below which a channel is too quiet to have a trend. A
+  # channel averaging one a day can fall by 100% because somebody took a
+  # holiday.
+  min_baseline: 1.5
+
+  # How far it has to fall, or rise, to be worth saying out loud. These are
+  # after the server-wide change has been divided out.
+  drop: 0.45
+  rise: 0.60
+
+# ---------------------------------------------------------------------------
 # The steps no API can perform.
 #
 # Everything that Discord exposes an endpoint for is done automatically. What
