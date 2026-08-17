@@ -42,7 +42,7 @@ once you paste a token. The CLI does the same job with flags.
 | Playtest | key issuance, reissue, revoke and forget-me exercised against a temp database |
 | Decay | the maths exercised against seeded ledgers, including the quiet-week and dominant-channel cases |
 | Updates | version compare, backup-before-overwrite and fast-forward exercised against a throwaway pair of repos |
-| Server | **not created.** Nothing here has touched real Discord |
+| Server | applied against a live guild. Roles, channels, Community mode, AutoMod and onboarding all created; the calendar and playtest commands have not yet run against one |
 
 Section 0 of [SETUP.md](SETUP.md) is the first thing that does.
 
@@ -489,7 +489,7 @@ python tests
 un_tests.py
 ```
 
-185 checks, no test framework to install. `tests/fake_discord.py` stands in for
+188 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.
@@ -512,8 +512,20 @@ server, so a failure here is worth reading rather than deleting:
 - **The token never appears in a response**, cross-origin posts are refused,
   and the blueprint loader cannot be walked out of its folder.
 
-## Backups
+## Backups, and the one file that is both
 
 `steward/data/steward.sqlite3` is the asset. Roughly 120 bytes per event
 including indexes, so 500 messages a day for a year is about 22 MB. Add it to
-whatever already backs up `saves/`.
+whatever already backs up `saves/`. Nothing in this project ever deletes it:
+not the uninstaller, not an update, not `/forget-me` beyond the one member who
+asked.
+
+**It is also a secret.** It holds your members' activity history and, once a
+playtest wave is open, live Steam keys. It is gitignored, and the installer
+excludes it, and a test enforces both. Do not commit it, do not attach it to a
+bug report, and do not paste it anywhere, including into an AI assistant.
+
+The same goes for `steward/.env`, which holds the bot token. If a token is ever
+pasted anywhere it should not be, treat it as burned: Developer Portal, your
+app, Bot, **Reset Token**. That invalidates the old one immediately and costs
+nothing but pasting the new one back.
