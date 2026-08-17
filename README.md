@@ -82,8 +82,9 @@ implementation.
 ```
 blueprint/default.yaml      the server spec. Channels, roles, permissions,
                             forum tags, onboarding prompts, AutoMod rules
-blueprint/content-calendar.yaml   what gets posted and when, dated relative
-                            to launch rather than to the calendar
+blueprint/calendars/        what gets posted and when, dated relative to
+                            launch. One per kind of project: general,
+                            steam-game, roblox-game, mod
 provision/core.py           load, template, customize, validate, apply.
                             The CLI and the page both import this
 provision/provision.py      command-line wrapper
@@ -105,7 +106,7 @@ link once you paste a token. The CLI does the same job with flags.
 ```powershell
 python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
 python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
-python tests\run_tests.py                           # 207 checks, no framework
+python tests\run_tests.py                           # 209 checks, no framework
 ```
 
 ## State
@@ -382,7 +383,7 @@ are security-critical and hard, and a half-built version is worse than none.
 
 ## The calendar, and why it drafts instead of posts
 
-`blueprint/content-calendar.yaml` says what gets posted and when. Dates are
+`blueprint/calendars/` holds the calendars. Dates are
 offsets from launch (`T-140`, `T+45`) rather than calendar dates, which is the
 difference between a product and a config file: `T-42` redeploys to any launch,
 `2026-09-14` describes exactly one. A handful of beats are absolute anyway,
@@ -578,7 +579,7 @@ python tests
 un_tests.py
 ```
 
-207 checks, no test framework to install. `tests/fake_discord.py` stands in for
+209 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

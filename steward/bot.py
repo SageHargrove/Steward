@@ -77,14 +77,44 @@ def read_version() -> str:
 VERSION = read_version()
 
 
+CALENDAR_DIRS = ("../blueprint/calendars", "blueprint/calendars")
+
+
+def calendar_dir() -> str:
+    for guess in CALENDAR_DIRS:
+        if os.path.isdir(guess):
+            return guess
+    return CALENDAR_DIRS[0]
+
+
 def find_calendar() -> str:
-    named = os.environ.get("STEWARD_CALENDAR")
-    if named and os.path.exists(named):
-        return named
-    for guess in ("../blueprint/content-calendar.yaml", "blueprint/content-calendar.yaml"):
+    """Which calendar template is in use.
+
+    `CALENDAR` names one of blueprint/calendars/*.yaml without the extension,
+    because a Steam launch, a Roblox experience and a mod have almost nothing
+    in common in what they post or when. A full path still works, and so does
+    the old single-file layout.
+    """
+    named = os.environ.get("STEWARD_CALENDAR") or os.environ.get("CALENDAR")
+    if named:
+        if os.path.exists(named):
+            return named
+        guess = os.path.join(calendar_dir(), f"{named}.yaml")
         if os.path.exists(guess):
             return guess
-    return named or "../blueprint/content-calendar.yaml"
+        log.warning("no calendar called %r; falling back", named)
+
+    for legacy in ("../blueprint/content-calendar.yaml", "blueprint/content-calendar.yaml"):
+        if os.path.exists(legacy):
+            return legacy
+
+    default = os.path.join(calendar_dir(), "general.yaml")
+    if os.path.exists(default):
+        return default
+    import glob
+    found = sorted(glob.glob(os.path.join(calendar_dir(), "*.yaml")))
+    found = [f for f in found if not f.endswith(".local.yaml")]
+    return found[0] if found else default
 
 
 CALENDAR = find_calendar()

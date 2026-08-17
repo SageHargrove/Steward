@@ -1567,7 +1567,10 @@ import calendar_engine as ce                            # noqa: E402
 from datetime import date as _date, timedelta as _td    # noqa: E402
 import yaml as _yaml                                    # noqa: E402
 
-CALENDAR = ROOT / "blueprint" / "content-calendar.yaml"
+CALENDAR_DIR = ROOT / "blueprint" / "calendars"
+CALENDAR = CALENDAR_DIR / "steam-game.yaml"
+TEMPLATES = sorted(f for f in CALENDAR_DIR.glob("*.yaml")
+                   if not f.name.endswith(".local.yaml"))
 ANCHOR = _date(2027, 3, 1)
 
 
@@ -1604,18 +1607,21 @@ def _():
             pass
 
 
-@test("the shipped calendar is valid against the shipped blueprint")
+@test("every calendar template is valid against the shipped blueprint")
 def _():
-    bp = _yaml.safe_load(CALENDAR.parent.joinpath("default.yaml").read_text("utf-8"))
+    bp = _yaml.safe_load((ROOT / "blueprint" / "default.yaml").read_text("utf-8"))
     channels = [c["name"] for cat in bp.get("categories", [])
                 for c in cat.get("channels", [])]
     roles = [r["name"] for r in bp.get("roles", [])]
-    report = fresh_calendar().validate(channels=channels, roles=roles)
-    assert not report["errors"], report["errors"]
-    # Every beat must aim at a channel the blueprint actually creates, or it
-    # will draft and then fail at the moment somebody clicks approve.
-    missing = [w for w in report["warnings"] if "not in the blueprint" in w]
-    assert not missing, missing
+    assert len(TEMPLATES) >= 4, f"only found {[t.name for t in TEMPLATES]}"
+    for t in TEMPLATES:
+        report = ce.load(t, {"game": "Testgame"}).validate(
+            channels=channels, roles=roles)
+        assert not report["errors"], f"{t.name}: {report['errors']}"
+        # Every post must aim at a channel the blueprint actually creates, or
+        # it drafts and then fails the moment somebody clicks approve.
+        missing = [w for w in report["warnings"] if "not in the blueprint" in w]
+        assert not missing, f"{t.name}: {missing}"
 
 
 @test("every beat names a channel and has something to say")
@@ -1828,11 +1834,29 @@ def _():
     assert "everyone" in warnings
 
 
-@test("the calendar is generic, not one game's")
+@test("no calendar names one particular game")
 def _():
-    text = CALENDAR.read_text("utf-8").lower()
-    for word in ("giltgrave", "gacha", "tower", "hero-showcase"):
-        assert word not in text, f"the calendar still mentions {word!r}"
+    for t in TEMPLATES:
+        text = t.read_text("utf-8").lower()
+        for word in ("giltgrave", "gacha", "tower", "hero-showcase"):
+            assert word not in text, f"{t.name} still mentions {word!r}"
+
+
+@test("there is a calendar for each kind of project")
+def _():
+    # Steam is not the only place a game lives, and the calendar for a Roblox
+    # experience or a mod has almost nothing in common with a store launch.
+    have = {t.stem for t in TEMPLATES}
+    for want in ("general", "steam-game", "roblox-game", "mod"):
+        assert want in have, f"no {want} calendar. Have: {sorted(have)}"
+
+
+@test("a template names itself, so the picker is readable")
+def _():
+    for t in TEMPLATES:
+        meta = _yaml.safe_load(t.read_text("utf-8")).get("meta") or {}
+        assert meta.get("name"), f"{t.name} has no meta.name"
+        assert meta["name"] != t.stem, f"{t.name} has no human name"
 
 
 # ---------------------------------------------------------------------------

@@ -585,7 +585,44 @@ def charts_install():
 # The content calendar
 # --------------------------------------------------------------------------
 
-CALENDAR_FILE = HERE.parent / "blueprint" / "content-calendar.yaml"
+CALENDAR_DIR = HERE.parent / "blueprint" / "calendars"
+LEGACY_CALENDAR = HERE.parent / "blueprint" / "content-calendar.yaml"
+
+
+def calendar_templates() -> list[dict]:
+    """Every calendar you could be running, newest layout first."""
+    import yaml
+    out = []
+    for f in sorted(CALENDAR_DIR.glob("*.yaml")):
+        if f.name.endswith(".local.yaml"):
+            continue
+        try:
+            meta = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("meta") or {}
+        except Exception:                                    # noqa: BLE001
+            meta = {}
+        out.append({"id": f.stem, "name": meta.get("name", f.stem)})
+    return out
+
+
+def active_calendar() -> Path:
+    """Which one is in use. Same rules the bot follows, so the page cannot
+    show one calendar while the bot runs another."""
+    named = read_env().get("CALENDAR") or read_env().get("STEWARD_CALENDAR")
+    if named:
+        direct = Path(named)
+        if direct.is_file():
+            return direct
+        guess = CALENDAR_DIR / f"{Path(named).stem}.yaml"
+        if guess.exists():
+            return guess
+    if LEGACY_CALENDAR.exists():
+        return LEGACY_CALENDAR
+    general = CALENDAR_DIR / "general.yaml"
+    if general.exists():
+        return general
+    rest = [f for f in sorted(CALENDAR_DIR.glob("*.yaml"))
+            if not f.name.endswith(".local.yaml")]
+    return rest[0] if rest else general
 
 
 def read_env() -> dict:
@@ -625,7 +662,7 @@ def calendar_view(days: int = 120):
     import calendar_engine
     from datetime import date
 
-    if not CALENDAR_FILE.exists():
+    if not active_calendar().exists():
         return {"present": False}
 
     bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() \
@@ -634,7 +671,7 @@ def calendar_view(days: int = 120):
                  for k, v in (bp.get("variables") or {}).items()}
     anchor = read_env().get("LAUNCH_DATE") or None
     try:
-        cal = calendar_engine.load(CALENDAR_FILE, variables, anchor_override=anchor)
+        cal = calendar_engine.load(active_calendar(), variables, anchor_override=anchor)
     except Exception as e:                                   # noqa: BLE001
         return {"present": True, "error": str(e)}
 
@@ -668,6 +705,31 @@ def calendar_view(days: int = 120):
     }
 
 
+@app.get("/api/calendar/templates")
+def calendar_templates_api():
+    return {"active": active_calendar().stem,
+            "templates": calendar_templates()}
+
+
+@app.post("/api/calendar/template")
+def calendar_set_template(payload: dict = Body(...)):
+    """Switch which calendar is in use.
+
+    Nothing is copied or overwritten: the setting names one of the shipped
+    templates and each keeps its own edits, so switching to Roblox and back
+    leaves the Steam calendar exactly as you left it.
+    """
+    want = (payload.get("id") or "").strip()
+    known = {t["id"] for t in calendar_templates()}
+    if want not in known:
+        raise HTTPException(400, f"No calendar called {want!r}. "
+                                 f"There is: {', '.join(sorted(known))}.")
+    write_env("CALENDAR", want)
+    write_env("STEWARD_CALENDAR", None)         # the older name, if it is there
+    return {"ok": True, "active": want,
+            "note": "Steward picks this up on restart, or with /calendar-reload."}
+
+
 @app.get("/api/calendar/beats")
 def calendar_beats():
     """Every beat, as written, so the page can put it in a textarea.
@@ -680,11 +742,11 @@ def calendar_beats():
     import calendar_engine
     import yaml
 
-    if not CALENDAR_FILE.exists():
+    if not active_calendar().exists():
         return {"present": False, "beats": []}
-    with open(CALENDAR_FILE, encoding="utf-8") as fh:
+    with open(active_calendar(), encoding="utf-8") as fh:
         spec = yaml.safe_load(fh) or {}
-    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    local_file = calendar_engine.overrides_path(active_calendar())
     local = {}
     if local_file.exists():
         with open(local_file, encoding="utf-8") as fh:
@@ -738,6 +800,8 @@ def calendar_beats():
     # Soonest first, with anything dormant after it.
     out.sort(key=lambda b: (b["next"] is None, b["next"] or "", b["id"]))
     return {"present": True, "posts": out,
+            "template": active_calendar().stem,
+            "templates": calendar_templates(),
             "anchor": cal.anchor.isoformat() if cal.anchor else None,
             "t_today": cal.t_minus(today),
             "overrides_file": local_file.name,
@@ -745,6 +809,27 @@ def calendar_beats():
 
 
 EDITABLE = ("kind", "title", "body", "channel", "when", "every", "mention")
+
+
+def dump_yaml(data: dict) -> str:
+    """Write it the way a person would.
+
+    safe_dump turns a multi-line body into a quoted scalar wrapped at the
+    margin, which round-trips correctly and is horrible to read if anybody
+    opens the file. Anything with a newline in it gets a block scalar instead.
+    """
+    import yaml
+
+    class Dumper(yaml.SafeDumper):
+        pass
+
+    def block(dumper, value):
+        style = "|" if "\n" in value else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+    Dumper.add_representer(str, block)
+    return yaml.dump(data, Dumper=Dumper, sort_keys=False, allow_unicode=True,
+                     default_flow_style=False, width=88)
 
 
 @app.post("/api/calendar/beat")
@@ -765,7 +850,7 @@ def calendar_save_beat(payload: dict = Body(...)):
                                  "hyphens, like 'devlog-monday'.")
 
     which = "recurring" if payload.get("list") == "recurring" else "posts"
-    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    local_file = calendar_engine.overrides_path(active_calendar())
     local = {}
     if local_file.exists():
         with open(local_file, encoding="utf-8") as fh:
@@ -794,9 +879,7 @@ def calendar_save_beat(payload: dict = Body(...)):
     rows.append(entry)
     local[which] = rows
 
-    body = yaml.safe_dump(local, sort_keys=False, allow_unicode=True,
-                          default_flow_style=False, width=88)
-    local_file.write_text(HEADER_LOCAL + body, encoding="utf-8")
+    local_file.write_text(HEADER_LOCAL + dump_yaml(local), encoding="utf-8")
     return {"ok": True, "file": local_file.name}
 
 
@@ -808,7 +891,7 @@ def calendar_reset_beat(payload: dict = Body(...)):
     import yaml
 
     bid = (payload.get("id") or "").strip()
-    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    local_file = calendar_engine.overrides_path(active_calendar())
     if not local_file.exists():
         return {"ok": True}
     with open(local_file, encoding="utf-8") as fh:
@@ -819,9 +902,7 @@ def calendar_reset_beat(payload: dict = Body(...)):
     if not any(local.get(k) for k in ("posts", "beats", "recurring")):
         local_file.unlink()
         return {"ok": True, "removed_file": True}
-    body = yaml.safe_dump(local, sort_keys=False, allow_unicode=True,
-                          default_flow_style=False, width=88)
-    local_file.write_text(HEADER_LOCAL + body, encoding="utf-8")
+    local_file.write_text(HEADER_LOCAL + dump_yaml(local), encoding="utf-8")
     return {"ok": True}
 
 
@@ -832,11 +913,11 @@ HEADER_LOCAL = """# Your edits to the content calendar.
 #
 # Kept apart from content-calendar.yaml on purpose. That file is the one an
 # update replaces and the one you would redeploy to the next project, so
-# anything written into it would be lost the next time you updated. Beats here
-# are matched by id and override the shipped ones field by field.
+# anything written into it would be lost the next time you updated. Posts
+# here are matched by id and override the shipped ones field by field.
 #
-#   enabled: false   hides a shipped beat without deleting it
-#   a new id         adds a beat of your own
+#   enabled: false   hides a shipped post without deleting it
+#   a new id         adds a post of your own
 
 """
 

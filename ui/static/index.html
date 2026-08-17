@@ -618,14 +618,16 @@
 <section class="step" id="s8">
   <div class="head"><div class="num"><span>8</span></div><h2>The content calendar</h2><span class="peek">What gets posted, and when</span>
     <div style="margin-left:auto" class="row">
-      <button class="ghost small" onclick="loadCalendar()">Reload</button>
+      <button class="ghost small" onclick="loadCalendar(this)">Reload</button>
+      <span class="hint" id="calmsg" style="margin:0"></span>
     </div>
   <span class="chev">&#9660;</span></div>
   <div class="body">
-    <div class="callout">Beats are dated <b>relative to your launch</b>, not as
-      calendar dates, which is what lets the same file be reused on the next
-      project. Nothing is ever posted without you approving it: when a beat comes
-      due, the bot drafts it into your staff channel with Approve and Skip buttons.</div>
+    <div class="callout">Posts are dated <b>relative to your launch</b>, not as
+      calendar dates, which is what lets the same calendar be reused on the next
+      project. Nothing reaches your members without you approving it: when a post
+      comes due, the bot drafts it into your staff channel with Approve and Skip
+      buttons.</div>
     <div id="calbody"></div>
     <div class="beatlist" id="beatlist"></div>
   </div>
@@ -1797,14 +1799,39 @@ async function applyUpdate(hasDirty){
 
 let POSTS = null;
 
-async function loadCalendar(){
+async function loadCalendar(btn){
+  // A button that does nothing visible has failed, whether or not it worked.
+  if(btn){ btn.disabled = true; btn.textContent = 'Reloading...'; }
   let r;
   try{ r = await api('/api/calendar?days=1'); }
-  catch(e){ $('#calbody').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
+  catch(e){
+    $('#calbody').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    if(btn){ btn.disabled = false; btn.textContent = 'Reload'; }
+    return;
+  }
   CAL = r;
   try{ POSTS = await api('/api/calendar/beats'); }
   catch(e){ POSTS = null; }
+  if(POSTS){ CAL.template = POSTS.template; CAL.templates = POSTS.templates; }
   renderCalendar();
+  if(btn){
+    btn.disabled = false; btn.textContent = 'Reload';
+    const n = POSTS ? POSTS.posts.length : 0;
+    const edited = POSTS ? POSTS.posts.filter(p => p.edited).length : 0;
+    flash('#calmsg', `Read from disk: ${n} post${n === 1 ? '' : 's'}`
+      + (edited ? `, ${edited} of them edited by you` : '') + '.');
+  }
+}
+
+/* Say something, then take it back. A message that stays forever stops being
+   read as a response to the button. */
+function flash(sel, text, ms){
+  const el = $(sel);
+  if(!el) return;
+  el.textContent = text;
+  el.style.color = 'var(--green)';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.textContent = ''; el.style.color = ''; }, ms || 4000);
 }
 
 function renderCalendar(){
@@ -1827,6 +1854,13 @@ function renderCalendar(){
         <input type="text" id="calanchor" value="${esc(anchor)}" placeholder="2027-03-01">
       </div>
       <button class="ghost small" onclick="saveAnchor()">Set</button>
+      <div>
+        <label>Calendar</label>
+        <select id="caltpl" onchange="setTemplate(this.value)"
+                style="padding:5px 8px">${(CAL.templates || []).map(t =>
+          `<option value="${esc(t.id)}" ${t.id === CAL.template ? 'selected' : ''}>
+             ${esc(t.name)}</option>`).join('')}</select>
+      </div>
       <div class="hint" style="flex:1 1 220px; margin:0">
         ${anchor
           ? `Dates below are counted from here. Today is
@@ -1956,8 +1990,9 @@ async function savePost(i){
   const j = POSTS.posts.findIndex(x => x.id === p.id);
   if(j >= 0){
     togglePost(j);
-    $('#bmsg' + j).textContent = 'Saved. Run /calendar-reload in Discord, or restart the bot.';
+    flash('#bmsg' + j, 'Saved. Run /calendar-reload in Discord to use it now.', 7000);
   }
+  flash('#calmsg', 'Saved.');
 }
 
 async function hidePost(i){
@@ -1993,6 +2028,25 @@ async function newPost(){
     togglePost(i);
     document.getElementById('beat' + i).scrollIntoView({block:'center', behavior:'smooth'});
   }
+}
+
+/* Switching template changes a setting, not a file. Each keeps its own
+   edits, so going to Roblox and back leaves the Steam one as you left it. */
+async function setTemplate(id){
+  if(id === CAL.template) return;
+  const t = (CAL.templates || []).find(x => x.id === id);
+  if(!confirm(`Use the "${t ? t.name : id}" calendar instead?
+
+`
+    + 'Nothing is deleted. Each calendar keeps its own edits, so you can '
+    + 'switch back and find yours where you left them.')){
+    $('#caltpl').value = CAL.template;
+    return;
+  }
+  try{ await api('/api/calendar/template', {method:'POST', body: JSON.stringify({id})}); }
+  catch(e){ flash('#calmsg', e.message, 8000); return; }
+  await loadCalendar();
+  flash('#calmsg', 'Switched. Restart the bot, or run /calendar-reload in Discord.', 8000);
 }
 
 async function saveAnchor(){

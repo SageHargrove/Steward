@@ -1,4 +1,4 @@
-# Content calendar
+# A game launching on Steam
 #
 # Posts are dated as offsets from launch day rather than as calendar dates.
 # `T-42` means forty-two days before you ship and redeploys to any launch;
@@ -23,7 +23,7 @@
 # Nothing fires at all until meta.anchor is set.
 
 meta:
-  name: Default content calendar
+  name: Steam game launch
 
   # Launch day. T-0. Everything relative hangs off this one line.
   anchor: 2027-03-01

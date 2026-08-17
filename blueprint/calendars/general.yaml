@@ -1,0 +1,155 @@
+# A community calendar with no platform in it
+#
+# Use this one if you are not launching on Steam, not on Roblox, and not
+# shipping a mod. It is the rhythm and nothing else: the posts that make a
+# server feel lived in, without assuming anything about where your thing is
+# sold or when it comes out.
+#
+# Dates are offsets from a launch day. `T-42` is forty-two days before it,
+# `T+14` is a fortnight after. If you have no launch to point at, leave the
+# launch day empty and delete the T-minus posts; the recurring ones below work
+# on their own and are most of the value anyway.
+#
+# Everything here is editable in the setup page.
+
+meta:
+  name: General community
+  anchor:
+  timezone: UTC
+  post_hour: 17
+
+# ---------------------------------------------------------------------------
+# The rhythm. This is the part that matters. A server with a predictable
+# weekly pulse feels alive at ten members; one without feels dead at a
+# thousand, because nobody has a reason to open it on a Tuesday.
+
+recurring:
+  - id: show-and-tell
+    kind: post
+    every: saturday
+    channel: screenshots
+    body: |
+      **Show us something.** A screenshot, a clip, a thing you made, a thing
+      that broke in an interesting way.
+
+      No rules about it being impressive. The odd ones are usually better.
+
+  - id: weekly-question
+    kind: post
+    every: wednesday
+    channel: general
+    body: |
+      Midweek question: what is the last thing in a game that made you stop and
+      look at it properly?
+
+  - id: check-in-reminder
+    kind: reminder
+    every: monday
+    channel: steward-reports
+    body: |
+      **Post something this week.** Anything: what you changed, what you are
+      stuck on, a screenshot with two sentences under it.
+
+      The single strongest predictor of a community staying alive is whether
+      the person running it turns up. Not how polished the posts are.
+
+# ---------------------------------------------------------------------------
+# The one-offs.
+
+posts:
+
+  - id: server-open
+    when: T-180
+    channel: announcements
+    title: "The server is open"
+    body: |
+      This is the {{game}} server. It is small on purpose right now.
+
+      Everyone here before the public announcement keeps the **Founding Member**
+      role permanently. It does nothing mechanical. It is a record of having
+      been early, which turns out to be the thing people actually want.
+
+      Have a look around, say something in #general, and tell us what you want
+      to see here.
+
+  - id: ask-me-anything
+    when: T-120
+    channel: ask-the-dev
+    title: "Ask me anything, this week"
+    body: |
+      Open question thread. Anything about {{game}}: how it is built, why
+      something works the way it does, or what is not working yet.
+
+      Answers will be honest about the parts that are not finished.
+    event:
+      name: "Ask me anything"
+      starts: "18:00"
+      minutes: 60
+      location: "General Voice"
+
+  - id: testers-wanted
+    when: T-100
+    channel: announcements
+    title: "Looking for testers"
+    body: |
+      We need people to break {{game}} before everybody else does.
+
+      **/playtest-join** puts your name down and gives you the
+      **Ping Me For Playtests** role, which is the only way you will hear when
+      a round goes out. Drop it any time with /playtest-leave.
+
+      Expect things to be broken. That is the point of you being there.
+    mention: Ping Me For Playtests
+
+  - id: first-look
+    when: T-60
+    channel: announcements
+    title: "First proper look at {{game}}"
+    body: |
+      Here is the clearest look at {{game}} so far.
+
+      Tell us what you think, including the parts you do not like. Now is when
+      that is still cheap to act on.
+
+  - id: launch-week-reminder
+    kind: reminder
+    when: T-7
+    channel: steward-reports
+    body: |
+      **Launch week.** Nothing new goes in from here. The only jobs left are
+      fixing fast and answering people.
+
+      Turn on Raid Protection if it is not already on. A launch is the one day
+      you are worth raiding.
+
+  - id: launch-day
+    when: T-0
+    channel: announcements
+    title: "{{game}} is out"
+    body: |
+      It is out.
+
+      Thank you to everyone who has been in here since it was three channels
+      and a bug list. You are the reason the launch has anyone at it.
+    mention: everyone
+
+  - id: first-patch
+    when: T+7
+    channel: patch-notes
+    title: "First week, first patch"
+    body: |
+      Everything reported in the first week, and what happened to it.
+
+      Answering fast in week one is what decides whether people keep reporting
+      things in week five.
+
+  - id: what-now
+    kind: reminder
+    when: T+30
+    channel: steward-reports
+    body: |
+      **A month in.** Run /digest and look at two numbers: how many of the
+      launch-week arrivals are still posting, and which channels went quiet.
+
+      A community that empties out after launch is normal. One you noticed
+      emptying out is a community you can still do something about.

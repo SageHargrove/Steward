@@ -21,8 +21,8 @@ Before flipping it:
 - `docs/build-plan.md` contains your Steam dates, revenue plans and compliance
   notes. Decide whether that is public. Moving it out of the repository is the
   easy answer.
-- `blueprint/content-calendar.yaml` has `anchor: 2027-03-01` in it, which
-  announces your target launch date.
+- `blueprint/calendars/steam-game.yaml` has `anchor: 2027-03-01` in it,
+  which announces your target launch date.
 
 **2. Run it once against your live server.**
 

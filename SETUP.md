@@ -343,7 +343,7 @@ The build order is from the build plan. All seven are built.
 |---|---|---|---|
 | 1 | Ledger | done | Impossible to backfill. Everything else reads from it |
 | 2 | Cohort reports | done | First visible payoff. Makes the ledger feel worth it |
-| 3 | Calendar engine | done | The daily-labour saver. Reads T-minus beats from `blueprint/content-calendar.yaml` |
+| 3 | Calendar engine | done | The daily-labour saver. Reads T-minus posts from `blueprint/calendars/` |
 | 4 | Decay detection | done, **dormant until 8 weeks of data** | It compares a channel against its own trend, and on a new server that trend is the launch spike. It says so instead of reporting nonsense |
 | 5 | Playtest pipeline | done | Steam override keys cap at 2,500 for the lifetime of the title. Native Steam Playtest has no practical cap and lives on your store page |
 | 6 | Funnel metrics | done | A query, not a feature. `/ledger-status` does the 7-day version |
@@ -355,9 +355,18 @@ mistakes twice.
 
 ### Running the calendar
 
-Set your launch date in step 8 of the setup page, or `LAUNCH_DATE` in
-`steward\.env`. Nothing fires without one; every T-minus beat stays dormant
-rather than being resolved against a guess.
+Pick a calendar and set your launch date in step 8 of the setup page. There is
+one calendar per kind of project, because a Steam launch, a Roblox experience
+and a mod have almost nothing in common in what they post or when:
+
+    general      no platform, just the community rhythm
+    steam-game   a game launching on Steam
+    roblox-game  a Roblox experience
+    mod          a mod, or a modding project
+
+Each keeps its own edits, so switching and switching back loses nothing.
+Nothing posts without a launch date; every T-minus post stays dormant rather
+than being resolved against a guess.
 
 ```
 /calendar                       what is scheduled, and how far out T-0 is

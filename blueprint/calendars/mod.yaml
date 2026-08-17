@@ -1,0 +1,146 @@
+# A mod, or a modding project
+#
+# A mod's calendar is not driven by your schedule. It is driven by the base
+# game's, and that is the whole difference.
+#
+# When the game patches, your mod breaks. Everything below is built around
+# that: the most valuable post you will ever make is the one that says "the
+# game updated, here is what still works", posted within hours rather than
+# whenever you next get to it. A community that has to ask is a community
+# filing the same broken-mod report forty times.
+#
+# The anchor is your **first public release**. Most of the value is in the
+# recurring posts and the reminders, because after release the calendar is
+# reactive by nature.
+
+meta:
+  name: Mod or modding project
+  anchor:
+  timezone: UTC
+  post_hour: 17
+
+recurring:
+  - id: base-game-patch-watch
+    kind: reminder
+    every: thursday
+    channel: steward-reports
+    body: |
+      **Did the base game patch this week?**
+
+      If it did, check {{game}} against it today and post either "still works"
+      or "broken, do not update yet" in #announcements. Both are useful. The
+      one that costs you a weekend of duplicate reports is saying nothing.
+
+  - id: show-your-setup
+    kind: post
+    every: saturday
+    channel: screenshots
+    body: |
+      **Show your setup.** Screenshots, load orders, a combination of mods that
+      works unexpectedly well, or a bug that looks funny rather than annoying.
+
+  - id: help-thread-sweep
+    kind: reminder
+    every: monday
+    channel: steward-reports
+    body: |
+      **Sweep the unanswered questions.** Anything in the support channels
+      still sitting there from last week.
+
+      For a mod, the answer usually already exists somewhere. Answering once
+      and pinning it beats answering the same thing eight times.
+
+posts:
+
+  - id: server-open
+    when: T-30
+    channel: announcements
+    title: "The {{game}} server is open"
+    body: |
+      This is the Discord for {{game}}.
+
+      Before you ask anything in the support channels, two things will get you
+      an answer far faster: your **load order**, and your **log file**. Almost
+      every problem with a mod is one of those two, and almost nobody includes
+      them the first time.
+
+  - id: permissions-note
+    kind: reminder
+    when: T-21
+    channel: steward-reports
+    body: |
+      **Decide your permissions before release, not after.**
+
+      Can other people include {{game}} in a pack? Translate it? Fork it if you
+      stop updating? Reuse the assets?
+
+      Write it into the mod page description and pin it here. Every modding
+      community has had the same argument, and the ones that avoided it are the
+      ones where the author said so up front. "Ask me" is a fine answer. Saying
+      nothing is not.
+
+  - id: release-day
+    when: T-0
+    channel: announcements
+    title: "{{game}} is out"
+    body: |
+      The first public release of {{game}} is up.
+
+      **Read the install steps before installing it.** Requirements and load
+      order both matter, and most of the reports on day one will be from people
+      who skipped them.
+
+      Problems go in #bug-reports, one post per problem, with your game version
+      and your log.
+    mention: everyone
+
+  - id: first-week-triage
+    kind: reminder
+    when: T+3
+    channel: steward-reports
+    body: |
+      **Triage the first wave.** Three days in, the reports have arrived and
+      most of them are the same three things.
+
+      Pin the answers to those three in the support channel and put them in the
+      mod page description. That single hour is worth more than any other hour
+      you will spend this month.
+
+  - id: compatibility-post
+    when: T+7
+    channel: start-here
+    title: "What {{game}} works with"
+    body: |
+      A running list of what {{game}} is compatible with, what it conflicts
+      with, and what load order it wants.
+
+      This post is edited rather than reposted, so it is always the current
+      answer. Tell us in #bug-reports if you find a combination that is not
+      listed here.
+    pin: true
+
+  - id: translation-call
+    when: T+21
+    channel: announcements
+    title: "Translations welcome"
+    body: |
+      If you speak a language {{game}} is not in yet and fancy translating it,
+      say so here.
+
+      Credit goes in the mod description, and translators get a role so they
+      hear about text changes before a release rather than after.
+
+  - id: successor-plan
+    kind: reminder
+    when: T+180
+    channel: steward-reports
+    body: |
+      **What happens to {{game}} if you stop?**
+
+      Six months in is the right time to answer this, while you still care.
+      Abandoned mods with no permission to fork are how modding communities
+      lose things permanently.
+
+      Put it in the description: whether somebody may take it over, and under
+      what terms. It costs nothing today and it is the difference between the
+      mod outliving your interest and dying with it.

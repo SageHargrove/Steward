@@ -27,4 +27,5 @@ dist/
 
 # Your own calendar edits, written by the setup page. Per deployment,
 # like .env, and never replaced by an update.
+blueprint/calendars/*.local.yaml
 blueprint/content-calendar.local.yaml

@@ -1,0 +1,163 @@
+# A Roblox experience
+#
+# Roblox works nothing like a storefront launch, so almost none of the Steam
+# calendar transfers. Three differences drive everything below.
+#
+# There is no launch day. An experience goes live and then lives or dies on
+# how it updates. The anchor here is therefore your **public launch or your
+# next big update**, and most of the value is in the recurring posts.
+#
+# Discovery is the algorithm, not a wishlist. Roblox's home page ranks on
+# engagement: how long people stay, whether they come back, whether they play
+# again the next day. A Discord that gets people to come back on update day is
+# feeding the exact signal that decides whether you are shown to anyone.
+#
+# **Your players are younger.** Discord requires 13+ and Roblox does not, so a
+# meaningful slice of your playerbase is not allowed in this server at all.
+# That is not a rule to bend. It shapes moderation, it shapes what you promise
+# here, and it is why the first post below says it out loud.
+
+meta:
+  name: Roblox experience
+  anchor:
+  timezone: UTC
+  post_hour: 17
+
+# ---------------------------------------------------------------------------
+# The rhythm. On Roblox this is not decoration, it is the product: a weekly
+# reason to come back is what the ranking algorithm is measuring.
+
+recurring:
+  - id: update-day
+    kind: post
+    every: friday
+    channel: announcements
+    body: |
+      **Update day.** New things are live in {{game}} right now.
+
+      Jump in, break it, and tell us what is wrong in #bug-reports.
+    until: T+365
+
+  - id: show-your-build
+    kind: post
+    every: saturday
+    channel: screenshots
+    body: |
+      **Show us what you made.** Builds, outfits, setups, a screenshot of
+      something that went badly wrong.
+
+  - id: update-prep
+    kind: reminder
+    every: wednesday
+    channel: steward-reports
+    body: |
+      **Two days to update day.** Is Friday's update actually going out?
+
+      If it is not, say so in #announcements today rather than letting Friday
+      pass in silence. A skipped week you warned about costs almost nothing. A
+      skipped week nobody mentioned is how a server learns to stop checking.
+
+# ---------------------------------------------------------------------------
+# The one-offs.
+
+posts:
+
+  - id: server-open
+    when: T-60
+    channel: announcements
+    title: "The {{game}} server is open"
+    body: |
+      This is the Discord for {{game}}.
+
+      **You have to be 13 or over to be here.** That is Discord's rule, not
+      ours, and we cannot make an exception. If you are under 13, play the
+      game and come back when you are old enough.
+
+      Everyone here before the public launch keeps the **Founding Member**
+      role permanently.
+
+  - id: group-link
+    when: T-45
+    channel: announcements
+    title: "Join the Roblox group"
+    body: |
+      Join the {{game}} group on Roblox as well as being here.
+
+      Group members get things this server cannot give you: in-experience
+      perks, and a place we can reach people who are not old enough for
+      Discord.
+
+  - id: testers-wanted
+    when: T-30
+    channel: announcements
+    title: "Testing the next update early"
+    body: |
+      Want to play updates before they go live?
+
+      **/playtest-join** puts your name down. Testing runs in a private server,
+      so you need to be in the group as well as here. Expect things to be
+      broken; that is the point.
+    mention: Ping Me For Playtests
+
+  - id: launch-day
+    when: T-0
+    channel: announcements
+    title: "{{game}} is live"
+    body: |
+      It is live. Go and play it.
+
+      **Two things that genuinely help, and cost you nothing:** press the
+      thumbs up, and favourite it. Roblox uses both to decide who else gets
+      shown the game, so a good first day compounds into a much bigger second
+      week.
+    mention: everyone
+
+  - id: first-week-numbers
+    kind: reminder
+    when: T+7
+    channel: steward-reports
+    body: |
+      **Look at the retention numbers, not the visit count.**
+
+      Visits spike and mean little. What decides whether Roblox keeps showing
+      the experience is how many people come back the next day and the day
+      after, and how long a session lasts.
+
+      Run /digest for what happened on the Discord side, and compare it against
+      the developer stats page for the same week.
+
+  - id: first-big-update
+    when: T+30
+    channel: announcements
+    title: "The first big update"
+    body: |
+      A month in, and here is the first proper update to {{game}}.
+
+      If you played at launch and drifted off, this is the one to come back
+      for.
+    mention: everyone
+
+  - id: ugc-permissions
+    kind: reminder
+    when: T+45
+    channel: steward-reports
+    body: |
+      **Check what your players are allowed to make and sell.**
+
+      Fan art, UGC items and derivative builds all turn up once a community is
+      a few weeks old, and the time to have an answer is before somebody asks
+      in public. Write it down, put it in #start-here, and be generous: a
+      community making things about your game for free is not a problem to
+      solve.
+
+  - id: event-planning
+    kind: reminder
+    when: T+60
+    channel: steward-reports
+    body: |
+      **Plan a limited-time event.** A weekend with something in it that will
+      not be there afterwards is the single most reliable way to bring lapsed
+      players back on Roblox.
+
+      Announce it here a week ahead, and use a scheduled event so it shows up
+      in Discord's own event list.
