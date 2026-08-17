@@ -7,22 +7,26 @@
 
 $ErrorActionPreference = 'Stop'
 
-$FolderName = 'Steward'
+# Every name this has shipped under, so an uninstall after a rename does not
+# leave the old folder behind forever.
+$Names = @('Steward', 'Server Setup for Discord', 'CommunityOps')
 $Programs = [Environment]::GetFolderPath('Programs')
 $Desktop = [Environment]::GetFolderPath('Desktop')
-$Dest = Join-Path $Programs $FolderName
-$DesktopLink = Join-Path $Desktop 'Steward.lnk'
 
 $removed = 0
-if (Test-Path $Dest) {
-    Remove-Item -Recurse -Force $Dest
-    Write-Host "  Removed the Start Menu folder '$FolderName'." -ForegroundColor Green
-    $removed++
-}
-if (Test-Path $DesktopLink) {
-    Remove-Item -Force $DesktopLink
-    Write-Host '  Removed the desktop shortcut.' -ForegroundColor Green
-    $removed++
+foreach ($name in $Names) {
+    $dest = Join-Path $Programs $name
+    if (Test-Path $dest) {
+        Remove-Item -Recurse -Force $dest
+        Write-Host "  Removed the Start Menu folder '$name'." -ForegroundColor Green
+        $removed++
+    }
+    $link = Join-Path $Desktop "$name.lnk"
+    if (Test-Path $link) {
+        Remove-Item -Force $link
+        Write-Host "  Removed the '$name' desktop shortcut." -ForegroundColor Green
+        $removed++
+    }
 }
 
 Write-Host ''

@@ -2592,6 +2592,29 @@ def _():
         assert needed in sizes, f"the icon has no {needed}px frame. Has: {sorted(sizes)}"
 
 
+@test("installing clears shortcuts left by an older name")
+def _():
+    # The product was called Server Setup for Discord before it was called
+    # Steward. Without this, upgrading leaves two Start Menu folders and the
+    # only entry containing the new name is the secondary one, so searching
+    # for the product finds the wrong thing. That happened.
+    ps1 = (ROOT / "install" / "Install.ps1").read_text(encoding="utf-8")
+    assert "$FormerNames" in ps1, "Install.ps1 does not clear old names"
+    assert "Server Setup for Discord" in ps1
+    un = (ROOT / "install" / "Uninstall.ps1").read_text(encoding="utf-8")
+    assert "Server Setup for Discord" in un,         "Uninstall.ps1 would leave the old folder behind forever"
+
+
+@test("the main shortcut is named exactly after the product")
+def _():
+    # Windows search ranks on the shortcut name. An entry called "Steward
+    # ledger only" and no entry called "Steward" means typing the product name
+    # surfaces the secondary tool.
+    ps1 = (ROOT / "install" / "Install.ps1").read_text(encoding="utf-8")
+    assert "'Steward.lnk'" in ps1, "there is no shortcut named exactly Steward"
+    assert "ledger only" not in ps1, "the old confusing secondary name is back"
+
+
 @test("the installer stays per-user, so it never needs administrator")
 def _():
     ps1 = (ROOT / "install" / "Install.ps1").read_text(encoding="utf-8")

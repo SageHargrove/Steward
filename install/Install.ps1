@@ -14,6 +14,11 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Icon = Join-Path $Root 'brand\steward.ico'
 $FolderName = 'Steward'
 
+# Names this has been shipped under before. Without clearing these, anyone who
+# installed under an older name is left with two Start Menu folders and a
+# shortcut whose name no longer matches anything they would search for.
+$FormerNames = @('Server Setup for Discord', 'CommunityOps')
+
 function New-Shortcut {
     param($Path, $Target, $WorkDir, $Description)
     $shell = New-Object -ComObject WScript.Shell
@@ -54,6 +59,21 @@ if (-not (Test-Path $Icon)) {
 }
 
 $Programs = [Environment]::GetFolderPath('Programs')
+$Desktop = [Environment]::GetFolderPath('Desktop')
+
+foreach ($old in $FormerNames) {
+    $stale = Join-Path $Programs $old
+    if (Test-Path $stale) {
+        Remove-Item -Recurse -Force $stale
+        Write-Host "  Removed the old '$old' Start Menu folder." -ForegroundColor DarkGray
+    }
+    $staleLink = Join-Path $Desktop "$old.lnk"
+    if (Test-Path $staleLink) {
+        Remove-Item -Force $staleLink
+        Write-Host "  Removed the old '$old' desktop shortcut." -ForegroundColor DarkGray
+    }
+}
+
 $Dest = Join-Path $Programs $FolderName
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 
@@ -61,7 +81,7 @@ New-Shortcut -Path (Join-Path $Dest 'Steward.lnk') `
     -Target (Join-Path $Root 'START.bat') -WorkDir $Root `
     -Description 'Set up and run your Discord community server'
 
-New-Shortcut -Path (Join-Path $Dest 'Steward ledger only.lnk') `
+New-Shortcut -Path (Join-Path $Dest 'Steward bot only.lnk') `
     -Target (Join-Path $Root 'steward\START-LEDGER.bat') `
     -WorkDir (Join-Path $Root 'steward') `
     -Description 'Run just the bot, without the setup page'
@@ -76,8 +96,7 @@ Write-Host "  Added to the Start Menu under '$FolderName'." -ForegroundColor Gre
 # shortcut they did not ask for is a small rudeness.
 $answer = Read-Host '  Put a shortcut on the desktop as well? (y/N)'
 if ($answer -match '^(y|yes)$') {
-    $desktop = [Environment]::GetFolderPath('Desktop')
-    New-Shortcut -Path (Join-Path $desktop 'Steward.lnk') `
+    New-Shortcut -Path (Join-Path $Desktop 'Steward.lnk') `
         -Target (Join-Path $Root 'START.bat') -WorkDir $Root `
         -Description 'Set up and run your Discord community server'
     Write-Host '  Added to the desktop.' -ForegroundColor Green
