@@ -61,6 +61,22 @@ def find_blueprint() -> str:
 BLUEPRINT = find_blueprint()
 
 
+def read_version() -> str:
+    """The running version. Every bug report starts with an argument about
+    which code somebody has, so the bot says so itself."""
+    for guess in ("../VERSION", "VERSION"):
+        try:
+            lines = open(guess, encoding="utf-8").read().strip().splitlines()
+            if lines:
+                return lines[0].strip()
+        except OSError:
+            continue
+    return "unknown"
+
+
+VERSION = read_version()
+
+
 def find_calendar() -> str:
     named = os.environ.get("STEWARD_CALENDAR")
     if named and os.path.exists(named):
@@ -278,7 +294,7 @@ class Steward(discord.Client):
     # -- backfill ---------------------------------------------------------
 
     async def on_ready(self):
-        log.info("connected as %s", self.user)
+        log.info("connected as %s (Steward v%s)", self.user, VERSION)
         for guild in self.guilds:
             seeded = 0
             async for member in guild.fetch_members(limit=None):
@@ -615,7 +631,8 @@ class Steward(discord.Client):
         e.add_field(name="Members tracked", value=f"{c['members']:,}")
         if c["since"]:
             e.add_field(name="Recording since", value=f"<t:{c['since']}:D>")
-        e.set_footer(text="Only who posted where and when. Never what was said.")
+        e.set_footer(text=f"v{VERSION} · Only who posted where and when. "
+                          f"Never what was said.")
         return e
 
     async def update_status(self, running=True):

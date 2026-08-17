@@ -335,24 +335,67 @@ pasting.
 
 ---
 
-## 7. What is next, in order
+## 7. The seven jobs, and where they stand
 
-The build order below is from the community-ops build plan, unchanged, with
-the reasoning compressed.
+The build order is from the community-ops build plan. All seven are built.
 
-| # | Thing | When | Why then |
+| # | Thing | State | The reason it sat where it did |
 |---|---|---|---|
-| 1 | Ledger | **done, this pass** | Impossible to backfill. Everything else reads from it |
-| 2 | Cohort reports | ~2 weeks in | First visible payoff. Makes the ledger feel worth it |
-| 3 | Calendar engine | ~4 weeks in | The actual daily-labour saver. Reads T-minus-relative beats from `content-calendar.yaml` |
-| 4 | Playtest pipeline | when you start recruiting testers | Steam beta keys cap at 2,500 total. Native Steam Playtest has no practical cap and lives on your store page |
-| 5 | Decay detection | after ~8 weeks of baseline | Meaningless before that. It is a comparison against a channel's own trend, and there is no trend yet |
-| 6 | Funnel metrics | any time | It is a query, not a feature. `/ledger-status` already does the 7-day version |
-| 7 | Provisioner | already exists | Built early here because it saved you a day of clicking and forces the blueprint to be real rather than a document. Do not extend it further until server #2 exists |
+| 1 | Ledger | done | Impossible to backfill. Everything else reads from it |
+| 2 | Cohort reports | done | First visible payoff. Makes the ledger feel worth it |
+| 3 | Calendar engine | done | The daily-labour saver. Reads T-minus beats from `blueprint/content-calendar.yaml` |
+| 4 | Decay detection | done, **dormant until 8 weeks of data** | It compares a channel against its own trend, and on a new server that trend is the launch spike. It says so instead of reporting nonsense |
+| 5 | Playtest pipeline | done | Steam override keys cap at 2,500 for the lifetime of the title. Native Steam Playtest has no practical cap and lives on your store page |
+| 6 | Funnel metrics | done | A query, not a feature. `/ledger-status` does the 7-day version |
+| 7 | Provisioner | done, built early | It saved a day of clicking and forced the blueprint to be executable rather than descriptive. Do not extend it further until server #2 exists |
 
 The temptation will be to build more provisioner. Resist it. A provisioner
 that deploys a blueprint you have not validated is a way to make the same
 mistakes twice.
+
+### Running the calendar
+
+Set your launch date in step 8 of the setup page, or `LAUNCH_DATE` in
+`steward\.env`. Nothing fires without one; every T-minus beat stays dormant
+rather than being resolved against a guess.
+
+```
+/calendar                       what is scheduled, and how far out T-0 is
+/calendar-run beat:launch-day   draft one now, without waiting for its date
+/calendar-reload                re-read the file after editing it
+```
+
+When a beat comes due it is drafted into `#steward-reports` with **Approve and
+post** and **Skip**. Nothing reaches members until somebody clicks. Beats
+marked `kind: reminder` skip the approval and go straight to staff, because
+approving your own to-do list is theatre.
+
+### Running a playtest
+
+```
+/playtest-join                       members opt in and get the role
+/playtest-open wave:wave-1
+/playtest-keys wave:wave-1 keys:...  the keys go in the ledger database
+/playtest-issue wave:wave-1 member:@someone
+/playtest-status                     who has what, and how many played
+/playtest-report                     a tester files a bug into the forum
+```
+
+`steward/data/steward.sqlite3` then holds live keys. It is a secret. Do not
+commit it, do not attach it to anything, and do not paste it anywhere,
+including into an AI assistant.
+
+See [docs/playtest-pipeline.md](docs/playtest-pipeline.md) for the Steam
+constraints before you buy any keys.
+
+### Staying up to date
+
+The page header shows its version and has a **Check for updates** button. It
+only checks when pressed. Updating copies any file you have edited into
+`backups/` before replacing it, so an edited blueprint is never lost, and it
+installs new dependencies so an update cannot half-apply.
+
+To publish a version: `python toolselease.py 0.2.2 --notes "what changed"`.
 
 ---
 

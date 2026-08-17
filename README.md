@@ -38,7 +38,7 @@ once you paste a token. The CLI does the same job with flags.
 | Core | verified against a stubbed Discord API: phase ordering, idempotency (second run makes 0 creates, 45 updates), dry-run writes nothing |
 | UI | boots and serves; connect / invite / refresh / customize / apply / cleanup all exercised against a stubbed API |
 | Ledger | logic smoke-tested against a temp database |
-| Calendar | 17 one-off beats and 3 recurring, resolving against a 2027-03-01 launch and validated against the blueprint's own channels and roles |
+| Calendar | 18 one-off beats and 3 recurring, resolving against a 2027-03-01 launch and validated against the blueprint's own channels and roles |
 | Playtest | key issuance, reissue, revoke and forget-me exercised against a temp database |
 | Decay | the maths exercised against seeded ledgers, including the quiet-week and dominant-channel cases |
 | Updates | version compare, backup-before-overwrite and fast-forward exercised against a throwaway pair of repos |
@@ -489,7 +489,7 @@ python tests
 un_tests.py
 ```
 
-167 checks, no test framework to install. `tests/fake_discord.py` stands in for
+180 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

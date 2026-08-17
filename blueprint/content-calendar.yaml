@@ -111,6 +111,22 @@ beats:
       If the store page is not started yet, it is now the thing blocking the
       launch date rather than the game.
 
+  - id: channel-obfuscation
+    kind: reminder
+    when: 2026-11-09
+    channel: steward-reports
+    body: |
+      **Discord's Channel Obfuscation goes mandatory on 16 November 2026**, a
+      week from today.
+
+      Bots stop receiving full metadata for channels they cannot see: names and
+      permission details come back behind a `CHANNEL_OBFUSCATED` flag. Anything
+      that enumerates the whole server structure is what breaks, which here
+      means the provisioner and the by-hand audit.
+
+      Check that a run against a server where the bot cannot see every channel
+      still does the right thing, rather than finding out on the day.
+
   - id: steam-page-live
     when: T-160
     channel: announcements
