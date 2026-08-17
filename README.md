@@ -32,6 +32,86 @@ run `./start.sh` or `START.bat`.
 
 ---
 
+## What it looks like
+
+Ten steps, folded by default, because somebody coming back needs three of them.
+
+![The setup page](docs/screenshots/overview.png)
+
+Every screenshot below is the real page, taken with `tools/screenshots.py`
+rather than drawn, so they go stale the moment the program does.
+
+---
+
+### It assumes you have never made a Discord bot
+
+The Developer Portal walkthrough is built in, in the order the page actually
+appears, and it generates your invite link once you paste a token.
+
+![Creating the bot](docs/screenshots/01-bot.png)
+
+### Everything is a list you can edit
+
+Remove what you do not want, click any name to rename it, add your own. The
+panel on the right recounts as you go and tells you when a choice breaks one of
+Discord's rules, before anything is sent.
+
+The levels table is the same arithmetic the bot runs, so it shows what your
+curve really costs in XP **and in days**, for a chatty member and a casual one.
+"Level 120" means nothing until you know it is fifteen years away.
+
+![Choosing what to build](docs/screenshots/02-choose.png)
+
+### It builds, and re-building is normal
+
+Roles, then plain channels, then Community mode, then forum and announcement
+channels, then AutoMod, then onboarding. That order is not arbitrary: Discord
+refuses forum channels before Community mode, and Community mode before a rules
+channel exists. Re-running edits what is there rather than duplicating it.
+
+![Building it](docs/screenshots/03-build.png)
+
+### It writes the words, and you rewrite them here
+
+A real 16-rule document and a start-here post, posted and pinned. Discord will
+not let you edit a message the bot wrote, so they are edited here instead, and
+saving rewrites the message already in Discord rather than posting a second one.
+
+![Editing the posted content](docs/screenshots/04-content.png)
+
+### The bot runs from the page
+
+Install, start, stop and restart, with the log underneath. Started here it runs
+detached, so closing the page leaves it recording.
+
+![Running the ledger](docs/screenshots/05-ledger.png)
+
+### A content calendar that asks first
+
+One calendar per kind of project. Posts are dated relative to your launch, every
+one is editable in place, and **nothing reaches your members without you
+clicking Approve**.
+
+![The content calendar](docs/screenshots/06-calendar.png)
+
+### It checks its own work
+
+The only part of the page that reads your server back rather than describing
+what it would write. It finds the things that fail quietly: a post aimed at a
+channel you renamed, a level reward pointing at a role nobody made, a ping for a
+role that does not exist.
+
+![Checking the server](docs/screenshots/07-check.png)
+
+### And it is honest about what it cannot do
+
+Rules Screening, Raid Protection and installing other bots have no API at all.
+The list says exactly where to click, and remembers what you have ticked off.
+
+![The steps no API can perform](docs/screenshots/08-byhand.png)
+
+---
+
 ## What it actually does
 
 **Builds the server.** Roles, categories, channels including forum and
@@ -94,6 +174,7 @@ steward/                    the bot. Ledger, levels, digest, moderation log,
                             calendar engine, playtest pipeline, decay
 install/                    Start Menu shortcuts, and an Inno Setup script
 tools/build_dist.py         assemble the no-Python-needed download
+tools/screenshots.py        retake the README screenshots
 tools/release.py            cut a version: bump, tag, push, publish
 VERSION                     the single source of truth for what you are on
 SETUP.md                    the runbook
@@ -106,7 +187,7 @@ link once you paste a token. The CLI does the same job with flags.
 ```powershell
 python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
 python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
-python tests\run_tests.py                           # 210 checks, no framework
+python tests\run_tests.py                           # 212 checks, no framework
 ```
 
 ## State
@@ -579,7 +660,7 @@ python tests
 un_tests.py
 ```
 
-210 checks, no test framework to install. `tests/fake_discord.py` stands in for
+212 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

@@ -54,6 +54,7 @@
   .step:not(.shut) > .head .peek{display:none}
   .foldbar{display:flex; gap:8px; align-items:center; justify-content:flex-end;
     margin:-6px 0 12px; font-size:12px; color:var(--dimmer)}
+  body.solo header, body.solo .foldbar{display:none}
   .num{width:24px; height:24px; border-radius:50%; background:var(--line); color:var(--muted);
     display:grid; place-items:center; font-size:12.5px; font-weight:700; flex:none}
   .step.done .num{background:var(--green); color:#fff}
@@ -717,10 +718,31 @@ function foldAll(shut){
 }
 
 function initFolding(){
-  // Closed unless this machine has said otherwise. Nine open sections is a
-  // wall of text; nine headings is a table of contents.
+  // Closed unless this machine has said otherwise. Ten open sections is a
+  // wall of text; ten headings is a table of contents.
   const first = localStorage.getItem(FOLD_KEY) === null;
   const set = folded();
+  // ?open=s7,s8 opens exactly those and folds the rest, so a link can point
+  // at one step. Does not touch what this machine had remembered.
+  const params = new URLSearchParams(location.search);
+  const want = params.get('open');
+  // solo=1 hides the other steps outright rather than folding them. It exists
+  // so the screenshots in the README can be of one thing at a time.
+  const solo = params.get('solo') === '1';
+  if(want){
+    const only = new Set(want.split(',').map(x => x.trim()).filter(Boolean));
+    if(solo) document.body.classList.add('solo');
+    document.querySelectorAll('section.step').forEach(el => {
+      if(solo && !only.has(el.id)){ el.style.display = 'none'; return; }
+      el.classList.toggle('shut', !only.has(el.id));
+      const head = el.querySelector(':scope > .head');
+      if(head) head.addEventListener('click', e => {
+        if(e.target.closest('button, input, select, a, textarea')) return;
+        toggleStep(el.id);
+      });
+    });
+    return;
+  }
   document.querySelectorAll('section.step').forEach(el => {
     el.classList.toggle('shut', first ? true : set.has(el.id));
     const head = el.querySelector(':scope > .head');
@@ -909,9 +931,10 @@ async function loadBlueprint(){
   SEL = freshSelection(INV);
   renderVars();
   redraw();
-  loadExisting();
   loadManual();
-  loadEdits();
+  // These two need a server and a token. Reading the blueprint does not, so
+  // step 4 is browsable before anybody has made a bot.
+  if(GUILD){ loadExisting(); loadEdits(); }
 }
 
 /* What is already in the server, so leftovers from Discord's default template
@@ -2412,6 +2435,7 @@ function copyStep(i, btn){
 }
 
 initFolding();
+initBlueprints();
 loadManual();
 loadCalendar();
 showVersion();
