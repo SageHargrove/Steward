@@ -489,7 +489,7 @@ python tests
 un_tests.py
 ```
 
-180 checks, no test framework to install. `tests/fake_discord.py` stands in for
+185 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

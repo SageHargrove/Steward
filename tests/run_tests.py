@@ -1966,6 +1966,172 @@ def _():
     assert claim < send, "the beat is posted before it is claimed"
 
 # ---------------------------------------------------------------------------
+print("\ncalendar, end to end")
+
+import asyncio as _aio                                    # noqa: E402
+import types as _types                                    # noqa: E402
+
+
+class _Chan:
+    """Just enough of a Discord channel to drive draft and publish."""
+
+    def __init__(self, name, kind="text"):
+        self.name, self.kind, self.sent = name, kind, []
+        self.mention = f"#{name}"
+        self.published = False
+
+    def is_news(self):
+        return self.kind == "news"
+
+    async def send(self, content=None, **kw):
+        self.sent.append((content, kw))
+        chan = self
+
+        async def pub():
+            chan.published = True
+
+        async def edit(**k):
+            chan.edited = k
+
+        return _types.SimpleNamespace(
+            id=len(self.sent), publish=pub, edit=edit,
+            embeds=[kw["embed"]] if kw.get("embed") else [])
+
+
+class _Guild:
+    def __init__(self):
+        self.id = 1
+        self.text_channels = [_Chan("steward-reports"), _Chan("announcements", "news"),
+                              _Chan("general")]
+        self.forums, self.roles, self.voice_channels = [], [], []
+
+    def get_channel(self, cid):
+        return None
+
+    async def fetch_scheduled_events(self):
+        return []
+
+
+async def _noop(**k):
+    pass
+
+
+def _bot(tmpdb):
+    """Import bot.py against a throwaway database and hand back the client."""
+    import os, importlib
+    os.environ["STEWARD_DB"] = str(tmpdb)
+    sys.path.insert(0, str(ROOT / "steward"))
+    import bot as _b
+    importlib.reload(_b)
+    return _b
+
+
+def _drive(fn):
+    # mkdtemp rather than TemporaryDirectory: Windows will not delete a file
+    # SQLite still has open, and the cleanup raises before the test can report.
+    import tempfile
+    d = tempfile.mkdtemp()
+    b = _bot(Path(d) / "t.sqlite3")
+    return _aio.run(fn(b, _Guild()))
+
+
+@test("a beat drafted out of season can still be approved")
+def _():
+    # /calendar-run drafts a beat dated today, which is the only way to look at
+    # a T-140 beat in August. Approval used to ask the schedule what was due on
+    # that date, found nothing, and refused every test draft it had just made.
+    async def go(b, g):
+        from datetime import date as _d
+        today = _d(2026, 8, 17)
+        occ = b.client.calendar.find("launch-day", today)
+        assert occ is not None, "launch-day is not in the calendar"
+        assert await b.client.draft_beat(g, occ), "draft failed"
+        run = b.client.ledger.calendar_by_draft(1, 1)
+        assert run and run["status"] == "drafted"
+
+        inter = _types.SimpleNamespace(
+            guild=g, guild_id=1,
+            user=_types.SimpleNamespace(
+                id=7, mention="@me",
+                guild_permissions=_types.SimpleNamespace(manage_guild=True)),
+            message=_types.SimpleNamespace(id=1, embeds=[], edit=_noop))
+        await b.client.publish_beat(inter, run)
+
+        ann = g.text_channels[1]
+        assert len(ann.sent) == 1, "the beat never reached its channel"
+        after = b.client.ledger.calendar_seen(1, "launch-day", "2026-08-17")
+        assert after["status"] == "published", after
+        return True
+    assert _drive(go)
+
+
+@test("the draft warns before a beat that pings the whole server")
+def _():
+    async def go(b, g):
+        from datetime import date as _d
+        occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
+        await b.client.draft_beat(g, occ)
+        body = g.text_channels[0].sent[0][0]
+        assert "pings people" in body, body
+        assert "#announcements" in body, body
+        return True
+    assert _drive(go)
+
+
+@test("an approved beat is crossposted from an announcement channel")
+def _():
+    # Announcement channels can be followed by other servers, which is free
+    # reach and the reason #devlog and #announcements are that type.
+    async def go(b, g):
+        from datetime import date as _d
+        occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
+        await b.client.draft_beat(g, occ)
+        run = b.client.ledger.calendar_by_draft(1, 1)
+        inter = _types.SimpleNamespace(
+            guild=g, guild_id=1,
+            user=_types.SimpleNamespace(
+                id=7, mention="@me",
+                guild_permissions=_types.SimpleNamespace(manage_guild=True)),
+            message=_types.SimpleNamespace(id=1, embeds=[], edit=_noop))
+        await b.client.publish_beat(inter, run)
+        assert g.text_channels[1].published, "not crossposted"
+        return True
+    assert _drive(go)
+
+
+@test("a reminder skips approval and stops at staff")
+def _():
+    async def go(b, g):
+        from datetime import date as _d
+        occ = b.client.calendar.find("launch-week", _d(2026, 8, 17))
+        await b.client.draft_beat(g, occ)
+        row = b.client.ledger.calendar_seen(1, "launch-week", "2026-08-17")
+        assert row["status"] == "published", row
+        staff = g.text_channels[0]
+        assert len(staff.sent) == 1
+        assert "view" not in staff.sent[0][1], "a reminder was given buttons"
+        # And it must not have reached anywhere members can see.
+        assert not g.text_channels[1].sent and not g.text_channels[2].sent
+        return True
+    assert _drive(go)
+
+
+@test("a beat aimed at a channel that does not exist fails once, not forever")
+def _():
+    async def go(b, g):
+        from datetime import date as _d
+        g.text_channels = [_Chan("steward-reports")]      # no #announcements
+        occ = b.client.calendar.find("launch-day", _d(2026, 8, 17))
+        await b.client.draft_beat(g, occ)
+        row = b.client.ledger.calendar_seen(1, "launch-day", "2026-08-17")
+        assert row["status"] == "failed", row
+        # Recorded, so the hourly tick does not retry it every hour all week.
+        assert await b.client.draft_beat(g, occ) is False
+        return True
+    assert _drive(go)
+
+
+# ---------------------------------------------------------------------------
 print("\ndecay detection")
 
 import decay                                             # noqa: E402

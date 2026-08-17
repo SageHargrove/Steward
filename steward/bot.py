@@ -899,13 +899,16 @@ class Steward(discord.Client):
 
     def find_beat(self, beat_id: str, fire_date: str):
         """Re-read the beat off the calendar at approval time rather than
-        storing a copy, so fixing a typo in the file fixes the pending draft."""
+        storing a copy, so fixing a typo in the file fixes the pending draft.
+
+        Looked up by id, not by what happens to fall on that date. Asking the
+        schedule what is due on the draft's date fails for anything drafted out
+        of season with /calendar-run, which is the only way to look at a T-140
+        beat in August, so every test draft could be posted and never approved.
+        """
         from datetime import date as _date
         y, m, d = (int(x) for x in fire_date.split("-"))
-        for occ in self.calendar.occurrences(_date(y, m, d), _date(y, m, d)):
-            if occ.id == beat_id:
-                return occ
-        return None
+        return self.calendar.find(beat_id, _date(y, m, d))
 
     async def close_draft(self, message, note: str, colour):
         """Retire an approval message so it cannot be clicked twice."""
