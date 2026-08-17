@@ -1705,28 +1705,61 @@ def _():
     # anything written there would be lost on the next update.
     base = {"meta": {"anchor": "2027-03-01"},
             "beats": [{"id": "a", "when": "T-10", "channel": "general", "body": "shipped"}]}
-    local = {"beats": [{"id": "a", "body": "mine", "title": "Mine"}]}
+    local = {"posts": [{"id": "a", "body": "mine", "title": "Mine"}]}
     out = ce.merge(base, local)
-    assert out["beats"][0]["body"] == "mine"
-    assert out["beats"][0]["title"] == "Mine"
-    assert out["beats"][0]["when"] == "T-10", "an unedited field was lost"
+    assert out["posts"][0]["body"] == "mine"
+    assert out["posts"][0]["title"] == "Mine"
+    assert out["posts"][0]["when"] == "T-10", "an unedited field was lost"
     assert base["beats"][0]["body"] == "shipped", "merge mutated the original"
+
+
+@test("the calendar is not offered as a server blueprint")
+def _():
+    # The blueprint folder also holds the content calendar, which is YAML but
+    # describes posts, not a server. It sorted first in the picker, so the page
+    # opened with it selected and an empty panel.
+    sys.path.insert(0, str(ROOT / "ui"))
+    import app as _app
+    names = [b["file"] for b in _app.list_blueprints()]
+    assert "content-calendar.yaml" not in names, names
+    assert "default.yaml" in names, names
+    assert not _app.looks_like_a_blueprint({"meta": {}, "posts": []})
+    assert _app.looks_like_a_blueprint({"roles": [{"name": "x"}]})
+
+
+@test("the page starts with every section folded")
+def _():
+    # Nine open sections is a wall of text. Nine headings is a table of
+    # contents, and which ones you open is remembered after that.
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "localStorage.getItem(FOLD_KEY) === null" in html,         "there is no first-run default, so everything opens expanded"
+    assert "first ? true : set.has(el.id)" in html
+
+
+@test("a calendar written with the old 'beats:' key still loads")
+def _():
+    # The key was renamed to posts because "beats" is jargon. Anything already
+    # written has to keep working, including override files.
+    old = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
+    assert len(ce.Calendar(old).beats) == 1
+    out = ce.merge(old, {"posts": [{"id": "a", "body": "edited"}]})
+    assert out["posts"][0]["body"] == "edited"
 
 
 @test("a shipped beat can be hidden without being deleted")
 def _():
     base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"},
                       {"id": "b", "when": "T-2", "channel": "g", "body": "y"}]}
-    out = ce.merge(base, {"beats": [{"id": "a", "enabled": False}]})
-    assert [b["id"] for b in out["beats"]] == ["b"]
+    out = ce.merge(base, {"posts": [{"id": "a", "enabled": False}]})
+    assert [b["id"] for b in out["posts"]] == ["b"]
 
 
 @test("a beat of your own is added at the end")
 def _():
     base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
-    out = ce.merge(base, {"beats": [{"id": "mine", "when": "T-3",
+    out = ce.merge(base, {"posts": [{"id": "mine", "when": "T-3",
                                      "channel": "g", "body": "z"}]})
-    assert [b["id"] for b in out["beats"]] == ["a", "mine"]
+    assert [b["id"] for b in out["posts"]] == ["a", "mine"]
 
 
 @test("the overrides file survives an update")

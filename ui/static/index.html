@@ -264,9 +264,10 @@
   .beat .bh{display:flex; gap:10px; align-items:baseline; padding:8px 2px;
     cursor:pointer; font-size:13px}
   .beat .bh:hover{background:rgba(255,255,255,.02)}
-  .beat .bid{font-family:ui-monospace,Consolas,monospace; font-size:12px;
-    color:var(--fg); min-width:170px}
-  .beat .bwhen{color:var(--dim); font-size:12px; min-width:74px}
+  .beat .bid{color:var(--fg); min-width:190px; font-size:13px}
+  .beat .bwhen{color:var(--dim); font-size:12px; min-width:150px;
+    font-variant-numeric:tabular-nums}
+  .beat .tmin{color:var(--dimmer); font-size:11.5px; margin-left:6px}
   .beat .bsum{color:var(--dimmer); font-size:12px; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; flex:1}
   .beat.off .bid, .beat.off .bsum{text-decoration:line-through; opacity:.55}
@@ -697,9 +698,12 @@ function foldAll(shut){
 }
 
 function initFolding(){
+  // Closed unless this machine has said otherwise. Nine open sections is a
+  // wall of text; nine headings is a table of contents.
+  const first = localStorage.getItem(FOLD_KEY) === null;
   const set = folded();
   document.querySelectorAll('section.step').forEach(el => {
-    el.classList.toggle('shut', set.has(el.id));
+    el.classList.toggle('shut', first ? true : set.has(el.id));
     const head = el.querySelector(':scope > .head');
     if(!head) return;
     head.addEventListener('click', e => {
@@ -1786,163 +1790,20 @@ async function applyUpdate(hasDirty){
   setTimeout(() => restartApp(true), 1500);
 }
 
-/* ---- editing the beats -------------------------------------------------
-   Edits are saved into content-calendar.local.yaml, never into the shipped
-   calendar. That file keeps its comments, an update replaces it freely, and
-   it stays clean enough to redeploy to the next project. */
+/* ---- the content calendar -------------------------------------------
+   One list. Each row is a post, says when it next goes out, and opens into
+   its own editor. There was a schedule up here and an editor at the bottom,
+   which meant scrolling past sixty rows to change one line. */
 
-let BEATS = null;
-
-async function loadBeats(){
-  try{ BEATS = await api('/api/calendar/beats'); }
-  catch(e){ $('#beatlist').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
-  renderBeats();
-}
-
-function beatSummary(b){
-  if(b.hidden) return 'hidden, and not posted';
-  const where = b.kind === 'reminder' ? 'reminder to staff' : '#' + (b.channel || '?');
-  const first = (b.body || '').replace(/\s+/g, ' ').trim().slice(0, 90);
-  return where + ' · ' + first;
-}
-
-function renderBeats(){
-  if(!BEATS || !BEATS.present){ $('#beatlist').innerHTML = ''; return; }
-  const rows = BEATS.beats.map((b, i) => {
-    const badges = [];
-    if(b.edited) badges.push('<span class="badge mine">edited</span>');
-    if(!b.shipped) badges.push('<span class="badge">yours</span>');
-    if(b.list === 'recurring') badges.push('<span class="badge">repeats</span>');
-    const when = b.list === 'recurring' ? esc(b.every || '') : esc(b.when || '');
-    return `<div class="beat ${b.hidden ? 'off' : ''}" id="beat${i}">
-      <div class="bh" onclick="toggleBeat(${i})">
-        <span class="bid">${esc(b.id)}</span>
-        <span class="bwhen">${when}</span>
-        <span class="bsum">${esc(beatSummary(b))}</span>
-        ${badges.join(' ')}
-      </div>
-      <div class="edit">${beatForm(b, i)}</div>
-    </div>`;
-  }).join('');
-
-  $('#beatlist').innerHTML = `
-    <div class="row" style="justify-content:space-between; align-items:baseline">
-      <b style="font-size:13.5px">Edit the beats</b>
-      <button class="ghost small" onclick="newBeat()">Add a beat</button>
-    </div>
-    <div class="hint" style="margin:4px 0 10px">
-      Change the wording, the channel, or the date of anything below. Your edits
-      go in <b>${esc(BEATS.overrides_file)}</b> and are never overwritten by an
-      update, so the calendar can keep improving underneath them.
-      <b>{{game}}</b> is filled in from step 4, so leave it as it is if you want
-      it to keep working on another server.
-    </div>
-    ${rows}`;
-}
-
-function beatForm(b, i){
-  const isRec = b.list === 'recurring';
-  const opt = (v, cur, label) =>
-    `<option value="${v}" ${cur === v ? 'selected' : ''}>${label}</option>`;
-  return `
-    <div class="grid3">
-      <div>
-        <label>${isRec ? 'Every' : 'When'}</label>
-        ${isRec
-          ? `<select id="bevery${i}">
-               ${['monday','tuesday','wednesday','thursday','friday','saturday','sunday','daily']
-                 .map(d => opt(d, b.every, d)).join('')}
-             </select>`
-          : `<input id="bwhen${i}" value="${esc(b.when)}" placeholder="T-90 or 2027-01-10">`}
-      </div>
-      <div>
-        <label>Channel</label>
-        <input id="bchan${i}" value="${esc(b.channel)}" placeholder="announcements">
-      </div>
-      <div>
-        <label>Kind</label>
-        <select id="bkind${i}">
-          ${opt('post', b.kind, 'Posted, after you approve it')}
-          ${opt('reminder', b.kind, 'Reminder, staff only')}
-        </select>
-      </div>
-    </div>
-    <label>Title <span style="text-transform:none">(optional, and forum posts use it as the thread name)</span></label>
-    <input id="btitle${i}" value="${esc(b.title)}" placeholder="leave blank for none">
-    <label>What it says</label>
-    <textarea id="bbody${i}" spellcheck="true">${esc(b.body)}</textarea>
-    <label>Mention <span style="text-transform:none">(blank for nobody)</span></label>
-    <input id="bment${i}" value="${esc(b.mention)}" placeholder="Ping Me For Playtests, or everyone">
-    <div class="row" style="margin-top:12px; gap:8px">
-      <button onclick="saveBeat(${i})" id="bsave${i}">Save</button>
-      ${b.shipped ? `<button class="ghost small" onclick="hideBeat(${i})">
-         ${b.hidden ? 'Put it back' : 'Never post this'}</button>` : ''}
-      ${b.edited ? `<button class="ghost small" onclick="resetBeat(${i})">Undo my changes</button>` : ''}
-      ${!b.shipped ? `<button class="ghost small" onclick="resetBeat(${i})">Delete</button>` : ''}
-      <span class="hint" id="bmsg${i}" style="margin:0"></span>
-    </div>`;
-}
-
-function toggleBeat(i){
-  const el = document.getElementById('beat' + i);
-  if(el) el.classList.toggle('open');
-}
-
-async function saveBeat(i){
-  const b = BEATS.beats[i];
-  const val = id => { const el = document.getElementById(id + i); return el ? el.value.trim() : ''; };
-  const payload = {
-    id: b.id, list: b.list, kind: val('bkind'), title: val('btitle'),
-    body: val('bbody'), channel: val('bchan'), mention: val('bment'),
-  };
-  if(b.list === 'recurring') payload.every = val('bevery'); else payload.when = val('bwhen');
-
-  const msg = $('#bmsg' + i);
-  msg.textContent = 'Saving...';
-  try{
-    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify(payload)});
-  }catch(e){ msg.innerHTML = `<span style="color:#f5c2c3">${esc(e.message)}</span>`; return; }
-  msg.textContent = 'Saved. Run /calendar-reload in Discord, or restart the bot.';
-  await loadBeats(); await loadCalendar();
-}
-
-async function hideBeat(i){
-  const b = BEATS.beats[i];
-  if(b.hidden){ return resetBeat(i); }
-  if(!confirm(`Stop "${b.id}" ever being posted?\n\nIt is not deleted; you can put it back.`)) return;
-  await api('/api/calendar/beat',
-            {method:'POST', body: JSON.stringify({id: b.id, list: b.list, hidden: true})});
-  await loadBeats(); await loadCalendar();
-}
-
-async function resetBeat(i){
-  const b = BEATS.beats[i];
-  const own = !b.shipped;
-  if(!confirm(own ? `Delete "${b.id}"?` : `Undo your changes to "${b.id}" and go back to the original?`)) return;
-  await api('/api/calendar/beat/reset', {method:'POST', body: JSON.stringify({id: b.id})});
-  await loadBeats(); await loadCalendar();
-}
-
-async function newBeat(){
-  const id = (prompt('A short id for the new beat, like "patch-notes-friday":') || '').trim();
-  if(!id) return;
-  try{
-    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify({
-      id, list: 'beats', kind: 'post', when: 'T-30', channel: 'announcements',
-      body: 'Write what this beat should say.'})});
-  }catch(e){ alert(e.message); return; }
-  await loadBeats(); await loadCalendar();
-  const i = BEATS.beats.findIndex(b => b.id === id);
-  if(i >= 0){ toggleBeat(i); document.getElementById('beat' + i).scrollIntoView({block:'center'}); }
-}
-
-/* ---- the content calendar ------------------------------------------- */
-
-let CAL = null;
+let POSTS = null;
 
 async function loadCalendar(){
-  try{ CAL = await api('/api/calendar?days=180'); }
+  let r;
+  try{ r = await api('/api/calendar?days=1'); }
   catch(e){ $('#calbody').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
+  CAL = r;
+  try{ POSTS = await api('/api/calendar/beats'); }
+  catch(e){ POSTS = null; }
   renderCalendar();
 }
 
@@ -1968,43 +1829,170 @@ function renderCalendar(){
       <button class="ghost small" onclick="saveAnchor()">Set</button>
       <div class="hint" style="flex:1 1 220px; margin:0">
         ${anchor
-          ? `Everything below is counted from here. Today is
+          ? `Dates below are counted from here. Today is
              <b>T${CAL.t_minus >= 0 ? '+' : ''}${CAL.t_minus}</b>.`
-          : `<b>Not set, so nothing will ever fire.</b> Every beat written as
-             T-minus stays dormant until this has a date in it.`}
-        ${CAL.override ? ' Stored in steward\\.env, so the calendar file itself'
-                       + ' stays reusable.' : ''}
+          : `<b>Not set, so nothing will ever post.</b> Anything dated T-minus
+             stays dormant until this has a date in it.`}
       </div>
     </div>`;
 
   const problems = (CAL.errors || []).map(e =>
-      `<div class="msg err">${esc(e)}</div>`).join('')
-    + (CAL.warnings || []).map(w =>
-      `<div class="msg warn">${esc(w)}</div>`).join('');
+      `<div class="msg err">${esc(e)}</div>`).join('');
+  $('#calbody').innerHTML = head + problems;
+  renderPosts();
+}
 
-  const rows = (CAL.upcoming || []).map(u => {
+function postSummary(p){
+  if(p.hidden) return 'never posted';
+  const where = p.kind === 'reminder'
+    ? 'reminder, staff only' : 'into #' + (p.channel || '?');
+  const first = (p.body || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return where + ' · ' + first;
+}
+
+function renderPosts(){
+  if(!POSTS || !POSTS.present){ $('#beatlist').innerHTML = ''; return; }
+  const rows = POSTS.posts.map((p, i) => {
     const tags = [];
-    if(u.recurring) tags.push('<span class="caltag">repeats</span>');
-    if(u.event) tags.push('<span class="caltag">event</span>');
-    if(u.mention) tags.push(`<span class="caltag ping">pings @${esc(u.mention)}</span>`);
-    const where = u.kind === 'reminder'
-      ? 'reminder, staff only'
-      : 'into #' + esc(u.channel);
-    return `<div class="calrow ${u.kind === 'reminder' ? 'rem' : ''}">
-      <span class="d">${esc(u.date)}</span>
-      <span class="t">${u.t === null ? '' : 'T' + (u.t >= 0 ? '+' : '') + u.t}</span>
-      <span>${esc(u.title)}<br><span class="who">${where}</span></span>
-      <span>${tags.join(' ')}</span>
+    if(p.edited) tags.push('<span class="badge mine">edited</span>');
+    if(!p.shipped) tags.push('<span class="badge">yours</span>');
+    if(p.list === 'recurring') tags.push(`<span class="badge">every ${esc(p.every)}</span>`);
+    if(p.event) tags.push('<span class="badge">event</span>');
+    if(p.mention) tags.push(`<span class="caltag ping">pings @${esc(p.mention)}</span>`);
+    const when = p.next
+      ? `${p.next}<span class="tmin"> T${p.t >= 0 ? '+' : ''}${p.t}</span>`
+      : '<span class="tmin">not scheduled</span>';
+    return `<div class="beat ${p.hidden ? 'off' : ''}" id="beat${i}">
+      <div class="bh" onclick="togglePost(${i})">
+        <span class="bwhen">${when}</span>
+        <span class="bid">${esc(p.title || p.id)}</span>
+        <span class="bsum">${esc(postSummary(p))}</span>
+        ${tags.join(' ')}
+      </div>
+      <div class="edit">${postForm(p, i)}</div>
     </div>`;
   }).join('');
 
-  $('#calbody').innerHTML = head + problems + `
-    <div class="hint" style="margin-bottom:2px">
-      <b>${CAL.counts.beats}</b> one-off beats and <b>${CAL.counts.recurring}</b>
-      recurring, from <b>${esc(CAL.name)}</b>.
-      ${rows ? 'Next ' + CAL.upcoming.length + ' in the coming 180 days:' :
-               'Nothing falls in the next 180 days.'}
-    </div>` + rows;
+  $('#beatlist').innerHTML = `
+    <div class="row" style="justify-content:space-between; align-items:baseline;
+                            margin-bottom:6px">
+      <b style="font-size:13.5px">Everything it will post</b>
+      <button class="ghost small" onclick="newPost()">Add a post</button>
+    </div>
+    <div class="hint" style="margin:0 0 10px">
+      Click any row to change its wording, channel or date, or to stop it being
+      posted. Changes are saved to <b>${esc(POSTS.overrides_file)}</b> and are
+      never overwritten by an update. Leave <b>{{game}}</b> alone if you want
+      this to keep working on another server; it is filled in from step 4.
+    </div>
+    ${rows}`;
+}
+
+function postForm(p, i){
+  const isRec = p.list === 'recurring';
+  const opt = (v, cur, label) =>
+    `<option value="${v}" ${cur === v ? 'selected' : ''}>${label}</option>`;
+  return `
+    <div class="grid3">
+      <div>
+        <label>${isRec ? 'Repeats' : 'When'}</label>
+        ${isRec
+          ? `<select id="bevery${i}">
+               ${['monday','tuesday','wednesday','thursday','friday','saturday','sunday','daily']
+                 .map(d => opt(d, p.every, 'every ' + d)).join('')}
+             </select>`
+          : `<input id="bwhen${i}" value="${esc(p.when)}" placeholder="T-90, or 2027-01-10">`}
+      </div>
+      <div>
+        <label>Channel</label>
+        <input id="bchan${i}" value="${esc(p.channel)}" placeholder="announcements">
+      </div>
+      <div>
+        <label>Goes to</label>
+        <select id="bkind${i}">
+          ${opt('post', p.kind, 'Members, once you approve it')}
+          ${opt('reminder', p.kind, 'Only your staff channel')}
+        </select>
+      </div>
+    </div>
+    <label>Heading <span style="text-transform:none">(optional)</span></label>
+    <input id="btitle${i}" value="${esc(p.title)}" placeholder="leave blank for none">
+    <label>What it says</label>
+    <textarea id="bbody${i}" spellcheck="true">${esc(p.body)}</textarea>
+    <label>Pings <span style="text-transform:none">(blank for nobody)</span></label>
+    <input id="bment${i}" value="${esc(p.mention)}" placeholder="a role name, or everyone">
+    <div class="row" style="margin-top:12px; gap:8px">
+      <button onclick="savePost(${i})">Save</button>
+      ${p.shipped
+        ? `<button class="ghost small" onclick="hidePost(${i})">${
+            p.hidden ? 'Post it again' : 'Never post this'}</button>`
+        : `<button class="ghost small" onclick="removePost(${i})">Remove</button>`}
+      ${p.edited && p.shipped
+        ? `<button class="ghost small" onclick="removePost(${i})">Back to the original</button>` : ''}
+      <span class="hint" id="bmsg${i}" style="margin:0"></span>
+    </div>`;
+}
+
+function togglePost(i){
+  const el = document.getElementById('beat' + i);
+  if(el) el.classList.toggle('open');
+}
+
+async function savePost(i){
+  const p = POSTS.posts[i];
+  const val = id => { const el = document.getElementById(id + i); return el ? el.value.trim() : ''; };
+  const payload = {
+    id: p.id, list: p.list, kind: val('bkind'), title: val('btitle'),
+    body: val('bbody'), channel: val('bchan'), mention: val('bment'),
+  };
+  if(p.list === 'recurring') payload.every = val('bevery'); else payload.when = val('bwhen');
+
+  const msg = $('#bmsg' + i);
+  msg.textContent = 'Saving...';
+  try{
+    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify(payload)});
+  }catch(e){ msg.innerHTML = `<span style="color:#f5c2c3">${esc(e.message)}</span>`; return; }
+  await loadCalendar();
+  const j = POSTS.posts.findIndex(x => x.id === p.id);
+  if(j >= 0){
+    togglePost(j);
+    $('#bmsg' + j).textContent = 'Saved. Run /calendar-reload in Discord, or restart the bot.';
+  }
+}
+
+async function hidePost(i){
+  const p = POSTS.posts[i];
+  if(p.hidden) return removePost(i);
+  if(!confirm(`Stop "${p.id}" being posted?\n\nIt is not deleted, and you can put it back.`)) return;
+  await api('/api/calendar/beat',
+            {method:'POST', body: JSON.stringify({id: p.id, list: p.list, hidden: true})});
+  await loadCalendar();
+}
+
+async function removePost(i){
+  const p = POSTS.posts[i];
+  const mine = !p.shipped;
+  if(!confirm(mine ? `Remove "${p.id}"?`
+                   : `Put "${p.id}" back the way it shipped, losing your changes?`)) return;
+  await api('/api/calendar/beat/reset', {method:'POST', body: JSON.stringify({id: p.id})});
+  await loadCalendar();
+}
+
+async function newPost(){
+  const id = (prompt('A short name for it, like "patch-notes-friday":') || '')
+    .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if(!id) return;
+  try{
+    await api('/api/calendar/beat', {method:'POST', body: JSON.stringify({
+      id, list: 'posts', kind: 'post', when: 'T-30', channel: 'announcements',
+      body: 'Write what this should say.'})});
+  }catch(e){ alert(e.message); return; }
+  await loadCalendar();
+  const i = POSTS.posts.findIndex(p => p.id === id);
+  if(i >= 0){
+    togglePost(i);
+    document.getElementById('beat' + i).scrollIntoView({block:'center', behavior:'smooth'});
+  }
 }
 
 async function saveAnchor(){
@@ -2317,7 +2305,6 @@ function copyStep(i, btn){
 initFolding();
 loadManual();
 loadCalendar();
-loadBeats();
 showVersion();
 renderCharts();
 </script>

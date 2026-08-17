@@ -1,21 +1,24 @@
 # Content calendar
 #
-# Beats are dated as offsets from launch day rather than as calendar dates.
+# Posts are dated as offsets from launch day rather than as calendar dates.
 # `T-42` means forty-two days before you ship and redeploys to any launch;
 # `2026-09-14` describes exactly one. That difference is the whole reason this
 # file is worth keeping.
 #
-# A few beats are deliberately absolute anyway. Steam Next Fest registration
-# closes when Valve says it closes, not when your launch happens to be, so
-# those are written as real dates and will need changing for a later fest.
+# A few are deliberately absolute anyway. Steam Next Fest registration closes
+# when Valve says it closes, not when your launch happens to be, so those are
+# written as real dates and will need changing for a later fest.
 #
-# Two kinds of beat:
+# Two kinds:
 #
 #   kind: post       drafted into your staff channel with Approve and Skip
 #                    buttons, and only reaches members when somebody clicks.
 #                    This is the default.
 #   kind: reminder   goes straight to the staff channel and stops there. It is
 #                    a thing for you to do, not a thing to publish.
+#
+# Everything here is editable in the setup page, which writes your changes to
+# content-calendar.local.yaml and leaves this file alone.
 #
 # Nothing fires at all until meta.anchor is set.
 
@@ -25,15 +28,15 @@ meta:
   # Launch day. T-0. Everything relative hangs off this one line.
   anchor: 2027-03-01
 
-  # Beats are checked hourly and go out on or after this hour, local to the
-  # timezone below. Late afternoon beats most alternatives: it catches people
+  # Checked hourly, and posted on or after this hour, local to the timezone
+  # below. Late afternoon beats most alternatives: it catches people
   # after work in Europe and before work in the Americas.
   timezone: UTC
   post_hour: 17
 
 # ---------------------------------------------------------------------------
-# The rhythm. Recurring beats are the ones that make a server feel inhabited,
-# and they are also the ones nobody keeps up by hand past week three.
+# The rhythm. Recurring posts are what make a server feel inhabited, and they
+# are also the ones nobody keeps up by hand past week three.
 
 recurring:
   - id: screenshot-saturday
@@ -69,7 +72,7 @@ recurring:
 # ---------------------------------------------------------------------------
 # The one-offs, in the order they arrive.
 
-beats:
+posts:
 
   # -- opening up ----------------------------------------------------------
 

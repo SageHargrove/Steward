@@ -109,12 +109,26 @@ def health(request: Request):
 # Blueprints
 # --------------------------------------------------------------------------
 
+def looks_like_a_blueprint(bp: dict) -> bool:
+    """A server blueprint declares roles or categories.
+
+    The blueprint folder also holds the content calendar and its overrides,
+    which are YAML but describe posts, not a server. Listing those put a second
+    entry in the picker that sorted first alphabetically, so the page opened
+    with it selected and an empty panel, and the only way out was to pick the
+    real one and then pick back.
+    """
+    return bool(bp.get("categories") or bp.get("roles"))
+
+
 @app.get("/api/blueprints")
 def list_blueprints():
     out = []
     for p in sorted(BLUEPRINTS.glob("*.yaml")):
         try:
             bp = core.load(p)
+            if not looks_like_a_blueprint(bp):
+                continue
             out.append({"file": p.name,
                         "name": bp.get("meta", {}).get("name", p.stem)})
         except Exception as e:
@@ -675,34 +689,57 @@ def calendar_beats():
     if local_file.exists():
         with open(local_file, encoding="utf-8") as fh:
             local = yaml.safe_load(fh) or {}
-    edited = {b.get("id") for b in (local.get("beats") or [])
-              + (local.get("recurring") or []) if b.get("id")}
-    hidden = {b.get("id") for b in (local.get("beats") or [])
-              + (local.get("recurring") or [])
-              if b.get("enabled") is False}
+    def rows(d, key):
+        return d.get(key) or (d.get("beats") if key == "posts" else None) or []
+
+    local_rows = rows(local, "posts") + rows(local, "recurring")
+    edited = {b.get("id") for b in local_rows if b.get("id")}
+    hidden = {b.get("id") for b in local_rows if b.get("enabled") is False}
+    shipped = {b.get("id") for b in rows(spec, "posts") + rows(spec, "recurring")}
 
     merged = calendar_engine.merge(spec, local)
-    shipped = {b.get("id") for b in (spec.get("beats") or [])
-               + (spec.get("recurring") or [])}
+    anchor = read_env().get("LAUNCH_DATE") or None
+    cal = calendar_engine.Calendar(
+        {**merged, "meta": {**(merged.get("meta") or {}),
+                            **({"anchor": anchor} if anchor else {})}})
+    from datetime import date, timedelta
+    today = date.today()
+
+    def next_run(bid):
+        """When this next goes out, so the list can be sorted by it and each
+        row can say it. Without this the page needs a second list."""
+        for occ in cal.occurrences(today, today + timedelta(days=800)):
+            if occ.id == bid:
+                return occ.date
+        return None
 
     out = []
-    for kind in ("beats", "recurring"):
-        for b in merged.get(kind, []):
+    for which in ("posts", "recurring"):
+        for b in merged.get(which, []):
+            nxt = next_run(b.get("id"))
             out.append({
-                "id": b.get("id"), "list": kind,
+                "id": b.get("id"), "list": which,
                 "kind": b.get("kind", "post"),
                 "title": b.get("title", ""), "body": b.get("body", ""),
                 "channel": b.get("channel", ""), "when": b.get("when", ""),
                 "every": b.get("every", ""), "mention": b.get("mention", ""),
+                "event": bool(b.get("event")),
+                "next": nxt.isoformat() if nxt else None,
+                "t": cal.t_minus(nxt) if nxt else None,
                 "edited": b.get("id") in edited,
                 "shipped": b.get("id") in shipped,
             })
     for bid in sorted(hidden):
-        out.append({"id": bid, "list": "beats", "hidden": True, "edited": True,
+        out.append({"id": bid, "list": "posts", "hidden": True, "edited": True,
                     "shipped": bid in shipped, "title": "", "body": "",
                     "channel": "", "when": "", "every": "", "mention": "",
-                    "kind": "post"})
-    return {"present": True, "beats": out,
+                    "kind": "post", "next": None, "t": None, "event": False})
+
+    # Soonest first, with anything dormant after it.
+    out.sort(key=lambda b: (b["next"] is None, b["next"] or "", b["id"]))
+    return {"present": True, "posts": out,
+            "anchor": cal.anchor.isoformat() if cal.anchor else None,
+            "t_today": cal.t_minus(today),
             "overrides_file": local_file.name,
             "has_overrides": local_file.exists()}
 
@@ -727,14 +764,16 @@ def calendar_save_beat(payload: dict = Body(...)):
         raise HTTPException(400, "An id must be lowercase letters, numbers and "
                                  "hyphens, like 'devlog-monday'.")
 
-    which = "recurring" if payload.get("list") == "recurring" else "beats"
+    which = "recurring" if payload.get("list") == "recurring" else "posts"
     local_file = calendar_engine.overrides_path(CALENDAR_FILE)
     local = {}
     if local_file.exists():
         with open(local_file, encoding="utf-8") as fh:
             local = yaml.safe_load(fh) or {}
-    local.setdefault("beats", [])
+    local.setdefault("posts", [])
     local.setdefault("recurring", [])
+    if local.pop("beats", None):        # written before the rename
+        local["posts"] = local["posts"] + local.get("beats", [])
 
     entry = {"id": bid}
     if payload.get("hidden"):
@@ -750,7 +789,7 @@ def calendar_save_beat(payload: dict = Body(...)):
             raise HTTPException(400, "A beat needs a channel to post in.")
 
     rows = [b for b in local[which] if b.get("id") != bid]
-    other = "recurring" if which == "beats" else "beats"
+    other = "recurring" if which == "posts" else "posts"
     local[other] = [b for b in local[other] if b.get("id") != bid]
     rows.append(entry)
     local[which] = rows
@@ -774,9 +813,10 @@ def calendar_reset_beat(payload: dict = Body(...)):
         return {"ok": True}
     with open(local_file, encoding="utf-8") as fh:
         local = yaml.safe_load(fh) or {}
-    for key in ("beats", "recurring"):
-        local[key] = [b for b in (local.get(key) or []) if b.get("id") != bid]
-    if not local.get("beats") and not local.get("recurring"):
+    for key in ("posts", "beats", "recurring"):
+        if key in local:
+            local[key] = [b for b in (local.get(key) or []) if b.get("id") != bid]
+    if not any(local.get(k) for k in ("posts", "beats", "recurring")):
         local_file.unlink()
         return {"ok": True, "removed_file": True}
     body = yaml.safe_dump(local, sort_keys=False, allow_unicode=True,

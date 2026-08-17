@@ -83,7 +83,9 @@ class Calendar:
         self.post_hour = int(meta.get("post_hour", 17))
         self.anchor = self._anchor(meta.get("anchor"))
         self.variables = variables or {}
-        self.beats = list(spec.get("beats") or [])
+        # `posts:` is the name now. `beats:` was content-marketing jargon and
+        # is still read, so a calendar written before the rename still loads.
+        self.beats = list(spec.get("posts") or spec.get("beats") or [])
         self.recurring = list(spec.get("recurring") or [])
 
     @staticmethod
@@ -303,11 +305,14 @@ def merge(spec: dict, local: dict) -> dict:
     hides a shipped beat without deleting it, and an id that is not in the
     original is simply added.
     """
+    def rows(d, key):
+        return d.get(key) or (d.get("beats") if key == "posts" else None) or []
+
     out = {"meta": {**(spec.get("meta") or {}), **(local.get("meta") or {})}}
-    for key in ("beats", "recurring"):
-        base = {b.get("id"): dict(b) for b in (spec.get(key) or []) if b.get("id")}
-        order = [b.get("id") for b in (spec.get(key) or []) if b.get("id")]
-        for edit in (local.get(key) or []):
+    for key in ("posts", "recurring"):
+        base = {b.get("id"): dict(b) for b in rows(spec, key) if b.get("id")}
+        order = [b.get("id") for b in rows(spec, key) if b.get("id")]
+        for edit in rows(local, key):
             bid = edit.get("id")
             if not bid:
                 continue

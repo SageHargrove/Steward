@@ -105,7 +105,7 @@ link once you paste a token. The CLI does the same job with flags.
 ```powershell
 python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
 python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
-python tests\run_tests.py                           # 204 checks, no framework
+python tests\run_tests.py                           # 207 checks, no framework
 ```
 
 ## State
@@ -412,12 +412,12 @@ Three things that took a second pass to get right:
   someone names a beat something long. A draft from last week still works after
   a restart.
 
-**Every beat is editable in the page.** Wording, channel, date, who it
+**Every post is editable in the page.** Wording, channel, date, who it
 mentions. Edits are written to `blueprint/content-calendar.local.yaml`, never
 back into the shipped calendar, for three reasons that all bite otherwise:
 rewriting the original would destroy its comments, an update replaces it so
 edits there would be lost every time, and keeping them apart leaves the shipped
-calendar clean enough to redeploy to the next project. Beats are matched by id,
+calendar clean enough to redeploy to the next project. Posts are matched by id,
 `enabled: false` hides one without deleting it, and a new id adds your own.
 
 The launch date lives in `steward/.env` as `LAUNCH_DATE`, not in the calendar
@@ -578,7 +578,7 @@ python tests
 un_tests.py
 ```
 
-204 checks, no test framework to install. `tests/fake_discord.py` stands in for
+207 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.
