@@ -342,11 +342,9 @@ class Steward(discord.Client):
         return True
 
     async def setup_hook(self):
-        # Global commands only. They reach servers the bot has not seen yet,
-        # but Discord caches them for up to an hour, which is why a renamed
-        # option shows the old name and then "this command is outdated". The
-        # per-guild copy in on_ready is what makes a change appear at once.
-        await self.tree.sync()
+        # Deliberately not synced here. on_ready registers the commands with
+        # each server directly, which is the only way a change appears at once
+        # rather than whenever Discord's cache expires.
         # Registered before anything else so a draft posted last week still has
         # working buttons after a restart.
         self.add_view(PostApproval())
@@ -356,23 +354,50 @@ class Steward(discord.Client):
         self.calendar_tick.start()
         self.pulse.start()
 
-    async def sync_commands(self):
-        """Copy the commands into every server the bot is in.
+    async def sync_commands(self, *guilds):
+        """Register the commands with each server directly.
 
-        A guild command replaces the global one of the same name and appears
-        immediately, where a global change can sit in Discord's cache for an
-        hour. Without this, renaming an option leaves people typing the old
-        name and being told the command is outdated.
+        A guild command appears the moment it is written. A global one can sit
+        in Discord's cache for an hour, which is why a renamed option kept
+        showing its old name and then refused the interaction as outdated.
+
+        The catch, and the reason this is not simply both: a command registered
+        globally *and* per guild is listed twice in the picker. So the global
+        copies are removed once, and new servers are covered by on_guild_join
+        instead.
         """
-        for guild in self.guilds:
+        for guild in (guilds or self.guilds):
             try:
                 self.tree.copy_global_to(guild=guild)
                 await self.tree.sync(guild=guild)
                 log.info("%s: commands updated", guild.name)
             except discord.HTTPException as e:
-                log.warning("%s: could not update commands (%s). They will "
-                            "still arrive once Discord's cache expires.",
-                            guild.name, e)
+                log.warning("%s: could not update commands: %s", guild.name, e)
+
+        await self.drop_global_commands()
+
+    async def drop_global_commands(self):
+        """Remove the global registrations, which would otherwise show up
+        alongside the per-guild ones and list every command twice.
+
+        The in-memory tree is put back afterwards, because it is what
+        copy_global_to reads when the bot joins a new server later.
+        """
+        try:
+            if not await self.tree.fetch_commands():
+                return
+            saved = list(self.tree.get_commands())
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()                  # an empty set deletes them
+            for command in saved:
+                self.tree.add_command(command)
+            log.info("removed %d duplicate global command(s)", len(saved))
+        except discord.HTTPException as e:
+            log.warning("could not remove the global commands: %s", e)
+
+    async def on_guild_join(self, guild):
+        """A new server needs the commands, and nothing is synced globally."""
+        await self.sync_commands(guild)
 
     # -- backfill ---------------------------------------------------------
 

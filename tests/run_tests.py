@@ -2133,19 +2133,72 @@ def _():
         assert wanted in names, f"/{wanted} is not registered. Have: {names}"
 
 
-@test("commands are pushed to each server, not only globally")
+@test("commands are registered per server, and not also globally")
 def _():
-    # A global command change sits in Discord's cache for up to an hour, so a
-    # renamed option leaves people typing the old name and being told the
-    # command is outdated. A guild command replaces the global one of the same
-    # name and appears at once.
-    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
-    assert "copy_global_to" in src, "commands are only ever synced globally"
-    body = src[src.index("async def sync_commands"):src.index("# -- backfill")]
-    assert "for guild in self.guilds" in body
-    assert "sync(guild=guild)" in body
-    ready = src[src.index("async def on_ready"):][:400]
-    assert "sync_commands()" in ready, "on_ready does not push the commands"
+    """A command registered both ways is listed twice in the picker.
+
+    Global commands sit in Discord's cache for up to an hour, so a renamed
+    option kept showing its old name. Per-guild commands appear at once. Doing
+    both, which was the first fix, put every command in the list twice.
+    """
+    import asyncio as _aio2, types as _t2
+    calls = []
+
+    class _Tree:
+        def __init__(self, on_discord):
+            self.on_discord = list(on_discord)
+            self._cmds = ["a", "b"]
+
+        def copy_global_to(self, guild):
+            calls.append(("copy", guild.name))
+
+        async def sync(self, guild=None):
+            calls.append(("sync", guild.name if guild else "GLOBAL"))
+            if guild is None:
+                self.on_discord = list(self._cmds)
+
+        async def fetch_commands(self):
+            return self.on_discord
+
+        def get_commands(self):
+            return list(self._cmds)
+
+        def clear_commands(self, guild=None):
+            self._cmds = []
+
+        def add_command(self, c):
+            self._cmds.append(c)
+
+    import tempfile, os
+    os.environ["STEWARD_DB"] = str(Path(tempfile.mkdtemp()) / "t.sqlite3")
+    sys.path.insert(0, str(ROOT / "steward"))
+    import bot as _b
+
+    c = _b.client
+    g1 = _t2.SimpleNamespace(name="One")
+    g2 = _t2.SimpleNamespace(name="Two")
+    was_tree, was_guilds = c.tree, type(c).guilds
+    try:
+        type(c).guilds = property(lambda self: [g1, g2])
+        c.tree = _Tree(on_discord=["a-stale-global"])
+        _aio2.run(c.sync_commands())
+
+        assert ("sync", "One") in calls and ("sync", "Two") in calls, calls
+        # The global clear has to come after the per-guild pushes, or the
+        # servers get nothing.
+        assert calls.index(("sync", "GLOBAL")) > calls.index(("sync", "Two")), calls
+        assert c.tree.on_discord == [], "the global copies were left behind"
+        assert c.tree.get_commands(),             "the in-memory tree was emptied, so a later join gets no commands"
+
+        # Joining a server later still works, which is what the global sync
+        # used to cover.
+        calls.clear()
+        c.tree = _Tree(on_discord=[])
+        _aio2.run(c.on_guild_join(_t2.SimpleNamespace(name="New")))
+        assert ("sync", "New") in calls, calls
+    finally:
+        c.tree = was_tree
+        type(c).guilds = was_guilds
 
 
 @test("the calendar-run option is called post")
