@@ -1698,6 +1698,64 @@ def _():
     assert any("Not/AZone" in w for w in cal.validate()["warnings"])
 
 
+@test("an edit overrides a shipped beat without touching the shipped file")
+def _():
+    # Edits go in a separate file on purpose. Writing them back would destroy
+    # the shipped calendar's comments, and an update replaces that file, so
+    # anything written there would be lost on the next update.
+    base = {"meta": {"anchor": "2027-03-01"},
+            "beats": [{"id": "a", "when": "T-10", "channel": "general", "body": "shipped"}]}
+    local = {"beats": [{"id": "a", "body": "mine", "title": "Mine"}]}
+    out = ce.merge(base, local)
+    assert out["beats"][0]["body"] == "mine"
+    assert out["beats"][0]["title"] == "Mine"
+    assert out["beats"][0]["when"] == "T-10", "an unedited field was lost"
+    assert base["beats"][0]["body"] == "shipped", "merge mutated the original"
+
+
+@test("a shipped beat can be hidden without being deleted")
+def _():
+    base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"},
+                      {"id": "b", "when": "T-2", "channel": "g", "body": "y"}]}
+    out = ce.merge(base, {"beats": [{"id": "a", "enabled": False}]})
+    assert [b["id"] for b in out["beats"]] == ["b"]
+
+
+@test("a beat of your own is added at the end")
+def _():
+    base = {"beats": [{"id": "a", "when": "T-1", "channel": "g", "body": "x"}]}
+    out = ce.merge(base, {"beats": [{"id": "mine", "when": "T-3",
+                                     "channel": "g", "body": "z"}]})
+    assert [b["id"] for b in out["beats"]] == ["a", "mine"]
+
+
+@test("the overrides file survives an update")
+def _():
+    # It is this deployment's, like .env. An update that replaced it would
+    # throw away every edit somebody had made in the page.
+    # updates is imported further down the file, so reach it directly here.
+    sys.path.insert(0, str(ROOT / "provision"))
+    import updates
+    assert "blueprint/content-calendar.local.yaml" in updates.KEEP_ON_UPDATE
+    assert "blueprint/content-calendar.local.yaml" in updates.PROTECTED
+    assert "content-calendar.local.yaml" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    build = (ROOT / "tools" / "build_dist.py").read_text(encoding="utf-8")
+    assert "content-calendar.local.yaml" in build,         "the download would ship one machine's calendar edits"
+
+
+@test("a broken overrides file does not stop the calendar loading")
+def _():
+    import tempfile
+    d = Path(tempfile.mkdtemp())
+    base = ("meta: {anchor: '2027-03-01'}" + chr(10) + "beats:" + chr(10)
+            + "  - {id: a, when: T-1, channel: g, body: x}" + chr(10))
+    (d / "c.yaml").write_text(base, encoding="utf-8")
+    (d / "c.local.yaml").write_text("this: [is not" + chr(10) + "  valid yaml",
+                                    encoding="utf-8")
+    cal = ce.load(d / "c.yaml")
+    assert len(cal.beats) == 1, "a broken edit file took the whole calendar down"
+
+
 @test("a calendar with no launch date fires nothing")
 def _():
     spec = _yaml.safe_load(CALENDAR.read_text("utf-8"))

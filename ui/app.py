@@ -654,6 +654,153 @@ def calendar_view(days: int = 120):
     }
 
 
+@app.get("/api/calendar/beats")
+def calendar_beats():
+    """Every beat, as written, so the page can put it in a textarea.
+
+    Deliberately unsubstituted: `{{game}}` has to survive a round trip through
+    the editor, or saving any beat would freeze this deployment's game name
+    into a file whose whole purpose is being reusable.
+    """
+    sys.path.insert(0, str(STEWARD))
+    import calendar_engine
+    import yaml
+
+    if not CALENDAR_FILE.exists():
+        return {"present": False, "beats": []}
+    with open(CALENDAR_FILE, encoding="utf-8") as fh:
+        spec = yaml.safe_load(fh) or {}
+    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    local = {}
+    if local_file.exists():
+        with open(local_file, encoding="utf-8") as fh:
+            local = yaml.safe_load(fh) or {}
+    edited = {b.get("id") for b in (local.get("beats") or [])
+              + (local.get("recurring") or []) if b.get("id")}
+    hidden = {b.get("id") for b in (local.get("beats") or [])
+              + (local.get("recurring") or [])
+              if b.get("enabled") is False}
+
+    merged = calendar_engine.merge(spec, local)
+    shipped = {b.get("id") for b in (spec.get("beats") or [])
+               + (spec.get("recurring") or [])}
+
+    out = []
+    for kind in ("beats", "recurring"):
+        for b in merged.get(kind, []):
+            out.append({
+                "id": b.get("id"), "list": kind,
+                "kind": b.get("kind", "post"),
+                "title": b.get("title", ""), "body": b.get("body", ""),
+                "channel": b.get("channel", ""), "when": b.get("when", ""),
+                "every": b.get("every", ""), "mention": b.get("mention", ""),
+                "edited": b.get("id") in edited,
+                "shipped": b.get("id") in shipped,
+            })
+    for bid in sorted(hidden):
+        out.append({"id": bid, "list": "beats", "hidden": True, "edited": True,
+                    "shipped": bid in shipped, "title": "", "body": "",
+                    "channel": "", "when": "", "every": "", "mention": "",
+                    "kind": "post"})
+    return {"present": True, "beats": out,
+            "overrides_file": local_file.name,
+            "has_overrides": local_file.exists()}
+
+
+EDITABLE = ("kind", "title", "body", "channel", "when", "every", "mention")
+
+
+@app.post("/api/calendar/beat")
+def calendar_save_beat(payload: dict = Body(...)):
+    """Save one beat's edits into content-calendar.local.yaml.
+
+    Never into the shipped file. Rewriting that would destroy its comments,
+    and an update replaces it, so edits written there would be lost every
+    time somebody updated.
+    """
+    sys.path.insert(0, str(STEWARD))
+    import calendar_engine
+    import yaml
+
+    bid = (payload.get("id") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,48}", bid):
+        raise HTTPException(400, "An id must be lowercase letters, numbers and "
+                                 "hyphens, like 'devlog-monday'.")
+
+    which = "recurring" if payload.get("list") == "recurring" else "beats"
+    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    local = {}
+    if local_file.exists():
+        with open(local_file, encoding="utf-8") as fh:
+            local = yaml.safe_load(fh) or {}
+    local.setdefault("beats", [])
+    local.setdefault("recurring", [])
+
+    entry = {"id": bid}
+    if payload.get("hidden"):
+        entry["enabled"] = False
+    else:
+        for k in EDITABLE:
+            v = payload.get(k)
+            if v not in (None, ""):
+                entry[k] = v
+        if not entry.get("body"):
+            raise HTTPException(400, "A beat needs something to post.")
+        if not entry.get("channel"):
+            raise HTTPException(400, "A beat needs a channel to post in.")
+
+    rows = [b for b in local[which] if b.get("id") != bid]
+    other = "recurring" if which == "beats" else "beats"
+    local[other] = [b for b in local[other] if b.get("id") != bid]
+    rows.append(entry)
+    local[which] = rows
+
+    body = yaml.safe_dump(local, sort_keys=False, allow_unicode=True,
+                          default_flow_style=False, width=88)
+    local_file.write_text(HEADER_LOCAL + body, encoding="utf-8")
+    return {"ok": True, "file": local_file.name}
+
+
+@app.post("/api/calendar/beat/reset")
+def calendar_reset_beat(payload: dict = Body(...)):
+    """Drop an edit and go back to what shipped."""
+    sys.path.insert(0, str(STEWARD))
+    import calendar_engine
+    import yaml
+
+    bid = (payload.get("id") or "").strip()
+    local_file = calendar_engine.overrides_path(CALENDAR_FILE)
+    if not local_file.exists():
+        return {"ok": True}
+    with open(local_file, encoding="utf-8") as fh:
+        local = yaml.safe_load(fh) or {}
+    for key in ("beats", "recurring"):
+        local[key] = [b for b in (local.get(key) or []) if b.get("id") != bid]
+    if not local.get("beats") and not local.get("recurring"):
+        local_file.unlink()
+        return {"ok": True, "removed_file": True}
+    body = yaml.safe_dump(local, sort_keys=False, allow_unicode=True,
+                          default_flow_style=False, width=88)
+    local_file.write_text(HEADER_LOCAL + body, encoding="utf-8")
+    return {"ok": True}
+
+
+HEADER_LOCAL = """# Your edits to the content calendar.
+#
+# Written by the setup page. Safe to edit by hand, and safe to delete: doing
+# either just puts the shipped calendar back.
+#
+# Kept apart from content-calendar.yaml on purpose. That file is the one an
+# update replaces and the one you would redeploy to the next project, so
+# anything written into it would be lost the next time you updated. Beats here
+# are matched by id and override the shipped ones field by field.
+#
+#   enabled: false   hides a shipped beat without deleting it
+#   a new id         adds a beat of your own
+
+"""
+
+
 @app.post("/api/calendar/anchor")
 def calendar_anchor(payload: dict = Body(...)):
     """Set the launch date without editing the calendar file, so the file stays

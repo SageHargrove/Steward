@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday",
             "saturday", "sunday"]
@@ -282,10 +283,57 @@ class Calendar:
                 "anchor": self.anchor.isoformat() if self.anchor else None}
 
 
+def overrides_path(path) -> Path:
+    """Where a person's own edits live: `content-calendar.local.yaml`."""
+    p = Path(path)
+    return p.with_name(p.stem + ".local" + p.suffix)
+
+
+def merge(spec: dict, local: dict) -> dict:
+    """Lay somebody's edits over the shipped calendar.
+
+    Edits go in a separate file rather than being written back into the
+    original, for three reasons that all bite otherwise. Rewriting the shipped
+    file would destroy its comments, which are most of what makes it readable.
+    An update replaces that file, so edits written into it would be lost every
+    time. And keeping them apart means the shipped calendar stays a clean thing
+    to redeploy to the next project, which is the whole point of it.
+
+    Beats are matched by id. Any field can be overridden, `enabled: false`
+    hides a shipped beat without deleting it, and an id that is not in the
+    original is simply added.
+    """
+    out = {"meta": {**(spec.get("meta") or {}), **(local.get("meta") or {})}}
+    for key in ("beats", "recurring"):
+        base = {b.get("id"): dict(b) for b in (spec.get(key) or []) if b.get("id")}
+        order = [b.get("id") for b in (spec.get(key) or []) if b.get("id")]
+        for edit in (local.get(key) or []):
+            bid = edit.get("id")
+            if not bid:
+                continue
+            if bid in base:
+                base[bid].update(edit)
+            else:
+                base[bid] = dict(edit)
+                order.append(bid)
+        out[key] = [base[i] for i in order
+                    if base[i].get("enabled", True) is not False]
+    return out
+
+
 def load(path, variables: dict | None = None, anchor_override=None) -> Calendar:
     import yaml
     with open(path, encoding="utf-8") as fh:
         spec = yaml.safe_load(fh) or {}
+
+    local_file = overrides_path(path)
+    if local_file.exists():
+        try:
+            with open(local_file, encoding="utf-8") as fh:
+                spec = merge(spec, yaml.safe_load(fh) or {})
+        except Exception:                                    # noqa: BLE001
+            pass                        # a broken overrides file must not stop the bot
+
     if anchor_override:
         spec.setdefault("meta", {})["anchor"] = anchor_override
     return Calendar(spec, variables)

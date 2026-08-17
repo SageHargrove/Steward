@@ -36,7 +36,8 @@ TIMEOUT = 12
 # Paths an update must never touch. The first two are gitignored anyway, so
 # this is belt and braces, but the cost of being wrong is somebody's bot token
 # and an activity history that Discord cannot rebuild.
-PROTECTED = ("steward/.env", "steward/data", "backups")
+PROTECTED = ("steward/.env", "steward/data", "backups",
+             "blueprint/content-calendar.local.yaml")
 
 # Where a downloaded copy looks for updates. A git checkout reads its own
 # remote instead; this is the fallback for everyone who never had one.
@@ -202,7 +203,8 @@ def back_up(files: list[str]) -> str | None:
 # are the reason: a bot token and an activity history Discord cannot rebuild.
 # The third is the interpreter the running process is executing from, which
 # Windows will not let anything overwrite anyway.
-KEEP_ON_UPDATE = ("steward/.env", "steward/data", "backups", "python")
+KEEP_ON_UPDATE = ("steward/.env", "steward/data", "backups", "python",
+                  "blueprint/content-calendar.local.yaml")
 
 
 def apply_release() -> dict:
