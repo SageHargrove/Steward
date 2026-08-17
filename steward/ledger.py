@@ -358,10 +358,22 @@ class Ledger:
         return [dict(r) for r in self.db.execute(sql + " ORDER BY joined_at", (guild_id,))]
 
     def playtest_played(self, guild_id: int, user_id: int):
+        """Mark that somebody actually played, which is the number the whole
+        pipeline exists to produce.
+
+        Inserts if they are not on the list. A plain UPDATE silently did
+        nothing for anyone who was handed a key directly instead of running
+        /playtest-join, and those are exactly the people you most want counted:
+        they were recruited by hand and they came back with a report.
+        """
+        if user_id in self._opted_out:
+            return
+        now = int(time.time())
         self.db.execute(
-            "UPDATE playtest_signups SET played_at = ? WHERE guild_id = ? "
-            "AND user_id = ? AND played_at IS NULL",
-            (int(time.time()), guild_id, user_id))
+            "INSERT INTO playtest_signups (guild_id, user_id, joined_at, played_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET "
+            "  played_at = COALESCE(played_at, excluded.played_at)",
+            (guild_id, user_id, now, now))
         self.db.commit()
 
     def wave_open(self, guild_id: int, name: str, cap: int = 0) -> bool:

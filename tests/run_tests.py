@@ -1787,6 +1787,37 @@ def _():
     assert len(L.playtest_roster(1)) == 1
 
 
+@test("reporting counts as playing even without a formal signup")
+def _():
+    # Staff can hand somebody a key directly, without them ever running
+    # /playtest-join. A plain UPDATE did nothing for those people, so the
+    # signed-up-to-played conversion silently undercounted exactly the
+    # hand-recruited testers you most want in the number.
+    L = fresh_ledger()
+    L.playtest_played(1, 42)
+    roster = L.playtest_roster(1)
+    assert len(roster) == 1 and roster[0]["user_id"] == 42
+    assert roster[0]["played_at"]
+
+
+@test("the first report is the one that counts, not the latest")
+def _():
+    L = fresh_ledger()
+    L.playtest_signup(1, 42)
+    L.playtest_played(1, 42)
+    first = L.playtest_roster(1)[0]["played_at"]
+    L.playtest_played(1, 42)
+    assert L.playtest_roster(1)[0]["played_at"] == first
+
+
+@test("an opted-out member is not resurrected by filing a report")
+def _():
+    L = fresh_ledger()
+    L.forget(42)
+    L.playtest_played(1, 42)
+    assert L.playtest_roster(1, active_only=False) == []
+
+
 @test("a key is issued to exactly one person")
 def _():
     L = fresh_ledger()
