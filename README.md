@@ -1,34 +1,79 @@
 # Steward
 
-A Discord community server, the automation behind it, and the reusable
-thing both become.
+**Set up a Discord community server properly, without clicking through a
+hundred settings.** Channels, roles, permissions, onboarding, AutoMod and a
+rules document, built from a spec you can edit, plus a bot that records what
+happens afterwards so you can tell whether any of it worked.
 
-Planning lives one level up in [docs/build-plan.md](docs/build-plan.md) and
-[docs/roadmap.md](docs/roadmap.md). The rest of this repo is the implementation.
+Free, open source, and it runs on your own machine. Nothing is hosted, and
+your bot token never leaves your computer.
 
-```
-blueprint/default.yaml      the server spec. Channels, roles, permissions,
-                            forum tags, onboarding prompts, AutoMod rules
-blueprint/content-calendar.yaml   what gets posted and when, dated relative
-                            to launch rather than to the calendar
-provision/core.py           load, template, customize, validate, apply.
-                            The CLI and the UI both import this
-provision/provision.py      command-line wrapper
-ui/app.py                   Steward, the local UI
-steward/                    the bot. Ledger, levels, digest, moderation log,
-                            calendar engine, playtest pipeline
-install/                    Start Menu shortcuts, and an Inno Setup script
-                            for a real installer later
-tools/release.py            cut a version: bump, tag, push, publish
-VERSION                     the single source of truth for what you are on
-SETUP.md                    the runbook. Start there
-```
+---
 
-**Steward is the easy path.** Run `INSTALL.bat` once to put
-it on the Start Menu, then launch it from there, or run `START.bat` directly.
-Nine numbered steps, with the Developer Portal walkthrough built in so it
-assumes you have never made a bot before, and it generates your invite link
-once you paste a token. The CLI does the same job with flags.
+## Getting it
+
+**Windows, no Python needed.** Download `Steward-<version>-windows.zip` from
+[the releases page](https://github.com/SageHargrove/CommunityOps/releases),
+unzip it anywhere, and double-click **`Steward.bat`**. Your browser opens on
+the setup page. Run `INSTALL.bat` once if you want it on the Start Menu.
+
+The download carries its own copy of Python. It is not installed, it is not
+added to PATH, and it cannot conflict with anything already on the machine.
+Deleting the folder removes it completely.
+
+> **Windows will warn you the first time.** The download is not code-signed,
+> because a certificate costs a few hundred a year and this is free software.
+> If you see a blue "Windows protected your PC" panel, click **More info**,
+> then **Run anyway**. If your browser blocks the zip, choose **Keep**. You can
+> read every line of what you are running in this repository.
+
+**Linux and macOS, or if you already have Python:** clone the repository and
+run `./start.sh` or `START.bat`.
+
+---
+
+## What it actually does
+
+**Builds the server.** Roles, categories, channels including forum and
+announcement types, permission overwrites, forum tags, AutoMod rules,
+onboarding questions, the welcome screen. Discord's own server templates drop
+about half of that; this does not. Re-running edits what is there rather than
+duplicating it, so changing your mind is the normal path and not a recovery.
+
+**Writes the words.** A real 16-rule document with an enforcement ladder, and a
+start-here post. Posted and pinned for you, editable in the page afterwards,
+and it rewrites the message already in Discord rather than posting a second one.
+
+**Remembers what happened.** Discord has no per-member last-active field, so
+nobody can tell you who quietly stopped showing up unless something was
+recording from day one. That is the bot. It cannot be backfilled, which is why
+it is worth starting before you need it.
+
+**Runs the place.** Levels and role rewards, a weekly digest with retention by
+join cohort, a moderation log, a content calendar that drafts posts for your
+approval on a schedule relative to your launch, a playtest pipeline with key
+issuance, and an alert when a channel goes quieter than its own baseline.
+
+**Asks permission.** Nothing is posted to your members without a human
+clicking. The bot never sends an unsolicited direct message to anyone.
+
+---
+
+## What it deliberately does not do
+
+- **Create the server.** Discord no longer lets bots do that. You make the
+  server; this fills it in.
+- **Install other bots.** Every one is a permission flow needing a human to
+  press Authorize.
+- **Read your members' messages.** It never asks Discord for permission to,
+  so it records who posted where and when, and never what was said.
+- **Moderate.** It logs what moderators did. Anti-nuke and CAPTCHA verification
+  are security-critical and hard, and a half-built version is worse than none;
+  those stay with Wick.
+
+---
+
+## For developers
 
 ## State
 
@@ -490,7 +535,7 @@ python tests
 un_tests.py
 ```
 
-192 checks, no test framework to install. `tests/fake_discord.py` stands in for
+197 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.
