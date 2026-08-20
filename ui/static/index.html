@@ -161,7 +161,7 @@
 
   .tag{font-size:10.5px; padding:1px 6px; border-radius:3px; background:var(--ground);
     color:var(--dim); text-transform:uppercase; letter-spacing:.03em; font-weight:600}
-  .tag.forum,.tag.announcement,.tag.voice{color:var(--muted)}
+  .tag.forum,.tag.announcement,.tag.voice,.tag.media,.tag.stage{color:var(--muted)}
   .tag.req{color:var(--yellow)}
   .tag.added{color:#7ee2a8}
   .item.dimmed{opacity:.5}
@@ -939,10 +939,14 @@ function pickGuild(id, el){
 /* ---------- 4. blueprint ---------- */
 async function initBlueprints(){
   const list = await api('/api/blueprints');
+  /* The one flagged `meta.default` is what this deployment runs. Opening on
+     the first file alphabetically meant opening on the generic base, which
+     builds a server nobody wanted if you click through without looking. */
+  const pick = list.find(b => b.default) || list[0];
   $('#bpfile').innerHTML = list.map(b =>
-    `<option value="${esc(b.file)}">${esc(b.name)}</option>`).join('');
-  FILE = list[0]?.file;
-  if(FILE) loadBlueprint();
+    `<option value="${esc(b.file)}"${b === pick ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
+  FILE = pick?.file;
+  if(FILE){ $('#bpfile').value = FILE; loadBlueprint(); }
 }
 
 async function loadBlueprint(){
@@ -1120,6 +1124,7 @@ function renderTree(){
           <option value="text">Text</option>
           <option value="voice">Voice</option>
           <option value="forum">Forum</option>
+          <option value="media">Media</option>
           <option value="announcement">Announcement</option>
         </select>
         <button class="ghost" onclick="addChannel(${catIdx})">Add</button>
@@ -1427,7 +1432,19 @@ const TYPE_PERMS = {
                  'playtester_only', 'staff_only'],
   announcement: ['readonly_reactable', 'readonly', 'staff_only'],
   forum:        ['forum_open', 'playtester_only', 'staff_only'],
-  voice:        ['voice_open', 'staff_only']
+  // A media channel is a wall of images where every post is a thread, so it
+  // takes the same permissions a forum does.
+  media:        ['open', 'forum_open', 'playtester_only', 'staff_only'],
+  voice:        ['voice_open', 'staff_only'],
+  stage:        ['voice_open', 'staff_only']
+};
+
+/* Discord's own names for these, rather than the key capitalised: "Media" and
+   "Stage" are what the server settings call them, and Announcement is the one
+   whose key and label differ. */
+const TYPE_NAMES = {
+  text: 'Text', announcement: 'Announcement', forum: 'Forum',
+  media: 'Media', voice: 'Voice', stage: 'Stage'
 };
 
 /* Why a row is greyed out. Without naming the switch, a dimmed row reads as
@@ -1469,9 +1486,8 @@ function channelRow(ch, i){
         ${dead ? offTag(ch.feature) : ''}</div>
       <div class="chops">
         <select onchange="setChanType(${i}, this.value)" title="Channel type">
-          ${['text','announcement','forum','voice']
-            .map(v => opt(v, t, v === 'announcement' ? 'Announcement'
-                              : v.charAt(0).toUpperCase() + v.slice(1))).join('')}
+          ${['text','announcement','forum','media','voice','stage']
+            .map(v => opt(v, t, TYPE_NAMES[v])).join('')}
         </select>
         <select onchange="setChanPerm(${i}, this.value)" title="Who can post">
           ${(TYPE_PERMS[t] || TYPE_PERMS.text).map(v => opt(v, perm, PERMS[v])).join('')}

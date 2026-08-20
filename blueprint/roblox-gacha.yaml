@@ -30,6 +30,16 @@ meta:
   name: Roblox gacha or idle game
   slug: roblox-gacha
   calendar: roblox-game
+  # THIS is the blueprint this deployment runs, so it is the one every page
+  # reads when nothing has been picked yet. Without it the picker opened on
+  # default.yaml (first alphabetically) and the health check measured the
+  # server against a blueprint nobody used: it reported the renamed level
+  # roles as missing, listed channels removed on purpose as drift, and
+  # substituted the placeholder name into calendar previews.
+  #
+  # One file may carry this. If you start a different project from this same
+  # checkout, move the flag rather than adding a second one.
+  default: true
 
 remove:
   channels:

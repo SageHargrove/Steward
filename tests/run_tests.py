@@ -234,12 +234,17 @@ def _():
     errs = core.validate(bp)["errors"]
     assert any("timeout" in e for e in errs), errs
 
-@test("catches forum channels with community off")
+@test("catches community-only channel types with community off")
 def _():
-    bp = load()
-    bp["guild"]["community"] = False
-    errs = core.validate(bp)["errors"]
-    assert any("Community mode is off" in e for e in errs), errs
+    """Forum, media, announcement and stage. Media was left out of the gated
+    set once, and the only symptom was a channel that never appeared."""
+    for kind in ("forum", "media", "announcement", "stage"):
+        bp = load()
+        bp["guild"]["community"] = False
+        bp["categories"] = [{"name": "PLAY",
+                             "channels": [{"name": "x", "type": kind}]}]
+        errs = core.validate(bp)["errors"]
+        assert any("need Community mode" in e for e in errs), (kind, errs)
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +264,61 @@ def _():
     assert max(plain) < community, "plain channels must be created before community mode"
     assert min(gated) > community, "forum/announcement must come after community mode"
     assert onboarding > max(gated), "onboarding must come last"
+
+@test("every channel a shipped blueprint asks for actually gets built")
+def _():
+    """The check that would have caught #lucky-pulls.
+
+    It is a media channel, media was not in the set of types Discord refuses
+    outside a Community server, so it was created in the pass that runs before
+    Community mode is on. Discord said no, the run carried on, and the only
+    trace was a channel that was not there. Every blueprint, every channel.
+    """
+    import glob
+    from fake_discord import FakeDiscord, install as _install
+    for path in sorted(glob.glob(str(ROOT / "blueprint" / "*.yaml"))):
+        if path.endswith(".local.yaml"):
+            continue
+        bp = core.customize(core.load(path), None)
+        fake = _install(core, FakeDiscord())
+        client = core.Client("t", dry_run=False, log=lambda *_: None)
+        core.Provisioner(client, fake.guild_id, bp,
+                         log=lambda *_: None).run(content_dir=None)
+        built = {c.get("name") for c in fake.channels}
+        for cat in bp["categories"]:
+            for ch in cat["channels"]:
+                assert ch["name"] in built, (
+                    f"{Path(path).name}: #{ch['name']} ({ch.get('type', 'text')}) "
+                    f"was asked for and never created")
+
+
+@test("the fake refuses the same channel types Discord refuses")
+def _():
+    """core decides which pass a channel is built in; the fake decides whether
+    that was allowed. They were allowed to drift once and the result was a
+    blind spot rather than a failure."""
+    import fake_discord as fd
+    numbers = {core.CHANNEL_TYPES[name] for name in core.COMMUNITY_GATED}
+    assert numbers == fd.GATED_TYPES, (numbers, fd.GATED_TYPES)
+
+
+@test("a refused create is a failure, not a silently skipped channel")
+def _():
+    """The fake used to hand a rejection back as a 200 with an error body, so
+    the provisioner counted a refused channel as a created one."""
+    from fake_discord import FakeDiscord, install as _install
+    bp = core.customize(core.load(BLUEPRINT), None)
+    bp["guild"]["community"] = False        # nothing gated may be created now
+    bp["categories"] = [{"name": "PLAY",
+                         "channels": [{"name": "wall", "type": "media"}]}]
+    fake = _install(core, FakeDiscord())
+    client = core.Client("t", dry_run=False, log=lambda *_: None)
+    problems = core.Provisioner(client, fake.guild_id, bp,
+                                log=lambda *_: None).run(content_dir=None)
+    assert "wall" not in {c.get("name") for c in fake.channels}
+    assert any("wall" in p for p in problems), \
+        f"a channel Discord refused was not reported: {problems}"
+
 
 @test("onboarding actually applies")
 def _():
@@ -1535,6 +1595,33 @@ if _started:
 
 # ---------------------------------------------------------------------------
 print("\npage")
+
+@test("the page knows every channel type a blueprint uses")
+def _():
+    """The type dropdown listed four of the six. A media channel therefore
+    rendered as "Text", which is the wrong answer to "what is this channel",
+    and there was no way to make one from the page at all."""
+    import glob, yaml as _y
+    used = set()
+    for path in sorted(glob.glob(str(ROOT / "blueprint" / "*.yaml"))):
+        if path.endswith(".local.yaml"):
+            continue
+        raw = _y.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+        for cat in (raw.get("categories") or []):
+            for ch in (cat.get("channels") or []):
+                used.add(ch.get("type", "text"))
+        for ch in ((raw.get("add") or {}).get("channels") or []):
+            used.add(ch.get("type", "text"))
+        for ch in ((raw.get("set") or {}).get("channels") or {}).values():
+            if isinstance(ch, dict) and ch.get("type"):
+                used.add(ch["type"])
+    page = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    for kind in sorted(used):
+        assert f"{kind}:" in page.split("const TYPE_PERMS")[1].split("};")[0], \
+            f"{kind} channels exist in a blueprint but the page has no permissions for them"
+        assert f"{kind}:" in page.split("const TYPE_NAMES")[1].split("};")[0], \
+            f"{kind} channels exist in a blueprint but the page has no name for them"
+
 
 @test("javascript parses and every inline handler exists")
 def _():

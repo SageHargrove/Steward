@@ -82,7 +82,11 @@ CHANNEL_TYPES = {
 }
 
 # Channel types Discord refuses to create before Community mode is on.
-COMMUNITY_GATED = {"announcement", "forum", "stage"}
+# Types Discord will not create outside a Community server, which is what
+# decides whether a channel is built before or after Community mode is
+# turned on. Media belongs here: leaving it out built #lucky-pulls in the
+# first pass, where Discord refused it, and the run carried on without it.
+COMMUNITY_GATED = {"announcement", "forum", "stage", "media"}
 
 AUTOMOD_TRIGGERS = {"keyword": 1, "spam": 3, "keyword_preset": 4,
                     "mention_spam": 5, "member_profile": 6}
@@ -815,11 +819,13 @@ def customize(bp: dict, selection: dict | None) -> dict:
                 if ch.get("name") != name:
                     continue
                 was, ch["type"] = ch.get("type", "text"), kind
-                # A text channel's permission preset denies thread creation,
-                # which is the only thing a forum post is. Swap to the forum
-                # preset unless somebody chose one deliberately.
-                if kind == "forum" and was != "forum"                         and name not in (sel.get("perms") or {}):
-                    ch["overwrites"] = "forum_open"
+                # A text channel's permission preset denies thread
+                # creation, which is the only thing a post in a forum or
+                # a media channel is. Swap to a preset that allows it,
+                # unless somebody chose one deliberately.
+                chosen = name in (sel.get("perms") or {})
+                if kind in ("forum", "media") and was != kind and not chosen:
+                    ch["overwrites"] = "forum_open" if kind == "forum" else "open"
                 if kind != "forum" and was == "forum"                         and ch.get("overwrites") == "forum_open":
                     ch["overwrites"] = "open"
                 if kind == "voice" and ch.get("overwrites") in (None, "open"):
@@ -994,8 +1000,9 @@ def validate(bp: dict) -> dict:
     gated = [c for c, s in channels.items() if s.get("type") in COMMUNITY_GATED]
     if gated and not community:
         errors.append(
-            f"{len(gated)} forum/announcement channels are selected but Community mode "
-            f"is off. Discord will not create them")
+            f"{len(gated)} channel(s) need Community mode, which is off: "
+            f"{', '.join(sorted(gated)[:6])}. Discord only allows forum, media, "
+            f"announcement and stage channels in a Community server")
 
     # Onboarding's two hard constraints, the usual cause of a rejected PUT.
     defaults = bp.get("onboarding_defaults", [])
@@ -1526,9 +1533,9 @@ class Provisioner:
 
     def sync_channels(self, gated: bool):
         """gated=False does categories and plain text/voice channels.
-        gated=True does forum and announcement channels, which Discord will
-        not create until Community mode is on."""
-        self.log("\nForum and announcement channels" if gated else "\nChannels")
+        gated=True does the forum, media, announcement and stage channels,
+        which Discord will not create until Community mode is on."""
+        self.log("\nCommunity channels" if gated else "\nChannels")
         existing = {c["name"]: c for c in self.c.get(f"/guilds/{self.gid}/channels")}
 
         for ci, cat in enumerate(self.bp.get("categories", [])):

@@ -17,7 +17,12 @@ import json
 # Discord channel type numbers, mirrored here so a typo in core.py does not
 # silently agree with a matching typo in the tests.
 CATEGORY, TEXT, VOICE, ANNOUNCEMENT, FORUM = 4, 0, 2, 5, 15
-GATED_TYPES = {ANNOUNCEMENT, FORUM, 13}
+STAGE, MEDIA = 13, 16
+# Types Discord refuses to create outside a Community server. Media was
+# missing from this set, and so was missing from the one in core, which is
+# how a media channel got built in the pass that runs before Community mode
+# is on and quietly never appeared.
+GATED_TYPES = {ANNOUNCEMENT, FORUM, STAGE, MEDIA}
 
 
 class FakeDiscord:
@@ -91,7 +96,14 @@ class FakeDiscord:
                 return _Resp(400, payload)
             return _Resp(200, payload)
         if method == "POST":
-            return _Resp(200, self._post(path, body))
+            payload = self._post(path, body)
+            # A refusal is an HTTP error on real Discord. Handing it back as a
+            # 200 with an error body made the provisioner treat a rejected
+            # channel as a created one, which is the opposite of what a fake is
+            # for.
+            if isinstance(payload, dict) and payload.get("code") == 50035:
+                return _Resp(400, payload)
+            return _Resp(200, payload)
         if method in ("PATCH", "PUT"):
             return _Resp(200, self._write(method, path, body))
         if method == "DELETE":

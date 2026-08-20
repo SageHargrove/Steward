@@ -123,16 +123,46 @@ def looks_like_a_blueprint(bp: dict) -> bool:
     return bool(bp.get("categories") or bp.get("roles"))
 
 
+def active_blueprint() -> Path:
+    """The blueprint this deployment actually runs.
+
+    Every page that reads a blueprint without one being picked used to read
+    default.yaml by name. That is the generic base, not what most servers are
+    built from, so the health check compared the server against roles and
+    channels a variant had renamed or removed on purpose, and the calendar
+    preview substituted the base's placeholder name.
+
+    A blueprint claims the job with `meta.default: true`. Falls back to
+    default.yaml, so a checkout where nothing claims it behaves as before.
+    """
+    for p in sorted(BLUEPRINTS.glob("*.yaml")):
+        try:
+            bp = core.load(p)
+        except Exception:                                    # noqa: BLE001
+            continue
+        if looks_like_a_blueprint(bp) and (bp.get("meta") or {}).get("default"):
+            return p
+    return BLUEPRINTS / "default.yaml"
+
+
+def load_active() -> dict:
+    """The active blueprint, or an empty one if the folder has been emptied."""
+    p = active_blueprint()
+    return core.load(p) if p.exists() else {}
+
+
 @app.get("/api/blueprints")
 def list_blueprints():
     out = []
+    active = active_blueprint().name
     for p in sorted(BLUEPRINTS.glob("*.yaml")):
         try:
             bp = core.load(p)
             if not looks_like_a_blueprint(bp):
                 continue
             out.append({"file": p.name,
-                        "name": bp.get("meta", {}).get("name", p.stem)})
+                        "name": bp.get("meta", {}).get("name", p.stem),
+                        "default": p.name == active})
         except Exception as e:
             out.append({"file": p.name, "name": p.stem, "error": str(e)[:200]})
     return out
@@ -693,10 +723,12 @@ def calendar_view(days: int = 120):
     if not active_calendar().exists():
         return {"present": False}
 
-    bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() \
-        else {}
+    # declared_variables, not the raw block: the name somebody typed lives in
+    # variables.local.yaml, and reading the block direct previews every post
+    # with the blueprint's placeholder instead.
+    bp = load_active()
     variables = {k: (v if v is not None else "")
-                 for k, v in (bp.get("variables") or {}).items()}
+                 for k, v in core.declared_variables(bp).items()}
     anchor = read_env().get("LAUNCH_DATE") or None
     try:
         cal = calendar_engine.load(active_calendar(), variables, anchor_override=anchor)
@@ -750,8 +782,7 @@ def variables_get():
     saved = {}
     if VARIABLES_FILE.exists():
         saved = yaml.safe_load(VARIABLES_FILE.read_text(encoding="utf-8")) or {}
-    bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() else {}
-    return {"declared": core.declared_variables(bp), "saved": saved,
+    return {"declared": core.declared_variables(load_active()), "saved": saved,
             "file": VARIABLES_FILE.name}
 
 
@@ -820,8 +851,8 @@ def audit(request: Request):
     # -- the calendar has somewhere to post ------------------------------
     cal_file = active_calendar()
     if on["calendar"] and cal_file.exists():
-        bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() else {}
-        variables = {k: (v or "") for k, v in (bp.get("variables") or {}).items()}
+        variables = {k: (v or "")
+                     for k, v in core.declared_variables(load_active()).items()}
         cal = calendar_engine.load(cal_file, variables,
                                    anchor_override=env.get("LAUNCH_DATE"))
         missing = {}
@@ -892,8 +923,8 @@ def audit(request: Request):
         good.append(f"@{playtest_role} exists")
 
     # -- drift from the blueprint ----------------------------------------
-    if (BLUEPRINTS / "default.yaml").exists():
-        bp = core.load(BLUEPRINTS / "default.yaml")
+    if active_blueprint().exists():
+        bp = load_active()
         want = {c["name"] for cat in (bp.get("categories") or [])
                 for c in (cat.get("channels") or [])}
         gone = sorted(want - chans)
@@ -906,8 +937,7 @@ def audit(request: Request):
                        "have drifted, so a rebuild would put them back."})
 
     # -- levels ------------------------------------------------------------
-    levels = (core.load(BLUEPRINTS / "default.yaml").get("levels") or {}) \
-        if (BLUEPRINTS / "default.yaml").exists() else {}
+    levels = load_active().get("levels") or {}
     if on["levels"] and levels.get("enabled", True):
         want = [r["role"] for r in (levels.get("rewards") or [])]
         gone = [r for r in want if r not in roles]
