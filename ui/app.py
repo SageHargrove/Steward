@@ -880,9 +880,22 @@ def audit(request: Request):
 
 
 @app.get("/api/calendar/templates")
-def calendar_templates_api():
+def calendar_templates_api(blueprint: str = ""):
+    """`blueprint` names the file selected in step 4, so the page can say when
+    the chosen server shape and the chosen calendar do not go together. A
+    Roblox server on the Steam calendar is a mistake nobody would make on
+    purpose."""
+    suggested = None
+    if blueprint:
+        path = (BLUEPRINTS / Path(blueprint).name)
+        if path.is_file() and path.parent == BLUEPRINTS.resolve():
+            try:
+                suggested = (core.load(path).get("meta") or {}).get("calendar")
+            except Exception:                                # noqa: BLE001
+                suggested = None
     return {"active": active_calendar().stem,
-            "templates": calendar_templates()}
+            "templates": calendar_templates(),
+            "suggested": suggested}
 
 
 @app.post("/api/calendar/template")
@@ -905,7 +918,7 @@ def calendar_set_template(payload: dict = Body(...)):
 
 
 @app.get("/api/calendar/posts")
-def calendar_posts():
+def calendar_posts(blueprint: str = ""):
     """Every post, as written, so the page can put it in a textarea.
 
     Deliberately unsubstituted: `{{game}}` has to survive a round trip through
@@ -932,6 +945,15 @@ def calendar_posts():
     edited = {b.get("id") for b in local_rows if b.get("id")}
     hidden = {b.get("id") for b in local_rows if b.get("enabled") is False}
     shipped = {b.get("id") for b in rows(spec, "posts") + rows(spec, "recurring")}
+
+    suggested = None
+    if blueprint:
+        bpath = BLUEPRINTS / Path(blueprint).name
+        if bpath.is_file() and bpath.parent == BLUEPRINTS.resolve():
+            try:
+                suggested = (core.load(bpath).get("meta") or {}).get("calendar")
+            except Exception:                                # noqa: BLE001
+                suggested = None
 
     merged = calendar_engine.merge(spec, local)
     anchor = read_env().get("LAUNCH_DATE") or None
@@ -975,6 +997,7 @@ def calendar_posts():
     out.sort(key=lambda b: (b["next"] is None, b["next"] or "", b["id"]))
     return {"present": True, "posts": out,
             "template": active_calendar().stem,
+            "suggested": suggested,
             "templates": calendar_templates(),
             "anchor": cal.anchor.isoformat() if cal.anchor else None,
             "t_today": cal.t_minus(today),

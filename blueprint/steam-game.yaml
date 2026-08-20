@@ -1,0 +1,33 @@
+# A game launching on Steam
+#
+# Starts from the default blueprint. The default already suits a Steam game;
+# this adds the two channels that only make sense once there is a store page,
+# and pairs the server with the Steam calendar.
+#
+# #reviews exists because Steamy, one of the free bots in the runbook, posts
+# new Steam reviews into a channel for you. Without somewhere to put them they
+# either go in #general and drown it, or you never set the bot up.
+
+extends: default.yaml
+
+meta:
+  name: Steam game launch
+  slug: steam-game
+  calendar: steam-game
+
+add:
+  channels:
+    - category: INFO
+      name: reviews
+      type: text
+      overwrites: readonly
+      topic: "New Steam reviews, posted automatically. Read them; do not argue with them."
+
+    - category: FEEDBACK
+      name: demo-feedback
+      type: text
+      overwrites: open
+      topic: "Played the demo? What made you stop, and what made you keep going."
+
+  onboarding_defaults:
+    - demo-feedback

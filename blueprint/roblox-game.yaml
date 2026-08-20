@@ -1,0 +1,175 @@
+# A Roblox experience
+#
+# Starts from the default blueprint and changes only what Roblox changes. The
+# differences are not cosmetic:
+#
+# **Codes are a channel.** Nearly every Roblox experience of any size runs
+# promo codes, and without a home for them they end up scattered through
+# #general and asked for again every day.
+#
+# **Private servers and trading** are how Roblox players actually organise
+# themselves, which is not the same shape as a co-op lobby.
+#
+# **The group is a second front door.** Roblox has no minimum age and Discord
+# requires 13+, so a real part of your playerbase cannot be in this server at
+# all. The group is where you reach them, and #start-here has to say so.
+#
+# Everything else, including the rules, levels and AutoMod, comes from
+# blueprint/default.yaml. Pair it with the roblox-game calendar.
+
+extends: default.yaml
+
+meta:
+  name: Roblox experience
+  slug: roblox-game
+  # The content calendar that goes with this. Step 8 offers to switch.
+  calendar: roblox-game
+
+remove:
+  channels:
+    # A tower-strategy channel and a co-op voice room are Steam-shaped.
+    - strategy
+    - other-games
+    - Co-op
+  roles:
+    - Strategist
+    # Nobody finds a Roblox experience on Steam, and Reddit is not where this
+    # audience is. Replaced below by the group and the Roblox app itself.
+    - Found via Steam
+    - Found via Reddit
+
+rename:
+  channels:
+    # On Roblox you are looking for a server to join, not a guild to join.
+    looking-for-group: find-a-server
+    patch-notes: update-notes
+  roles:
+    Group Finder: Server Finder
+
+add:
+  channels:
+    - category: PLAY
+      name: codes
+      type: text
+      overwrites: open
+      topic: "Working codes, and the ones that have expired. Check here before asking."
+
+    - category: PLAY
+      name: trading
+      type: text
+      overwrites: open
+      topic: "Trade offers. Nothing here is endorsed by us; scams are on you to avoid."
+
+    - category: PLAY
+      name: builds-and-showcase
+      type: text
+      overwrites: open
+      topic: "Show what you made or how you look. Screenshots welcome."
+
+    - category: VOICE
+      name: Private Server
+      type: voice
+
+  roles:
+    - name: Group Member
+      color: 0x00A2FF
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Trader
+      color: 0x000000
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    # Attribution roles, held for about a second each. Steam is meaningless
+    # here; the group and the Roblox app are where people actually come from.
+    - name: Found via Roblox
+      color: 0x000000
+      hoist: false
+      mentionable: false
+      permissions: []
+      ephemeral: true
+
+    - name: Found via the Group
+      color: 0x000000
+      hoist: false
+      mentionable: false
+      permissions: []
+      ephemeral: true
+
+  onboarding_defaults:
+    - codes
+
+variables:
+  game: Your Experience
+
+# ---------------------------------------------------------------------------
+# Onboarding, replaced rather than patched.
+#
+# The interests are different, and so is the attribution: nobody finds a
+# Roblox experience on Steam. Every answer still has to grant a role or reveal
+# a channel, because Discord rejects the whole request otherwise.
+
+onboarding_prompts:
+  - title: "What brings you to {{game}}?"
+    single_select: false
+    required: false
+    in_onboarding: true
+    options:
+      - title: "Playing with other people"
+        description: "Finding a server, and playing together."
+        emoji: "🤝"
+        roles: [Server Finder]
+      - title: "Trading"
+        description: "Buying, selling and swapping."
+        emoji: "🔁"
+        roles: [Trader]
+      - title: "Building and showing off"
+        description: "What you made, and how you look."
+        emoji: "🎨"
+        roles: [Lore Reader]
+      - title: "Finding what is broken"
+        description: "Bugs, exploits, things that should not be possible."
+        emoji: "🐛"
+        roles: [Bug Hunter]
+
+  - title: "Want a ping when an update drops?"
+    single_select: true
+    required: false
+    in_onboarding: true
+    options:
+      - title: "Yes, ping me"
+        description: "You will hear about updates and early testing."
+        emoji: "🔔"
+        roles: [Ping Me For Playtests]
+      - title: "No thanks"
+        description: "You can pick this up later in #start-here."
+        emoji: "🔕"
+        channels: [general]
+
+  - title: "How did you find us?"
+    single_select: true
+    required: false
+    in_onboarding: true
+    options:
+      - title: "On Roblox itself"
+        description: "The app, search, or the home page."
+        emoji: "🟩"
+        roles: [Found via Roblox]
+      - title: "A friend"
+        emoji: "👥"
+        roles: [Found via a Friend]
+      - title: "A YouTuber or streamer"
+        emoji: "🎥"
+        roles: [Found via a Creator]
+      - title: "The Roblox group"
+        emoji: "🧩"
+        roles: [Found via the Group]
+      - title: "Another Discord server"
+        emoji: "💬"
+        roles: [Found via Another Server]
+      - title: "Somewhere else"
+        emoji: "🌐"
+        roles: [Found via Elsewhere]

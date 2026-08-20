@@ -144,9 +144,168 @@ class Failed(Exception):
 # Load, template, customize
 # --------------------------------------------------------------------------
 
+def _retarget(bp: dict, channel_renames: dict, role_renames: dict,
+              gone_channels: set, gone_roles: set):
+    """Follow a variant's renames and removals through the rest of the file.
+
+    The same job `customize` does for choices made in the setup page, applied
+    at load time so a variant blueprint is coherent before anybody sees it.
+    """
+    def rr(name):
+        return role_renames.get(name, name)
+
+    def cr(name):
+        return channel_renames.get(name, name)
+
+    for entries in (bp.get("overwrite_presets") or {}).values():
+        for e in entries:
+            if e.get("role") and e["role"] != "everyone":
+                e["role"] = rr(e["role"])
+        entries[:] = [e for e in entries
+                      if e.get("role") in ("everyone", None)
+                      or e["role"] not in gone_roles]
+
+    for prompt in (bp.get("onboarding_prompts") or []):
+        for option in (prompt.get("options") or []):
+            option["roles"] = [rr(x) for x in (option.get("roles") or [])
+                               if x not in gone_roles]
+            option["channels"] = [cr(x) for x in (option.get("channels") or [])
+                                  if x not in gone_channels]
+        # An option granting neither is refused by Discord, and it takes the
+        # whole onboarding request with it rather than just that option.
+        prompt["options"] = [o for o in (prompt.get("options") or [])
+                             if o.get("roles") or o.get("channels")]
+    bp["onboarding_prompts"] = [p for p in (bp.get("onboarding_prompts") or [])
+                                if p.get("options")]
+
+    for rule in (bp.get("automod") or []):
+        rule["exempt_roles"] = [rr(x) for x in (rule.get("exempt_roles") or [])
+                                if x not in gone_roles]
+        rule["exempt_channels"] = [cr(x) for x in (rule.get("exempt_channels") or [])
+                                   if x not in gone_channels]
+        rule["actions"] = [act for act in (rule.get("actions") or [])
+                           if "alert" not in act or act["alert"] not in gone_channels]
+        for act in rule["actions"]:
+            if "alert" in act:
+                act["alert"] = cr(act["alert"])
+
+    # A threshold belongs to the role, not to its name.
+    levels = bp.get("levels") or {}
+    if levels.get("rewards"):
+        levels["rewards"] = [{**r, "role": rr(r["role"])}
+                             for r in levels["rewards"]
+                             if r.get("role") not in gone_roles]
+
+    guild = bp.get("guild") or {}
+    for key in ("rules_channel", "public_updates_channel", "safety_alerts_channel",
+                "system_channel", "afk_channel"):
+        if guild.get(key):
+            guild[key] = None if guild[key] in gone_channels else cr(guild[key])
+
+    welcome = bp.get("welcome_screen") or {}
+    if welcome.get("channels"):
+        welcome["channels"] = [{**c, "channel": cr(c["channel"])}
+                               for c in welcome["channels"]
+                               if c.get("channel") not in gone_channels]
+
+
+def apply_variant(base: dict, over: dict) -> dict:
+    """Lay a short variant file over a full blueprint.
+
+    A Roblox server and a Steam server want different channels, but ninety
+    per cent of a blueprint is the same either way. Copying the whole 900-line
+    file per platform means every later fix has to be made four times, so a
+    variant states only its differences:
+
+        extends: default.yaml
+        remove:  {channels: [other-games], roles: [Playtester]}
+        rename:  {channels: {looking-for-group: find-a-server}}
+        add:     {channels: [{category: PLAY, name: codes, ...}]}
+
+    `meta`, `variables` and `levels` are merged key by key. Everything else in
+    the variant replaces the same key outright, which is what you want for a
+    list like `onboarding_prompts`.
+    """
+    out = {k: v for k, v in base.items()}
+
+    for key in ("meta", "variables", "levels", "guild", "welcome_screen"):
+        if isinstance(over.get(key), dict):
+            out[key] = {**(out.get(key) or {}), **over[key]}
+
+    drop = (over.get("remove") or {})
+    gone_channels = set(drop.get("channels") or [])
+    gone_roles = set(drop.get("roles") or [])
+    if gone_roles:
+        out["roles"] = [r for r in (out.get("roles") or [])
+                        if r.get("name") not in gone_roles]
+    if gone_channels:
+        cats = []
+        for cat in (out.get("categories") or []):
+            kept = [c for c in (cat.get("channels") or [])
+                    if c.get("name") not in gone_channels]
+            if kept or cat.get("name") in (over.get("keep_empty") or []):
+                cats.append({**cat, "channels": kept})
+        out["categories"] = cats
+        out["onboarding_defaults"] = [c for c in (out.get("onboarding_defaults") or [])
+                                      if c not in gone_channels]
+
+    renames = (over.get("rename") or {})
+    ch_names = renames.get("channels") or {}
+    role_names = renames.get("roles") or {}
+    if ch_names:
+        for cat in (out.get("categories") or []):
+            for c in (cat.get("channels") or []):
+                if c.get("name") in ch_names:
+                    c["name"] = ch_names[c["name"]]
+        out["onboarding_defaults"] = [ch_names.get(c, c)
+                                      for c in (out.get("onboarding_defaults") or [])]
+    if role_names:
+        for r in (out.get("roles") or []):
+            if r.get("name") in role_names:
+                r["name"] = role_names[r["name"]]
+
+    # A rename or a removal has to reach everywhere the name appears, not just
+    # the list it was declared in. Missing this leaves an onboarding option
+    # granting a role that no longer exists, which Discord rejects as
+    # ROLE_OR_CHANNEL_REQUIRED and takes the whole request down with it.
+    _retarget(out, ch_names, role_names, gone_channels, gone_roles)
+
+    added = (over.get("add") or {})
+    for role in (added.get("roles") or []):
+        out.setdefault("roles", []).append(role)
+    for chan in (added.get("channels") or []):
+        chan = dict(chan)
+        where = chan.pop("category", None)
+        target = next((c for c in (out.get("categories") or [])
+                       if c.get("name") == where), None)
+        if target is None:
+            target = {"name": where or "MORE", "channels": []}
+            out.setdefault("categories", []).append(target)
+        target.setdefault("channels", []).append(chan)
+    for name in (added.get("onboarding_defaults") or []):
+        out.setdefault("onboarding_defaults", []).append(name)
+
+    # Anything else in the variant simply replaces that key.
+    handled = {"extends", "meta", "variables", "levels", "guild",
+               "welcome_screen", "remove", "rename", "add", "keep_empty"}
+    for key, value in over.items():
+        if key not in handled:
+            out[key] = value
+    return out
+
+
 def load(path: str | Path) -> dict:
     path = Path(path)
-    bp = yaml.safe_load(path.read_text(encoding="utf-8"))
+    bp = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    # A variant names the blueprint it starts from, so it only has to state
+    # what it changes.
+    parent = bp.get("extends")
+    if parent:
+        base = load(path.parent / Path(str(parent)).name)
+        base.pop("_base_dir", None)
+        bp = apply_variant(base, bp)
+
     # Remembered so content_file entries resolve relative to the blueprint,
     # wherever the tool is invoked from.
     bp["_base_dir"] = str(path.parent.resolve())

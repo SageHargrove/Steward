@@ -1719,6 +1719,84 @@ def _():
     assert base["posts"][0]["body"] == "shipped", "merge mutated the original"
 
 
+@test("there is a blueprint for each kind of project")
+def _():
+    # Only one shipped for a long time, so picking Roblox in step 8 still left
+    # you building a Steam-shaped server in step 4.
+    have = {f.stem for f in (ROOT / "blueprint").glob("*.yaml")
+            if not f.name.endswith(".local.yaml")}
+    for want in ("default", "steam-game", "roblox-game", "mod"):
+        assert want in have, f"no {want} blueprint. Have: {sorted(have)}"
+
+
+@test("every blueprint variant validates on its own")
+def _():
+    for f in sorted((ROOT / "blueprint").glob("*.yaml")):
+        if f.name.endswith(".local.yaml"):
+            continue
+        bp = core.load(f)
+        report = core.validate(core.customize(bp, None))
+        assert not report["errors"], f"{f.name}: {report['errors']}"
+
+
+@test("a variant states only its differences")
+def _():
+    # Copying the whole 900-line blueprint per platform means every later fix
+    # has to be made four times.
+    base = len((ROOT / "blueprint" / "default.yaml").read_text("utf-8").splitlines())
+    for name in ("steam-game", "roblox-game", "mod"):
+        f = ROOT / "blueprint" / f"{name}.yaml"
+        assert "extends:" in f.read_text("utf-8"), f"{name} does not extend anything"
+        assert len(f.read_text("utf-8").splitlines()) < base / 2,             f"{name} is not a variant, it is a copy"
+
+
+@test("removing a role takes it out of onboarding too")
+def _():
+    # An option granting a role that no longer exists is refused by Discord as
+    # ROLE_OR_CHANNEL_REQUIRED, and it takes the whole onboarding request down
+    # with it rather than just that option.
+    for f in sorted((ROOT / "blueprint").glob("*.yaml")):
+        if f.name.endswith(".local.yaml"):
+            continue
+        bp = core.load(f)
+        roles = {r["name"] for r in bp.get("roles", [])}
+        channels = {c["name"] for cat in bp.get("categories", [])
+                    for c in cat.get("channels", [])}
+        for prompt in bp.get("onboarding_prompts", []):
+            for option in prompt.get("options", []):
+                missing = [r for r in option.get("roles", []) if r not in roles]
+                assert not missing, f"{f.name}: '{option['title']}' grants {missing}"
+                gone = [c for c in option.get("channels", []) if c not in channels]
+                assert not gone, f"{f.name}: '{option['title']}' reveals {gone}"
+                assert option.get("roles") or option.get("channels"),                     f"{f.name}: '{option['title']}' grants nothing"
+
+
+@test("no attribution role is declared and never handed out")
+def _():
+    # They exist only because Discord refuses an answer that grants nothing.
+    # One with no option behind it is clutter in the role list forever.
+    for f in sorted((ROOT / "blueprint").glob("*.yaml")):
+        if f.name.endswith(".local.yaml"):
+            continue
+        bp = core.load(f)
+        ephemeral = {r["name"] for r in bp.get("roles", []) if r.get("ephemeral")}
+        used = {g for p in bp.get("onboarding_prompts", [])
+                for o in p.get("options", []) for g in o.get("roles", [])}
+        assert not (ephemeral - used), f"{f.name}: unused {sorted(ephemeral - used)}"
+
+
+@test("each variant names the calendar that goes with it")
+def _():
+    for name, cal in (("steam-game", "steam-game"), ("roblox-game", "roblox-game"),
+                      ("mod", "mod")):
+        bp = core.load(ROOT / "blueprint" / f"{name}.yaml")
+        assert bp["meta"].get("calendar") == cal, bp["meta"]
+        assert (ROOT / "blueprint" / "calendars" / f"{cal}.yaml").exists()
+    # Default is the generic one and works with any calendar, so it must not
+    # insist on one or it nags about perfectly good pairings.
+    assert not core.load(ROOT / "blueprint" / "default.yaml")["meta"].get("calendar")
+
+
 @test("the calendar is not offered as a server blueprint")
 def _():
     # The blueprint folder also holds the content calendar, which is YAML but

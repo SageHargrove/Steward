@@ -932,6 +932,7 @@ async function loadBlueprint(){
   renderVars();
   redraw();
   loadManual();
+  loadCalendar();          // the pairing depends on which blueprint is chosen
   // These two need a server and a token. Reading the blueprint does not, so
   // step 4 is browsable before anybody has made a bot.
   if(GUILD){ loadExisting(); loadEdits(); }
@@ -1890,9 +1891,10 @@ async function loadCalendar(btn){
     return;
   }
   CAL = r;
-  try{ POSTS = await api('/api/calendar/posts'); }
+  try{ POSTS = await api('/api/calendar/posts' + (FILE ? '?blueprint=' + encodeURIComponent(FILE) : '')); }
   catch(e){ POSTS = null; }
-  if(POSTS){ CAL.template = POSTS.template; CAL.templates = POSTS.templates; }
+  if(POSTS){ CAL.template = POSTS.template; CAL.templates = POSTS.templates;
+             CAL.suggested = POSTS.suggested; }
   renderCalendar();
   if(btn){
     btn.disabled = false; btn.textContent = 'Reload';
@@ -1952,7 +1954,18 @@ function renderCalendar(){
 
   const problems = (CAL.errors || []).map(e =>
       `<div class="msg err">${esc(e)}</div>`).join('');
-  $('#calbody').innerHTML = head + problems;
+
+  let mismatch = '';
+  if(CAL.suggested && CAL.suggested !== CAL.template){
+    const t = (CAL.templates || []).find(x => x.id === CAL.suggested);
+    mismatch = `<div class="msg warn">The server you picked in step 4 goes with
+      the <b>${esc(t ? t.name : CAL.suggested)}</b> calendar, and this is set to
+      <b>${esc((CAL.templates || []).find(x => x.id === CAL.template)?.name
+               || CAL.template)}</b>.
+      <button class="ghost small" style="margin-left:6px"
+              onclick="setTemplate('${esc(CAL.suggested)}')">Use it</button></div>`;
+  }
+  $('#calbody').innerHTML = head + mismatch + problems;
   renderPosts();
 }
 

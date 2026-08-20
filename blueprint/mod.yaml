@@ -1,0 +1,176 @@
+# A mod, or a modding project
+#
+# Starts from the default blueprint and changes what modding changes.
+#
+# **Support is the main event.** Most traffic in a mod's Discord is somebody
+# whose game will not start, and the answer is almost always the load order or
+# the log. Those get their own channels so the answer can be pinned once
+# instead of retyped weekly.
+#
+# **Compatibility is a living document**, not an announcement. It is edited in
+# place as the base game patches and other mods change.
+#
+# **The base game's schedule is your schedule.** #game-updates exists so
+# "did this week's patch break it?" has one home rather than forty duplicate
+# bug reports.
+#
+# Pair it with the mod calendar.
+
+extends: default.yaml
+
+meta:
+  name: Mod or modding project
+  slug: mod
+  # The content calendar that goes with this. Step 8 offers to switch.
+  calendar: mod
+
+remove:
+  channels:
+    # A mod has no launch cohort to find each other, and no co-op lobby.
+    - looking-for-group
+    - strategy
+    - playtest-lounge
+    - Co-op
+    - other-games
+  roles:
+    - Strategist
+    - Group Finder
+    - Found via Steam
+
+rename:
+  channels:
+    patch-notes: releases
+    ask-the-dev: ask-the-author
+  roles:
+    Playtester: Tester
+    Lore Reader: Reader
+
+add:
+  channels:
+    - category: INFO
+      name: compatibility
+      type: text
+      overwrites: readonly
+      topic: "What this works with, what it conflicts with, and the load order it wants."
+
+    - category: FEEDBACK
+      name: load-order-help
+      type: text
+      overwrites: open
+      topic: "Post your load order and your log. Almost every problem is one of those two."
+
+    - category: FEEDBACK
+      name: game-updates
+      type: text
+      overwrites: open
+      topic: "Did the base game patch? Whether this still works goes here first."
+
+    - category: DEV
+      name: translations
+      type: text
+      overwrites: open
+      topic: "Translating it, and telling translators when the text changes."
+
+  roles:
+    - name: Translator
+      color: 0x1ABC9C
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Load Order Helper
+      color: 0x9B59B6
+      hoist: true
+      mentionable: true
+      permissions: []
+
+    - name: Found via Nexus
+      color: 0x000000
+      hoist: false
+      mentionable: false
+      permissions: []
+      ephemeral: true
+
+    - name: Found via the Workshop
+      color: 0x000000
+      hoist: false
+      mentionable: false
+      permissions: []
+      ephemeral: true
+
+  onboarding_defaults:
+    # Discord needs 7 default channels with 5 of them fully open, and removing
+    # #looking-for-group and #strategy took two open ones away. #game-updates
+    # puts one back.
+    - compatibility
+    - load-order-help
+    - game-updates
+
+variables:
+  game: Your Mod
+
+# ---------------------------------------------------------------------------
+# Onboarding. Nobody finds a mod on Steam's store page; they find it on Nexus,
+# the Workshop, or in somebody's video.
+
+onboarding_prompts:
+  - title: "What brings you to {{game}}?"
+    single_select: false
+    required: false
+    in_onboarding: true
+    options:
+      - title: "I need help getting it working"
+        description: "Installing, load order, crashes on startup."
+        emoji: "🔧"
+        channels: [load-order-help]
+      - title: "Reporting bugs"
+        description: "Things that break once it is running."
+        emoji: "🐛"
+        roles: [Bug Hunter]
+      - title: "Translating it"
+        description: "Into a language it is not in yet."
+        emoji: "🌍"
+        roles: [Translator]
+      - title: "Reading about how it was made"
+        emoji: "📜"
+        roles: [Reader]
+
+  - title: "Want a ping when a release goes out?"
+    single_select: true
+    required: false
+    in_onboarding: true
+    options:
+      - title: "Yes, ping me"
+        description: "Releases, and when a game patch breaks something."
+        emoji: "🔔"
+        roles: [Ping Me For Playtests]
+      - title: "No thanks"
+        emoji: "🔕"
+        channels: [general]
+
+  - title: "How did you find us?"
+    single_select: true
+    required: false
+    in_onboarding: true
+    options:
+      - title: "Nexus Mods"
+        emoji: "🟧"
+        roles: [Found via Nexus]
+      - title: "The Steam Workshop"
+        emoji: "⚙️"
+        roles: [Found via the Workshop]
+      - title: "A video or a streamer"
+        emoji: "🎥"
+        roles: [Found via a Creator]
+      - title: "A friend"
+        emoji: "👥"
+        roles: [Found via a Friend]
+      - title: "Reddit"
+        emoji: "🔶"
+        roles: [Found via Reddit]
+      - title: "Another Discord server"
+        emoji: "💬"
+        roles: [Found via Another Server]
+      - title: "Somewhere else"
+        emoji: "🌐"
+        roles: [Found via Elsewhere]

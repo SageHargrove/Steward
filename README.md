@@ -162,6 +162,9 @@ implementation.
 ```
 blueprint/default.yaml      the server spec. Channels, roles, permissions,
                             forum tags, onboarding prompts, AutoMod rules
+blueprint/steam-game.yaml   variants. Each states only its differences
+blueprint/roblox-game.yaml    from the default, using `extends:`
+blueprint/mod.yaml
 blueprint/calendars/        what gets posted and when, dated relative to
                             launch. One per kind of project: general,
                             steam-game, roblox-game, mod
