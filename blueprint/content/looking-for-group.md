@@ -1,20 +1,33 @@
 <!--
-  Pinned in the recruiting channel. Keeps the channel readable, which is the
-  only thing that makes a recruiting channel work.
+  Pinned in #play-together. Keeps the channel readable, which is the only
+  thing that makes a channel like this work at all.
+
+  Reframed for Roblox: people are not recruiting a guild, they are trying to
+  get into the SAME SERVER as somebody else, usually so they can trade. That
+  is the job this channel is doing whether or not the pin admits it, so the
+  pin admits it.
+
+  The invite-link paragraph is the one exception to rule 8 in the whole
+  server. Keep it explicit and keep it here.
 -->
-# Finding people to play with
+# Getting into the same server
 
-**Recruiting? Use this shape.**
+Trading happens between two people in one server, so most of what this channel is for is getting you both into the same one.
 
-> **Group name**
-> **Playing:** roughly when, and which timezone
-> **Looking for:** how many, and anything specific
-> **How to join:** who to message
+**How to join somebody**
+Add them on Roblox first. Then open their profile, and if they are in {{game}} you can join their server straight from there. If it says the server is full, ask them to leave and rejoin so a slot opens.
 
-**Looking to join?** Same idea, in reverse: when you play, what you enjoy doing, and whether you want something organised or relaxed.
+**Post the shape people can answer**
 
-**Two rules that keep this channel usable**
-· **Edit your post rather than reposting it.** A channel full of the same message four times is a channel nobody reads.
-· **One post per group or player.** If it has scrolled away and things have genuinely changed, delete the old one and post again.
+> **Roblox username:** so people can add you
+> **Around now:** or the times you are usually on, with your timezone
+> **Looking for:** trading, climbing alongside someone, or just company
+> **Add me first** if you want people to be able to join you
 
-Invite links to other Discord servers are allowed **here and nowhere else**, and only for a group playing {{game}}. Anywhere else, that is advertising and the filter will remove it.
+**Two rules that keep this channel readable**
+· **Edit your post instead of reposting it.** A channel with the same message in it four times is a channel nobody reads.
+· **One post per person.** If yours has scrolled away and things have genuinely changed, delete the old one and post again.
+
+**Agreeing a trade here is fine. Doing it here is not.** Meet in game and use the trade window. Everything in the #trading pin applies, especially the part about never sending first.
+
+**Invite links to other Discord servers are allowed here and nowhere else**, and only for a group that plays {{game}}. Anywhere else it is advertising and it gets removed.

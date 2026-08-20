@@ -503,7 +503,7 @@ Three things that took a second pass to get right:
   someone names a post something long. A draft from last week still works after
   a restart.
 
-**Every post is editable in the page.** Wording, channel, date, who it
+**Every post is editable and deletable in the page.** Wording, channel, date, who it
 mentions. Edits are written to `blueprint/content-calendar.local.yaml`, never
 back into the shipped calendar, for three reasons that all bite otherwise:
 rewriting the original would destroy its comments, an update replaces it so

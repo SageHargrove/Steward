@@ -51,6 +51,32 @@ set:
       type: announcement
       overwrites: readonly_reactable
       topic: "Working codes, and the ones that have expired. Check here before asking."
+      # How to redeem and why one failed, so the channel below it can be
+      # nothing but codes. The pin never needs editing when one goes live.
+      content_file: content/codes.md
+      pin: true
+
+    pick-your-roles:
+      # Sits ABOVE the reaction-role panel a bot posts. "What will this
+      # actually send me" is the question that stops people pressing a button,
+      # so the pin answers it.
+      content_file: content/pick-your-roles.md
+      pin: true
+
+    bug-reports:
+      # Replaces the default topic, which asks for a build number. On Roblox
+      # everybody is on the current version within minutes and there is
+      # nothing in the UI to read a version off, so the field comes back blank
+      # or guessed. Username and device are what actually narrow one down.
+      topic: |
+        One bug per post. Include:
+        1. Your Roblox username (not your display name)
+        2. What device, and portrait or landscape
+        3. What you did, step by step
+        4. What you expected, what happened instead
+        5. A screenshot if it is visual
+
+        Tag your post. Untagged posts get tagged by a mod and that is slower for you.
 
     trading:
       # A text trading channel is an unreadable scroll within a week. A forum
@@ -58,6 +84,12 @@ set:
       type: forum
       overwrites: forum_open
       topic: "Open trade offers. One post per offer; close yours when it is done."
+      # Two thirds of this post is about scams, which is the right ratio.
+      # It is the only thing that reaches somebody BEFORE they lose a hero.
+      forum_post:
+        title: "Read this before you trade"
+        content_file: content/trading.md
+        pin: true
       tags:
         - { name: "7-star", emoji: "🌟" }
         - { name: "6-star", emoji: "✨" }
@@ -87,18 +119,6 @@ rename:
 
 add:
   channels:
-    - category: INFO
-      name: pick-your-roles
-      type: text
-      overwrites: readonly_reactable
-      topic: "Choose which pings you want. Nothing here is compulsory."
-
-    - category: PLAY
-      name: media
-      type: text
-      overwrites: open
-      topic: "Screenshots, clips, anything you recorded. Fan art has its own room."
-
     - category: PLAY
       name: lucky-pulls
       type: media
@@ -110,6 +130,11 @@ add:
       type: text
       overwrites: open
       topic: "Starting out. No question is too basic, and veterans are guests here."
+      # The day-one questions, answered once. Attached here rather than in a
+      # `set:` block because `set:` runs before `add:` and cannot reach a
+      # channel this same file adds.
+      content_file: content/new-climbers.md
+      pin: true
 
     - category: PLAY
       name: fan-art
@@ -128,6 +153,11 @@ add:
       type: text
       overwrites: readonly_reactable
       topic: "Gem and gamepass drops. Anything asking you to DM first is a scam."
+      # Broadcast-only, so the pin is the one place the rules can live where
+      # entrants will see them. "You won" is a DM scammer's best cover story
+      # precisely because winning happens here; this is what removes it.
+      content_file: content/giveaways.md
+      pin: true
 
     - category: VOICE
       name: Grind Lounge
@@ -138,32 +168,8 @@ add:
       type: stage
 
   roles:
-    # -- ping roles. The whole point: with only one, every announcement is
-    # either @everyone or unread.
-    - name: Code Alerts
-      color: 0x2ECC71
-      hoist: false
-      mentionable: true
-      permissions: []
-
-    - name: Update Alerts
-      color: 0x3498DB
-      hoist: false
-      mentionable: true
-      permissions: []
-
-    - name: Event Alerts
-      color: 0xE67E22
-      hoist: false
-      mentionable: true
-      permissions: []
-
-    - name: Giveaway Alerts
-      color: 0xF1C40F
-      hoist: false
-      mentionable: true
-      permissions: []
-
+    # The four general ping roles come from roblox-game.yaml. A banner is a
+    # gacha thing, so this one lives here.
     - name: Banner Alerts
       color: 0xE91E63
       hoist: false

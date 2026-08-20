@@ -1615,7 +1615,15 @@ def _():
     roles = [r["name"] for r in bp.get("roles", [])]
     assert len(TEMPLATES) >= 4, f"only found {[t.name for t in TEMPLATES]}"
     for t in TEMPLATES:
-        report = ce.load(t, {"game": "Testgame"}).validate(
+        # What shipped, not what this machine has edited, and against the
+        # blueprint the calendar is paired with rather than always the default.
+        paired = ROOT / "blueprint" / f"{t.stem}.yaml"
+        if paired.exists():
+            other = core.load(paired)
+            channels = [c["name"] for cat in other.get("categories", [])
+                        for c in cat.get("channels", [])]
+            roles = [r["name"] for r in other.get("roles", [])]
+        report = ce.load(t, {"game": "Testgame"}, overrides=False).validate(
             channels=channels, roles=roles)
         assert not report["errors"], f"{t.name}: {report['errors']}"
         # Every post must aim at a channel the blueprint actually creates, or
@@ -2102,6 +2110,57 @@ def _():
 def _():
     warnings = " ".join(fresh_calendar().validate()["warnings"])
     assert "everyone" in warnings
+
+
+@test("a recurring post never fires before the date it is gated to")
+def _():
+    # "New things are live" going out four days before the game exists is the
+    # sort of post that teaches people to ignore the channel.
+    cal = ce.load(CALENDAR_DIR / "roblox-game.yaml", {"game": "X"},
+                  anchor_override="2026-08-25", overrides=False)
+    launch = _date(2026, 8, 25)
+    early = [o for o in cal.occurrences(launch - _td(days=30), launch - _td(days=1))
+             if o.id in ("update-day", "update-prep")]
+    assert not early, [str(o) for o in early]
+    later = [o for o in cal.occurrences(launch, launch + _td(days=21))
+             if o.id == "update-day"]
+    assert later, "update-day never fires after launch either"
+
+
+@test("the roblox calendar is mostly rhythm, not a countdown")
+def _():
+    # A calendar full of one-offs written months ahead fires things you have
+    # forgotten you wrote. On Roblox the weekly beat is the product.
+    cal = ce.load(CALENDAR_DIR / "roblox-game.yaml", {"game": "X"}, overrides=False)
+    assert len(cal.recurring) >= 4, len(cal.recurring)
+    assert len(cal.posts) <= 8, f"{len(cal.posts)} one-offs is a countdown"
+    # And most of the one-offs should be reminders to you rather than posts to
+    # members, because nobody can write this week's update notes in advance.
+    reminders = [p for p in cal.posts if p.get("kind") == "reminder"]
+    assert len(reminders) >= len(cal.posts) / 2,         f"only {len(reminders)} of {len(cal.posts)} one-offs are reminders"
+
+
+@test("loading can ignore this machine's edits")
+def _():
+    # Checking a shipped calendar against a blueprint has to read what shipped,
+    # or the check passes or fails depending on whose laptop it runs on. That
+    # exact leak broke the suite once.
+    import tempfile, shutil, yaml as _y
+    d = Path(tempfile.mkdtemp())
+    cal = d / "c.yaml"
+    shutil.copy(CALENDAR_DIR / "roblox-game.yaml", cal)
+    ce.overrides_path(cal).write_text(
+        _y.safe_dump({"posts": [{"id": "launch-day", "body": "LOCAL"}]}),
+        encoding="utf-8")
+    with_local = ce.load(cal, {"game": "X"})
+    without = ce.load(cal, {"game": "X"}, overrides=False)
+    a = with_local.find("launch-day", _date(2026, 8, 25))
+    b = without.find("launch-day", _date(2026, 8, 25))
+    assert a.post["body"] == "LOCAL"
+    assert b.post["body"] != "LOCAL"
+    shutil.rmtree(d, ignore_errors=True)
+
+
 
 
 @test("no calendar names one particular game")

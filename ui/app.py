@@ -971,6 +971,26 @@ def calendar_posts(blueprint: str = ""):
                 return occ.date
         return None
 
+    def why_not(row):
+        """Why a post has no next date.
+
+        Half a list reading "not scheduled" with no reason looks broken. The
+        usual cause is a date that has already gone by, which happens the
+        moment somebody sets a launch day nearer than the offsets assume.
+        """
+        when = row.get("when")
+        if not when:
+            return "no date set"
+        try:
+            resolved = calendar_engine.parse_when(when, cal.anchor)
+        except calendar_engine.BadDate:
+            if not cal.anchor:
+                return "needs a launch day"
+            return f"cannot read {when!r} as a date"
+        if resolved < today:
+            return f"was {resolved.isoformat()}, already gone"
+        return "not scheduled"
+
     out = []
     for which in ("posts", "recurring"):
         for b in merged.get(which, []):
@@ -984,6 +1004,8 @@ def calendar_posts(blueprint: str = ""):
                 "event": bool(b.get("event")),
                 "next": nxt.isoformat() if nxt else None,
                 "t": cal.t_minus(nxt) if nxt else None,
+                "why_not": None if nxt else (
+                    why_not(b) if which == "posts" else "the window has closed"),
                 "edited": b.get("id") in edited,
                 "shipped": b.get("id") in shipped,
             })
@@ -991,7 +1013,8 @@ def calendar_posts(blueprint: str = ""):
         out.append({"id": bid, "list": "posts", "hidden": True, "edited": True,
                     "shipped": bid in shipped, "title": "", "body": "",
                     "channel": "", "when": "", "every": "", "mention": "",
-                    "kind": "post", "next": None, "t": None, "event": False})
+                    "kind": "post", "next": None, "t": None, "event": False,
+                    "why_not": "you turned it off"})
 
     # Soonest first, with anything dormant after it.
     out.sort(key=lambda b: (b["next"] is None, b["next"] or "", b["id"]))

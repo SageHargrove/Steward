@@ -342,13 +342,17 @@ def merge(spec: dict, local: dict) -> dict:
     return out
 
 
-def load(path, variables: dict | None = None, anchor_override=None) -> Calendar:
+def load(path, variables: dict | None = None, anchor_override=None,
+         overrides=True) -> Calendar:
+    """`overrides=False` loads what shipped, ignoring anything edited on this
+    machine. Checking a calendar against a blueprint has to be done that way,
+    or the check passes or fails depending on whose laptop it runs on."""
     import yaml
     with open(path, encoding="utf-8") as fh:
         spec = yaml.safe_load(fh) or {}
 
     local_file = overrides_path(path)
-    if local_file.exists():
+    if overrides and local_file.exists():
         try:
             with open(local_file, encoding="utf-8") as fh:
                 spec = merge(spec, yaml.safe_load(fh) or {})

@@ -9,11 +9,13 @@
   description. Blank line between blocks. Discord allows 16 rules maximum and
   there are exactly 16 here, so replace rather than append.
 
-  Keep this in step with content/rules.md, which is the long version posted in
-  the rules channel.
+  These are in the SAME ORDER as content/rules.md and say the same things in
+  fewer words. If you edit one file, edit the other in the same sitting: a
+  screening list that disagrees with the pinned rules is worse than no
+  screening list, because it is the version people actually agreed to.
 -->
 Be decent to each other
-Disagreement is fine, contempt is not. Defuse things or bring in a mod rather than escalating.
+Disagreement is fine, contempt is not. Defuse it or bring in a mod rather than escalating.
 
 No hate speech
 Slurs and bigotry of any kind mean an immediate permanent ban. There is no warning for this one.
@@ -27,35 +29,35 @@ Not because they do not matter, but because this is not the place. Includes the 
 Protect personal information
 Yours and everyone else's. Check your screenshots before you post them.
 
-No advertising
-No invite links, no promoting services, and never ask members for money.
+Nobody on the team will DM you first
+Anyone who messages you first about a reward, a beta or your account is a scam. Never share your password or a one-time code.
+
+Trades are at your own risk
+Trade in game, in the trade window. Never send first, never use a middleman. Scam losses cannot be restored.
+
+No advertising, no begging
+No invite links, no promoting services, and never ask members for gems, Robux or money.
 
 Use the right channel
 Each one has a job. The right place is the difference between an answer and silence.
 
 Bug reports need detail
-Steps, what you expected, what happened, and a build number. Use the bug channel, not general chat.
+Steps, what you expected, what happened, and your device. Use the bug channel, not general chat.
 
 No spam or mass pings
 No flooding, no repeated content, no pinging staff or members over and over.
 
-Do not impersonate staff
-No lookalike names or avatars. Staff will never DM you first asking for anything.
+Do not impersonate staff or the dev
+No lookalike names or avatars, and no pretending to speak for the team.
 
-No cheats that affect other players
-No distributing hacks or unsafe files. Report exploits rather than using them.
+Exploits get reported, not used
+No exploits, dupes or third-party programs. Exploited progress is rolled back and the account is banned.
 
 Credit art that is not yours
 Do not post work you have no right to post, and credit the artist when you share it.
 
-Mark spoilers
-Use spoiler tags for story content other people may not have reached yet.
-
 Listen to moderators
 Follow instructions in the moment and dispute them afterwards in DMs, not in public chat.
 
-Use common sense
-If you are wondering whether you should post something, that hesitation is usually the answer.
-
-Discord's rules apply too
-You must be 13 or older, and Discord's Terms of Service and Community Guidelines apply here.
+Discord's rules apply, and so does common sense
+You must be 13 or older. If you are wondering whether you should post something, that hesitation is the answer.

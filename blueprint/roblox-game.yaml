@@ -42,12 +42,21 @@ rename:
   channels:
     # On Roblox you are looking for a server to join, not a guild to join.
     looking-for-group: find-a-server
+    # Clips and screenshots land in the same room on Roblox, and "media" says
+    # so without a second channel nobody posts in.
+    screenshots: media
     patch-notes: update-notes
   roles:
     Group Finder: Server Finder
 
 add:
   channels:
+    - category: INFO
+      name: pick-your-roles
+      type: text
+      overwrites: readonly_reactable
+      topic: "Choose which pings you want. Nothing here is compulsory."
+
     - category: PLAY
       name: codes
       type: text
@@ -71,6 +80,33 @@ add:
       type: voice
 
   roles:
+    # Ping roles. With only one opt-in role every announcement is either
+    # @everyone or unread, and @everyone stops working the third time you
+    # use it.
+    - name: Code Alerts
+      color: 0x2ECC71
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Update Alerts
+      color: 0x3498DB
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Event Alerts
+      color: 0xE67E22
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Giveaway Alerts
+      color: 0xF1C40F
+      hoist: false
+      mentionable: true
+      permissions: []
+
     - name: Group Member
       color: 0x00A2FF
       hoist: false
