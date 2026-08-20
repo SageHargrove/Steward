@@ -163,7 +163,8 @@ implementation.
 blueprint/default.yaml      the server spec. Channels, roles, permissions,
                             forum tags, onboarding prompts, AutoMod rules
 blueprint/steam-game.yaml   variants. Each states only its differences
-blueprint/roblox-game.yaml    from the default, using `extends:`
+blueprint/roblox-game.yaml    from the one it extends, using `extends:`,
+blueprint/roblox-gacha.yaml   `remove:`, `rename:`, `add:`, `set:`, `move:`
 blueprint/mod.yaml
 blueprint/calendars/        what gets posted and when, dated relative to
                             launch. One per kind of project: general,
@@ -345,6 +346,11 @@ AutoMod exemption listing it are pruned automatically. Renaming `#mod-log`
 retargets the four AutoMod alerts and the safety-alerts setting that point at
 it. Those are mechanical consequences, not user errors, so they never surface
 as validation failures.
+
+**Change a channel's type and permissions in place.** Every row has a type
+dropdown and a who-can-post dropdown, so turning `#trading` into a forum is
+one click. It used to mean removing it and adding a channel of the same
+name, which the page then refused because the name was taken.
 
 **Add, remove, rename.** The list shown is what gets built. Remove drops an item
 to the bottom of its group so it can be put back; the Add row at the foot of each

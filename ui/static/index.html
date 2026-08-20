@@ -250,6 +250,10 @@
   .updbox h4{margin:0 0 7px; font-size:13.5px; color:var(--fg)}
   .updbox ul{margin:6px 0 0 16px; padding:0; font-size:12.5px; color:var(--dim)}
   .updbox li{margin:2px 0}
+  .chops{display:flex; gap:7px; align-items:center; margin-top:5px; flex-wrap:wrap}
+  .chops select{padding:2px 6px; font-size:11.5px; background:var(--input);
+    border:1px solid var(--line); color:var(--dim); border-radius:4px}
+  .chops select:hover{color:var(--fg); border-color:var(--line)}
   .calrow{display:grid; grid-template-columns:96px 52px 1fr auto; gap:10px;
     align-items:baseline; padding:7px 0; border-top:1px solid var(--line-soft);
     font-size:13px}
@@ -680,6 +684,8 @@ function freshSelection(inv){
     prompts: inv.prompts.map(p => p.title),
     defaults: inv.onboarding_defaults.slice(),
     renames: {channels:{}, roles:{}},
+    types: {},
+    perms: {},
     colors: {},
     levels: JSON.parse(JSON.stringify(inv.levels || {rewards:{}})),
     additions: {channels:[], roles:[]},
@@ -1385,23 +1391,85 @@ function feature(key, title, why){
     <div class="why">${why}</div></div></div>`;
 }
 
+/* What each permission preset means, in words rather than in Discord's. */
+const PERMS = {
+  open:               'Everyone can post',
+  open_no_links:      'Everyone can post, no links',
+  forum_open:         'Everyone can post',
+  readonly_reactable: 'Staff post, everyone reacts',
+  readonly:           'Staff post, no reactions',
+  playtester_only:    'Playtesters only',
+  staff_only:         'Staff only, hidden',
+  voice_open:         'Everyone can join'
+};
+
+const TYPE_PERMS = {
+  text:         ['open', 'open_no_links', 'readonly_reactable', 'readonly',
+                 'playtester_only', 'staff_only'],
+  announcement: ['readonly_reactable', 'readonly', 'staff_only'],
+  forum:        ['forum_open', 'playtester_only', 'staff_only'],
+  voice:        ['voice_open', 'staff_only']
+};
+
+function typeOf(ch){ return SEL.types[ch.name] || ch.type; }
+function permOf(ch){
+  const p = SEL.perms[ch.name] || ch.overwrites || 'open';
+  const allowed = TYPE_PERMS[typeOf(ch)] || TYPE_PERMS.text;
+  return allowed.includes(p) ? p : allowed[0];
+}
+
 function channelRow(ch, i){
   const isDefault = SEL.defaults.includes(ch.name);
   const locked = ch.required && (ch.required_when !== 'community'
                                  || SEL.features.community !== false);
+  const t = typeOf(ch), perm = permOf(ch);
+  const opt = (v, cur, label) =>
+    `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
   return `<div class="item">
     <div class="meta">
-      <div class="nm"><b>#</b><input type="text" value="${esc(ch.name)}"
-          onchange="renameChan(${i}, this.value)">${chip(ch)}
-        ${ch.type === 'voice' ? '' :
+      <div class="nm"><b>${t === 'voice' ? '&#128266;' : '#'}</b>
+        <input type="text" value="${esc(ch.name)}"
+          onchange="renameChan(${i}, this.value)">
+        ${ch.added ? '<span class="tag added">yours</span>' : ''}
+        ${t !== 'text' ? `<span class="tag ${t}">${t}</span>` : ''}
+        ${ch.tags && ch.tags.length ? `<span class="tag">${ch.tags.length} post tags</span>` : ''}
+        ${t === 'voice' ? '' :
           `<button class="pill ${isDefault?'on':''}" onclick="toggleDefault(${i})"
             title="Whether new members are shown this channel while joining"
             >shown to new members</button>`}
         ${locked ? '<span class="tag req">required</span>' : ''}</div>
-      <div class="why">${esc((locked ? ch.required_reason : ch.topic).slice(0,150))}</div>
+      <div class="chops">
+        <select onchange="setChanType(${i}, this.value)" title="Channel type">
+          ${['text','announcement','forum','voice']
+            .map(v => opt(v, t, v === 'announcement' ? 'Announcement'
+                              : v.charAt(0).toUpperCase() + v.slice(1))).join('')}
+        </select>
+        <select onchange="setChanPerm(${i}, this.value)" title="Who can post">
+          ${(TYPE_PERMS[t] || TYPE_PERMS.text).map(v => opt(v, perm, PERMS[v])).join('')}
+        </select>
+        <span class="why" style="margin:0">${esc((locked ? ch.required_reason
+                                                         : ch.topic || '').slice(0,110))}</span>
+      </div>
     </div>
     ${locked ? '<span class="lock">cannot remove</span>'
              : `<button class="rm" onclick="removeChannel(${i})">Remove</button>`}</div>`;
+}
+
+function setChanType(i, value){
+  const ch = CHANS[i];
+  if(value === ch.type) delete SEL.types[ch.name]; else SEL.types[ch.name] = value;
+  // A preset that does not exist for the new type would be silently dropped.
+  const allowed = TYPE_PERMS[value] || TYPE_PERMS.text;
+  if(SEL.perms[ch.name] && !allowed.includes(SEL.perms[ch.name]))
+    delete SEL.perms[ch.name];
+  redraw();
+}
+
+function setChanPerm(i, value){
+  const ch = CHANS[i];
+  if(value === (ch.overwrites || 'open')) delete SEL.perms[ch.name];
+  else SEL.perms[ch.name] = value;
+  redraw();
 }
 
 function addedRow(a){
@@ -1595,9 +1663,17 @@ function addChannel(catIdx){
   // Discord lowercases text-style channel names and turns spaces into dashes.
   // Do it here so the result is not a surprise after building.
   if(type !== 'voice') name = name.toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
-  const taken = CHANS.some(c => c.name === name)
+  // A removed channel does not hold its name. Counting it as taken blocked
+  // the obvious workaround for changing a type, which is remove and re-add.
+  const taken = CHANS.some(c => c.name === name && SEL.channels.includes(c.name))
              || SEL.additions.channels.some(c => c.name === name);
-  if(taken){ alert('There is already a channel called ' + name); return; }
+  if(taken){
+    alert('There is already a channel called ' + name + '.'
+      + String.fromCharCode(10, 10)
+      + 'If you want to change its type, use the dropdown on its row '
+      + 'rather than removing and re-adding it.');
+    return;
+  }
   SEL.additions.channels.push({name, type, category: INV.categories[catIdx].name});
   nameEl.value = '';
   redraw();
@@ -1606,7 +1682,7 @@ function addChannel(catIdx){
 function addRole(){
   const el = $('#nrname'), name = el.value.trim();
   if(!name) return;
-  const taken = INV.roles.some(r => r.name === name)
+  const taken = INV.roles.some(r => r.name === name && SEL.roles.includes(r.name))
              || SEL.additions.roles.some(r => r.name === name);
   if(taken){ alert('There is already a role called ' + name); return; }
   const hex = ($('#nrcolor').value || '#000000').replace('#', '');

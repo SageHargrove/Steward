@@ -1,0 +1,296 @@
+# A Roblox gacha or idle-climber
+#
+# Built from a real review of a live server, and it fixes the mistake that
+# review found: a good dev server and a thin game server. Everything a default
+# blueprint gives you serves people who care how the game is made. For a gacha
+# that is five per cent of your members, and the other ninety-five leave in a
+# week if there is nowhere to post a pull.
+#
+# The four channels that carry a gacha server, in order of traffic:
+#
+#   #codes        the single most-visited channel in any Roblox game server,
+#                 and the reason a lot of people join at all. Announcement
+#                 type, so other servers can follow it, which is free reach.
+#   #lucky-pulls  the retention engine, not a vanity channel. Media type, so
+#                 it stays a wall of screenshots rather than a chat log.
+#   #trading      a forum, not a text channel. A text trading channel is an
+#                 unreadable scroll within a week; a forum lets people browse
+#                 open offers and close their own post when the trade is done.
+#   #hall-of-fame broadcast only. If members can post in it, it stops being an
+#                 honour.
+#
+# Ping roles are the other half. With one opt-in role every announcement is
+# either @everyone or unread, so there is one per thing worth announcing.
+#
+# Pair it with the roblox-game calendar.
+
+extends: roblox-game.yaml
+
+meta:
+  name: Roblox gacha or idle game
+  slug: roblox-gacha
+  calendar: roblox-game
+
+remove:
+  channels:
+    # A blueprint default for games with building or character customisation.
+    # A gacha climber has neither, so nothing would ever go in it.
+    - builds-and-showcase
+    # Absorbed by #media, which also gives the Content Creator role a home.
+    - screenshots
+
+# Changing things that came from the blueprint above, in place.
+move:
+  channels:
+    # Broadcast, so it belongs with the other broadcast channels.
+    codes: INFO
+
+set:
+  channels:
+    codes:
+      type: announcement
+      overwrites: readonly_reactable
+      topic: "Working codes, and the ones that have expired. Check here before asking."
+
+    trading:
+      # A text trading channel is an unreadable scroll within a week. A forum
+      # lets people browse open offers and close their own post when done.
+      type: forum
+      overwrites: forum_open
+      topic: "Open trade offers. One post per offer; close yours when it is done."
+      tags:
+        - { name: "7-star", emoji: "🌟" }
+        - { name: "6-star", emoji: "✨" }
+        - { name: "5-star", emoji: "🔸" }
+        - { name: fire,   emoji: "🔥" }
+        - { name: water,  emoji: "💧" }
+        - { name: earth,  emoji: "🪨" }
+        - { name: wind,   emoji: "💨" }
+        - { name: light,  emoji: "☀️" }
+        - { name: dark,   emoji: "🌑" }
+        - { name: wanted, emoji: "🔍" }
+        - { name: closed, emoji: "✔️", moderated: true }
+
+rename:
+  channels:
+    # "Private server" on Roblox means a paid instance of the game, so people
+    # click it expecting one.
+    Private Server: Dev Voice
+    # An idle game still needs two players in one server to trade.
+    find-a-server: play-together
+  roles:
+    Tier 1: Awakened
+    Tier 2: Climber
+    Tier 3: Wallbreaker
+    Tier 4: Ascendant
+    Tier 5: Apex
+
+add:
+  channels:
+    - category: INFO
+      name: pick-your-roles
+      type: text
+      overwrites: readonly_reactable
+      topic: "Choose which pings you want. Nothing here is compulsory."
+
+    - category: PLAY
+      name: media
+      type: text
+      overwrites: open
+      topic: "Screenshots, clips, anything you recorded. Fan art has its own room."
+
+    - category: PLAY
+      name: lucky-pulls
+      type: media
+      overwrites: open
+      topic: "Post the pull. No chat in here, react instead."
+
+    - category: PLAY
+      name: new-climbers
+      type: text
+      overwrites: open
+      topic: "Starting out. No question is too basic, and veterans are guests here."
+
+    - category: PLAY
+      name: fan-art
+      type: text
+      overwrites: open
+      topic: "Art of the game, by anyone. Credit the artist if it is not yours."
+
+    - category: PLAY
+      name: hall-of-fame
+      type: text
+      overwrites: readonly_reactable
+      topic: "Weekly winners and the all-time board. Posted by staff; react, do not reply."
+
+    - category: PLAY
+      name: giveaways
+      type: text
+      overwrites: readonly_reactable
+      topic: "Gem and gamepass drops. Anything asking you to DM first is a scam."
+
+    - category: VOICE
+      name: Grind Lounge
+      type: voice
+
+    - category: VOICE
+      name: Stage
+      type: stage
+
+  roles:
+    # -- ping roles. The whole point: with only one, every announcement is
+    # either @everyone or unread.
+    - name: Code Alerts
+      color: 0x2ECC71
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Update Alerts
+      color: 0x3498DB
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Event Alerts
+      color: 0xE67E22
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Giveaway Alerts
+      color: 0xF1C40F
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    - name: Banner Alerts
+      color: 0xE91E63
+      hoist: false
+      mentionable: true
+      permissions: []
+
+    # -- achievement roles. Free retention, granted by hand or by a linked
+    # account. Deliberately not the in-game rank letters: a Discord "Rank S"
+    # meaning "chatted a lot" beside an in-game S meaning 650k power would
+    # confuse people forever.
+    - name: Sovereign Owner
+      note: "Pulled a 7-star. Grant by hand or by proof in #lucky-pulls."
+      color: 0xFFD700
+      hoist: true
+      mentionable: false
+      permissions: []
+
+    - name: Apex Climber
+      note: "Reached the top floor."
+      color: 0xC0392B
+      hoist: true
+      mentionable: false
+      permissions: []
+
+    - name: Rank SSS
+      note: "The in-game rank letter, reserved for the in-game meaning."
+      color: 0x8E44AD
+      hoist: true
+      mentionable: false
+      permissions: []
+
+    # Quoted, or YAML reads the hash as the start of a comment and the role
+    # comes out called "Weekly".
+    - name: "Weekly #1"
+      note: "Rotating. Granted at Monday rollover, revoked the following Monday."
+      color: 0xF39C12
+      hoist: true
+      mentionable: false
+      permissions: []
+
+    - name: All-Time Top 10
+      color: 0xD35400
+      hoist: false
+      mentionable: false
+      permissions: []
+
+    - name: Codex Complete
+      note: "Every hero collected."
+      color: 0x16A085
+      hoist: false
+      mentionable: false
+      permissions: []
+
+    # -- structural
+    - name: Verified
+      note: >-
+        Linked their Discord to their Roblox account. Gate #trading behind this
+        and impersonation scams drop sharply, because a scammer has to link a
+        real account you can then ban by id.
+      color: 0x1ABC9C
+      hoist: false
+      mentionable: false
+      permissions: []
+
+    - name: Muted
+      note: "Exists so a moderation bot has a role to apply. Grants nothing."
+      color: 0x36393F
+      hoist: false
+      mentionable: false
+      permissions: []
+
+  onboarding_defaults:
+    - codes
+    - lucky-pulls
+    - new-climbers
+
+  manual_steps:
+    - kind: bot
+      title: "Self-assign roles in #pick-your-roles"
+      why: >-
+        You now have five ping roles, and they do nothing until members can pick
+        them up. Steward does not do reaction roles on purpose; Sapphire does it
+        for free and does it better. Without this step every announcement is
+        still either @everyone or unread, which is the problem the roles were
+        added to solve.
+      where:
+        - "Install Sapphire from Discord's App Directory if it is not in already"
+        - "Sapphire's dashboard, then Reaction Roles, then New"
+        - "Point it at #pick-your-roles"
+        - "Add one button or reaction per role: Code Alerts, Update Alerts, Event Alerts, Giveaway Alerts, Banner Alerts"
+        - "Post the panel"
+      after: >-
+        Announce it once in #announcements. People do not go looking for a roles
+        channel, and a panel nobody knows about gets the same engagement as no
+        panel at all.
+      url: "https://discord.com/application-directory"
+
+    - kind: setting
+      title: "Gate #trading behind Verified"
+      why: >-
+        Trading is where impersonation scams happen, and they become your problem
+        whether or not they happened in your server. Requiring a linked Roblox
+        account first means a scammer has to burn a real account you can ban by
+        id, which stops the same person coming back under a new name.
+      where:
+        - "Install Bloxlink from Discord's App Directory"
+        - "Set it to grant the Verified role when somebody links their Roblox account"
+        - "Right-click #trading, Edit Channel, Permissions"
+        - "@everyone: deny Create Posts"
+        - "Verified: allow Create Posts"
+      after: >-
+        Leave viewing open to everyone. People should be able to read offers
+        before they decide whether linking is worth it.
+      url: "https://discord.com/application-directory"
+
+
+levels:
+  # Tier 5 at 75 is over a year of casual play, which is a role nobody wears
+  # this year. Everything below it is well paced, so only the top moves.
+  rewards:
+    - { level: 5,  role: "Awakened" }
+    - { level: 15, role: "Climber" }
+    - { level: 30, role: "Wallbreaker" }
+    - { level: 50, role: "Ascendant" }
+    - { level: 60, role: "Apex" }
+
+  # An idle game is watched rather than played, so people park in voice for
+  # hours. At 5 a minute a six-hour session pays 1,800 XP, which is three days
+  # of chatting, and the ladder ends up measuring who leaves Discord open.
+  voice_xp_per_minute: 2

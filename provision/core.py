@@ -270,6 +270,35 @@ def apply_variant(base: dict, over: dict) -> dict:
     # ROLE_OR_CHANNEL_REQUIRED and takes the whole request down with it.
     _retarget(out, ch_names, role_names, gone_channels, gone_roles)
 
+    # `set:` changes properties of something inherited, in place. Without it a
+    # variant that only wanted #trading to be a forum had to remove it and add
+    # a channel of the same name, which is the exact workaround the setup page
+    # now avoids on its own rows.
+    for name, changes in ((over.get("set") or {}).get("channels") or {}).items():
+        for cat in out.get("categories", []):
+            for ch in cat.get("channels", []):
+                if ch.get("name") == name:
+                    ch.update(changes)
+    for name, changes in ((over.get("set") or {}).get("roles") or {}).items():
+        for role in out.get("roles", []):
+            if role.get("name") == name:
+                role.update(changes)
+    for name, where in ((over.get("move") or {}).get("channels") or {}).items():
+        found = None
+        for cat in out.get("categories", []):
+            for ch in list(cat.get("channels") or []):
+                if ch.get("name") == name:
+                    found = ch
+                    cat["channels"].remove(ch)
+        if found is None:
+            continue
+        target = next((c for c in out.get("categories", [])
+                       if c.get("name") == where), None)
+        if target is None:
+            target = {"name": where, "channels": []}
+            out.setdefault("categories", []).append(target)
+        target.setdefault("channels", []).append(found)
+
     added = (over.get("add") or {})
     for role in (added.get("roles") or []):
         out.setdefault("roles", []).append(role)
@@ -284,10 +313,24 @@ def apply_variant(base: dict, over: dict) -> dict:
         target.setdefault("channels", []).append(chan)
     for name in (added.get("onboarding_defaults") or []):
         out.setdefault("onboarding_defaults", []).append(name)
+    # Appended, never replaced. A variant that adds one by-hand step must not
+    # silently drop Rules Screening and Raid Protection along the way.
+    for step in (added.get("manual_steps") or []):
+        out.setdefault("manual_steps", []).append(step)
+
+    # A name listed twice is sent to Discord twice. Order is kept because the
+    # first seven decide what a new member is shown first.
+    seen, unique = set(), []
+    for name in (out.get("onboarding_defaults") or []):
+        if name not in seen:
+            seen.add(name)
+            unique.append(name)
+    out["onboarding_defaults"] = unique
 
     # Anything else in the variant simply replaces that key.
     handled = {"extends", "meta", "variables", "levels", "guild",
-               "welcome_screen", "remove", "rename", "add", "keep_empty"}
+               "welcome_screen", "remove", "rename", "add", "keep_empty",
+               "set", "move"}
     for key, value in over.items():
         if key not in handled:
             out[key] = value
@@ -485,6 +528,7 @@ def inventory(bp: dict) -> dict:
                 "required": bool(ch.get("required")),
                 "required_when": ch.get("required_when", ""),
                 "required_reason": ch.get("required_reason", ""),
+                "overwrites": ch.get("overwrites", "open"),
                 "tags": [t["name"] for t in ch.get("tags", [])],
                 "default": bool(ch.get("default")),
                 "added": bool(ch.get("added")),
@@ -731,6 +775,39 @@ def customize(bp: dict, selection: dict | None) -> dict:
         # renaming a tier silently stopped it ever being granted.
         for reward in bp.get("levels", {}).get("rewards", []):
             reward["role"] = rr(reward["role"])
+
+    # -- changing a channel's type or who may post in it, in place.
+    #
+    # Without this the only way to turn #trading into a forum was to remove it
+    # and add a channel of the same name, which the page refused because the
+    # name was taken. Matched against raw blueprint names, so it runs before
+    # substitution like every other selection.
+    for name, kind in (sel.get("types") or {}).items():
+        if kind not in CHANNEL_TYPES:
+            continue
+        for cat in bp.get("categories", []):
+            for ch in cat.get("channels", []):
+                if ch.get("name") != name:
+                    continue
+                was, ch["type"] = ch.get("type", "text"), kind
+                # A text channel's permission preset denies thread creation,
+                # which is the only thing a forum post is. Swap to the forum
+                # preset unless somebody chose one deliberately.
+                if kind == "forum" and was != "forum"                         and name not in (sel.get("perms") or {}):
+                    ch["overwrites"] = "forum_open"
+                if kind != "forum" and was == "forum"                         and ch.get("overwrites") == "forum_open":
+                    ch["overwrites"] = "open"
+                if kind == "voice" and ch.get("overwrites") in (None, "open"):
+                    ch["overwrites"] = "voice_open"
+
+    presets = bp.get("overwrite_presets") or {}
+    for name, preset in (sel.get("perms") or {}).items():
+        if preset not in presets:
+            continue
+        for cat in bp.get("categories", []):
+            for ch in cat.get("channels", []):
+                if ch.get("name") == name:
+                    ch["overwrites"] = preset
 
     # -- recolouring, which the UI offers on every role rather than only on
     # ones somebody added by hand

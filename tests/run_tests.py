@@ -1719,6 +1719,95 @@ def _():
     assert base["posts"][0]["body"] == "shipped", "merge mutated the original"
 
 
+@test("no yaml file declares the same top-level key twice")
+def _():
+    """PyYAML keeps the last one silently.
+
+    A variant grew a second `add:` block and the first one, holding every
+    channel and role it added, was discarded without a word.
+    """
+    import yaml as _y
+
+    class _Strict(_y.SafeLoader):
+        pass
+
+    def _no_dupes(loader, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise AssertionError(f"duplicate key {key!r}")
+            seen.add(key)
+        return _y.SafeLoader.construct_mapping(loader, node, deep)
+
+    _Strict.add_constructor(_y.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_dupes)
+
+    roots = [ROOT / "blueprint", ROOT / "blueprint" / "calendars"]
+    for root in roots:
+        for f in sorted(root.glob("*.yaml")):
+            if f.name.endswith(".local.yaml"):
+                continue
+            try:
+                _y.load(f.read_text(encoding="utf-8"), _Strict)
+            except AssertionError as e:
+                raise AssertionError(f"{f.name}: {e}")
+
+
+@test("a channel type can be changed without removing the channel")
+def _():
+    # Turning #trading into a forum used to mean removing it and adding one of
+    # the same name, which the page refused because the name was taken.
+    bp = core.load(ROOT / "blueprint" / "roblox-game.yaml")
+    out = core.customize(bp, {"types": {"trading": "forum"}})
+    ch = next(c for cat in out["categories"] for c in cat["channels"]
+              if c["name"] == "trading")
+    assert ch["type"] == "forum", ch
+    # A text preset denies thread creation, which is all a forum post is, so
+    # the permissions have to follow the type.
+    assert ch["overwrites"] == "forum_open", ch
+
+
+@test("who can post is changeable per channel")
+def _():
+    bp = core.load(ROOT / "blueprint" / "roblox-game.yaml")
+    out = core.customize(bp, {"perms": {"codes": "readonly_reactable"}})
+    ch = next(c for cat in out["categories"] for c in cat["channels"]
+              if c["name"] == "codes")
+    assert ch["overwrites"] == "readonly_reactable", ch
+
+
+@test("a removed channel does not keep hold of its name")
+def _():
+    # Remove-then-re-add is what people reach for when they cannot change a
+    # type, and it was refused because the removed one still counted.
+    html = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    fn = html[html.index("function addChannel("):html.index("function addRole(")]
+    assert "SEL.channels.includes" in fn,         "the taken-name check still counts removed channels"
+
+
+@test("adding a by-hand step does not drop the inherited ones")
+def _():
+    # An unhandled key replaces outright, which silently lost Rules Screening
+    # and Raid Protection from a variant that only wanted to add one step.
+    base = core.load(ROOT / "blueprint" / "default.yaml").get("manual_steps") or []
+    gacha = core.load(ROOT / "blueprint" / "roblox-gacha.yaml").get("manual_steps") or []
+    assert len(gacha) > len(base), (len(base), len(gacha))
+    titles = {m["title"] for m in gacha}
+    for kept in ("Rules Screening", "Raid Protection and DM filtering"):
+        assert kept in titles, f"{kept} was dropped"
+
+
+@test("no channel is shown to new members twice")
+def _():
+    for f in sorted((ROOT / "blueprint").glob("*.yaml")):
+        if f.name.endswith(".local.yaml"):
+            continue
+        defaults = core.load(f).get("onboarding_defaults") or []
+        assert len(defaults) == len(set(defaults)),             f"{f.name}: {[d for d in defaults if defaults.count(d) > 1]}"
+
+
+
+
 @test("there is a blueprint for each kind of project")
 def _():
     # Only one shipped for a long time, so picking Roblox in step 8 still left
@@ -2455,8 +2544,12 @@ def _bot(tmpdb):
 def _drive(fn):
     # mkdtemp rather than TemporaryDirectory: Windows will not delete a file
     # SQLite still has open, and the cleanup raises before the test can report.
-    import tempfile
+    import os, tempfile
     d = tempfile.mkdtemp()
+    # Pin the calendar. Without this the suite reads whatever steward/.env
+    # happens to say, so switching template on a real machine broke tests that
+    # have nothing to do with it.
+    os.environ["CALENDAR"] = "steam-game"
     b = _bot(Path(d) / "t.sqlite3")
     return _aio.run(fn(b, _Guild()))
 
