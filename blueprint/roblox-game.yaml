@@ -179,7 +179,10 @@ onboarding_prompts:
       - title: "Yes, ping me"
         description: "You will hear about updates and early testing."
         emoji: "🔔"
-        roles: [Ping Me For Playtests]
+        # Update Alerts rather than the playtest role: the question asks about
+        # updates, and a server that switches playtests off should still be
+        # able to ask it.
+        roles: [Update Alerts]
       - title: "No thanks"
         description: "You can pick this up later in #start-here."
         emoji: "🔕"

@@ -524,6 +524,7 @@ def inventory(bp: dict) -> dict:
             "channels": [{
                 "name": ch["name"],
                 "type": ch.get("type", "text"),
+                "feature": ch.get("feature", ""),
                 "topic": (ch.get("topic") or "").strip(),
                 "required": bool(ch.get("required")),
                 "required_when": ch.get("required_when", ""),
@@ -540,6 +541,7 @@ def inventory(bp: dict) -> dict:
         "categories": cats,
         "roles": [{
             "name": r["name"],
+            "feature": r.get("feature", ""),
             "required": bool(r.get("required")),
             "required_reason": r.get("required_reason", ""),
             "color": r.get("color", 0),
@@ -554,6 +556,7 @@ def inventory(bp: dict) -> dict:
         } for a in bp.get("automod", [])],
         "prompts": [{
             "title": p["title"],
+            "feature": p.get("feature", ""),
             "options": [o["title"] for o in p.get("options", [])],
             "note": p.get("note", ""),
         } for p in bp.get("onboarding_prompts", [])],
@@ -628,6 +631,28 @@ def customize(bp: dict, selection: dict | None) -> dict:
             cat["channels"] = [ch for ch in cat.get("channels", [])
                                if ch.get("type", "text") not in COMMUNITY_GATED]
         bp["categories"] = [c for c in bp.get("categories", []) if c.get("channels")]
+
+    # Parts of Steward this deployment does not want. A part is more than its
+    # bot job: the playtest wave also needs a channel, two roles and the opt-in
+    # question, and leaving those on a server that will never run one is how a
+    # blueprint turns into clutter nobody can explain. Anything carrying
+    # `feature:` goes when that feature is off, including things marked
+    # required, since "required" means required for the feature.
+    def wanted(item) -> bool:
+        key = item.get("feature")
+        return not key or feats.get(key, True) is not False
+
+    if feats.get("levels") is False:
+        # The bot reads its own switch, but a blueprint that still says levels
+        # are on would tell the audit to check reward roles that were just
+        # dropped, and would report a fault nobody caused.
+        bp["levels"] = {**(bp.get("levels") or {}), "enabled": False}
+
+    bp["roles"] = [r for r in bp.get("roles", []) if wanted(r)]
+    for cat in bp.get("categories", []):
+        cat["channels"] = [ch for ch in cat.get("channels", []) if wanted(ch)]
+    bp["onboarding_prompts"] = [p for p in bp.get("onboarding_prompts", [])
+                                if wanted(p)]
 
     def keep_set(key, all_names, required_names=frozenset()):
         chosen = sel.get(key)
@@ -1005,6 +1030,13 @@ def validate(bp: dict) -> dict:
             errors.append(f"Prompt '{p['title']}': unknown type {p.get('type')}")
         if len(p.get("options", [])) > 50:
             errors.append(f"Prompt '{p['title']}': more than 50 options")
+        if len(p.get("options", [])) == 1:
+            # Usually the tail of a removal: an answer that granted a dropped
+            # role is pruned, and what is left is a question whose only
+            # possible answer is "no thanks".
+            warnings.append(
+                f"Prompt '{p['title']}' has one answer left, so there is "
+                f"nothing to choose between")
         if not p.get("options"):
             errors.append(f"Question '{p['title']}' has no answers left")
         for o in p.get("options", []):

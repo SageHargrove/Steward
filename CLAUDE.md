@@ -62,6 +62,16 @@ colour, hoist, or permissions, and must never be treated as something a member
 keeps. Stripping them requires MANAGE_ROLES, which is why the ledger invite
 includes it.
 
+**A `feature:` key ties a blueprint item to an on/off switch.** Put it on a
+channel, a role or an onboarding question and `customize()` drops that item
+whenever the switch is off, `required: true` included, because required means
+required for that feature. The catalog of switches is `steward/features.py` and
+the values live in `steward/.env` as `FEATURE_LEVELS=off` and so on. An absent
+key means on, so switching something back on deletes its line rather than
+writing `=on`. Dropping an item cascades: an onboarding answer that granted
+only a dropped role is pruned, and a question can end up with one answer left,
+which validate warns about.
+
 **Never invent a third-party bot's client id** for an invite URL. A wrong
 invite link sends someone's server to the wrong application. Point at Discord's
 App Directory instead.

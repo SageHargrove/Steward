@@ -254,6 +254,26 @@ starts from zero the moment the process starts.
 
 Check it with `/ledger-status` in any channel. Staff only, ephemeral.
 
+### Choosing what it does
+
+The same step lists five parts, each with a switch: levels, the content
+calendar, the weekly digest, the moderation log, and the playtest pipeline.
+All are on to begin with. Switch one off if you already run something that
+does the job, or if you are never going to use it.
+
+A switch does more than silence a job. Its slash commands stop being
+registered, so they leave the picker rather than sitting there answering "that
+is switched off", and its channels, roles and onboarding question are left out
+the next time you build. Nothing is deleted: switching it back on and
+rebuilding puts them back.
+
+The switches are written to `steward\.env` as `FEATURE_LEVELS=off` and so on,
+which is a file an update never overwrites. The bot reads them once at startup,
+so the page offers you a restart when you change one.
+
+There is no switch for the ledger itself. Everything above reads from it, and
+Discord keeps no record of who was active when.
+
 On startup discord.py warns `PyNaCl is not installed, voice will NOT be
 supported`. Ignore it. That is about transmitting voice audio. Steward only
 reads voice *state* changes (who joined which channel and when), which needs

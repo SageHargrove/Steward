@@ -195,6 +195,7 @@ roles:
     permissions: []
 
   - name: Playtester
+    feature: playtest
     note: "Gates #playtest-lounge. Turn both off together if you are not running playtests."
     color: 0x3F7A6B
     hoist: true
@@ -220,30 +221,35 @@ roles:
   # Without the boosts those roles quietly use their plain colour instead, so
   # nothing breaks by adding one.
   - name: "Tier 1"
+    feature: levels
     color: 0x9BA3AF
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "Tier 2"
+    feature: levels
     color: 0x3BA55D
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "Tier 3"
+    feature: levels
     color: 0x3B82F6
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "Tier 4"
+    feature: levels
     color: 0x8B5CF6
     hoist: false
     mentionable: false
     permissions: []
 
   - name: "Tier 5"
+    feature: levels
     color: 0xE0A32E
     hoist: false
     mentionable: false
@@ -252,6 +258,7 @@ roles:
   # The compliance rail. Every proactive reach routes through this role
   # instead of a DM. Granted by the onboarding prompt below.
   - name: Ping Me For Playtests
+    feature: playtest
     required: true
     required_reason: "Discord prohibits unsolicited DMs. An opt-in role is the only compliant way to reach people."
     note: "Every announcement that would otherwise want to be a DM mentions this role instead."
@@ -555,6 +562,7 @@ categories:
           - { name: not-planned, emoji: "🚫", moderated: true }
 
       - name: playtest-lounge
+        feature: playtest
         type: text
         overwrites: playtester_only
         content_file: content/playtest-lounge.md
@@ -677,6 +685,7 @@ onboarding_prompts:
   # compliant path for reaching people, and it is a better product anyway:
   # visible, revocable, and it does not read as spam.
   - title: "Want a ping when a playtest opens?"
+    feature: playtest
     note: "The opt-in that makes every later announcement compliant. Keep this one."
     type: multiple_choice
     single_select: true

@@ -32,6 +32,7 @@ from dotenv import load_dotenv
 
 import calendar_engine
 import decay
+import features
 import digest
 import modlog
 from ledger import Ledger
@@ -126,6 +127,11 @@ CALENDAR = find_calendar()
 LAUNCH_DATE = os.environ.get("LAUNCH_DATE") or None
 PLAYTEST_ROLE = os.environ.get("PLAYTEST_ROLE", "Ping Me For Playtests")
 BUG_FORUM = os.environ.get("BUG_FORUM", "bug-reports")
+
+# Which parts of Steward this deployment wants. Everything is on unless .env
+# says otherwise, and changing one takes a restart, which is what the setup
+# page's Restart button is for.
+FEATURES = features.read()
 
 # The status message identifies itself by its title, so restarts reuse the
 # same message instead of stacking up.
@@ -301,8 +307,12 @@ class Steward(discord.Client):
         self.ledger = Ledger(DB_PATH)
         self.ephemeral = ephemeral_roles(BLUEPRINT)
         self.blueprint = read_blueprint(BLUEPRINT)
-        self.levels = Levels(self.ledger, self.blueprint.get("levels") or {})
-        self.calendar = load_calendar(CALENDAR, self.blueprint)
+        level_settings = dict(self.blueprint.get("levels") or {})
+        if not FEATURES["levels"]:
+            level_settings["enabled"] = False
+        self.levels = Levels(self.ledger, level_settings)
+        self.calendar = (load_calendar(CALENDAR, self.blueprint)
+                         if FEATURES["calendar"] else calendar_engine.Calendar())
         self.calendar_stamp = calendar_mtimes()
         self.started_at = int(time.time())
         # user id -> when they joined voice, for paying out on leave
@@ -349,6 +359,8 @@ class Steward(discord.Client):
         wording and would have posted the old wording, with nothing anywhere
         saying the two had diverged.
         """
+        if not FEATURES["calendar"]:
+            return False
         now = calendar_mtimes()
         if now == self.calendar_stamp:
             return False
@@ -366,9 +378,29 @@ class Steward(discord.Client):
         self.add_view(PostApproval())
         self.nightly_purge.start()
         self.heartbeat.start()
-        self.weekly_digest.start()
-        self.calendar_tick.start()
         self.pulse.start()
+        if FEATURES["digest"]:
+            self.weekly_digest.start()
+        if FEATURES["calendar"]:
+            self.calendar_tick.start()
+        self.hide_switched_off_commands()
+
+    def hide_switched_off_commands(self):
+        """Take the commands belonging to a switched-off part out of the tree.
+
+        Leaving them registered and answering "that is switched off" is worse
+        than removing them: they still fill the picker, and a member cannot
+        tell a deliberate choice from a broken bot.
+        """
+        switched_off = features.off(FEATURES)
+        if switched_off:
+            log.info("switched off in .env: %s", ", ".join(switched_off))
+        gone = features.commands_off(FEATURES)
+        for name in sorted(gone):
+            self.tree.remove_command(name)
+        if gone:
+            log.info("%d command(s) not registered: %s",
+                     len(gone), ", ".join(sorted(gone)))
 
     async def sync_commands(self, *guilds):
         """Register the commands with each server directly.
@@ -600,6 +632,8 @@ class Steward(discord.Client):
     # -- moderation log ---------------------------------------------------
 
     async def mod_log(self, guild, embed):
+        if not FEATURES["modlog"]:
+            return
         channel = discord.utils.get(guild.text_channels, name=MOD_CHANNEL)
         if channel is None:
             return

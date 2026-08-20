@@ -164,6 +164,8 @@
   .tag.forum,.tag.announcement,.tag.voice{color:var(--muted)}
   .tag.req{color:var(--yellow)}
   .tag.added{color:#7ee2a8}
+  .item.dimmed{opacity:.5}
+  .tag.off{color:var(--dimmer)}
   .pill{font-size:10.5px; padding:2px 7px; border-radius:3px; background:transparent;
     border:1px solid var(--line); color:var(--dimmer); text-transform:uppercase;
     letter-spacing:.03em; font-weight:600; cursor:pointer}
@@ -233,6 +235,7 @@
   .msg{font-size:13px; padding:9px 11px; border-radius:4px; margin-top:9px; border-left:3px solid}
   .msg.err{background:rgba(242,63,66,.1); border-color:var(--red); color:#f5c2c3}
   .msg.warn{background:rgba(240,178,50,.09); border-color:var(--yellow); color:#f2dcb3}
+  .msg.ok{background:rgba(59,165,93,.1); border-color:var(--green); color:#b6e6c6}
   .msg.ok{background:rgba(35,165,90,.1); border-color:var(--green); color:#b7e6c9}
 
   pre.log{background:var(--ground); border:1px solid var(--line); border-radius:5px; padding:13px;
@@ -599,7 +602,7 @@
 
 <!-- 7. the ledger --------------------------------------------------------- -->
 <section class="step" id="s7">
-  <div class="head"><div class="num"><span>7</span></div><h2>Run the ledger</h2><span class="peek">Start, stop and restart the bot</span>
+  <div class="head"><div class="num"><span>7</span></div><h2>Run the bot</h2><span class="peek">Start it, and choose what it does</span>
     <div style="margin-left:auto" class="row">
       <button class="ghost small" onclick="installLedger()" id="instbtn">Install what it needs</button>
       <button class="ghost small" onclick="restartLedger()" id="rstbtn">Restart</button>
@@ -617,6 +620,17 @@
     <div class="hint" id="lhint"></div>
     <div class="hint" id="charthint" style="margin-top:9px"></div>
     <pre class="log" id="llog" style="display:none"></pre>
+    <div class="group" style="margin-top:14px">
+      <div class="gh">What the bot does</div>
+      <div id="runfeat"><div class="item"><div class="meta">
+        <div class="why">Loading...</div></div></div></div>
+    </div>
+    <div id="runrestart"></div>
+    <div class="hint">The ledger itself has no switch. Everything above reads
+      from it, and Discord keeps no record of who was active when, so a day it
+      does not run is a day nobody can get back. The parts listed here are all
+      optional, and switching one off changes nothing you have already set up:
+      turn it back on and it picks up where it was.</div>
   </div>
 </section>
 
@@ -936,6 +950,7 @@ async function loadBlueprint(){
   const d = await api('/api/blueprint/' + encodeURIComponent(FILE));
   INV = d.inventory;
   SEL = freshSelection(INV);
+  syncFeatures();
   renderVars();
   redraw();
   loadManual();
@@ -1153,11 +1168,14 @@ function levelsPanel(){
   const head = `<div class="group"><div class="gh">Levels</div>
     <div class="item">
       <label class="sw"><input type="checkbox" ${on ? 'checked' : ''}
-        onchange="setLevel('enabled', this.checked)"><span></span></label>
+        onchange="setFeature('levels', this)"><span></span></label>
       <div class="meta"><div class="nm"><b>Give people levels</b></div>
       <div class="why">Members earn a level for taking part, and roles unlock at the
-      levels you set below. Switch this off and nothing tracks XP at all.</div></div>
-    </div>`;
+      levels you set below. Switch this off and nothing tracks XP at all, the Tier
+      roles are left out of the build, and /rank and /leaderboard disappear. This is
+      the same switch as the one in step 7.</div></div>
+    </div>
+    ${RESTART_PENDING ? `<div style="padding:0 13px 11px">${restartNotice()}</div>` : ''}`;
   // Switched off, none of the rest applies, so none of it is shown.
   if(!on) return head + `</div>`;
   return head + `
@@ -1412,6 +1430,14 @@ const TYPE_PERMS = {
   voice:        ['voice_open', 'staff_only']
 };
 
+/* Why a row is greyed out. Without naming the switch, a dimmed row reads as
+   broken rather than as a choice somebody made two steps down the page. */
+function offTag(key){
+  const f = RUN && RUN.features.find(x => x.key === key);
+  return `<span class="tag off" title="Switched off in step 7, so it is left out
+    of the build">${esc(f ? f.name : key)} is off</span>`;
+}
+
 function typeOf(ch){ return SEL.types[ch.name] || ch.type; }
 function permOf(ch){
   const p = SEL.perms[ch.name] || ch.overwrites || 'open';
@@ -1421,12 +1447,13 @@ function permOf(ch){
 
 function channelRow(ch, i){
   const isDefault = SEL.defaults.includes(ch.name);
-  const locked = ch.required && (ch.required_when !== 'community'
+  const dead = featureOff(ch);
+  const locked = !dead && ch.required && (ch.required_when !== 'community'
                                  || SEL.features.community !== false);
   const t = typeOf(ch), perm = permOf(ch);
   const opt = (v, cur, label) =>
     `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
-  return `<div class="item">
+  return `<div class="item ${dead ? 'dimmed' : ''}">
     <div class="meta">
       <div class="nm"><b>${t === 'voice' ? '&#128266;' : '#'}</b>
         <input type="text" value="${esc(ch.name)}"
@@ -1438,7 +1465,8 @@ function channelRow(ch, i){
           `<button class="pill ${isDefault?'on':''}" onclick="toggleDefault(${i})"
             title="Whether new members are shown this channel while joining"
             >shown to new members</button>`}
-        ${locked ? '<span class="tag req">required</span>' : ''}</div>
+        ${locked ? '<span class="tag req">required</span>' : ''}
+        ${dead ? offTag(ch.feature) : ''}</div>
       <div class="chops">
         <select onchange="setChanType(${i}, this.value)" title="Channel type">
           ${['text','announcement','forum','voice']
@@ -1486,7 +1514,8 @@ function addedRow(a){
 function hex(n){ return '#' + (n || 0).toString(16).padStart(6, '0'); }
 
 function roleRow(r, i){
-  const locked = r.required;
+  const dead = featureOff(r);
+  const locked = r.required && !dead;
   const chosen = SEL.colors[r.name] || {};
   const primary = chosen.color !== undefined ? chosen.color : r.color;
   const secondary = chosen.secondary !== undefined
@@ -1494,11 +1523,12 @@ function roleRow(r, i){
   const holo = chosen.holographic !== undefined
     ? chosen.holographic : !!(r.colors && r.colors.holographic);
 
-  return `<div class="item">
+  return `<div class="item ${dead ? 'dimmed' : ''}">
     <div class="meta"><div class="nm">
       <input type="text" value="${esc(r.name)}" onchange="renameRole(${i}, this.value)"
         ${holo ? 'class="holo"' : `style="color:${hex(primary)}"`}>
-      ${locked ? '<span class="tag req">required</span>' : ''}</div>
+      ${locked ? '<span class="tag req">required</span>' : ''}
+      ${dead ? offTag(r.feature) : ''}</div>
       <div class="why">${esc(locked ? r.required_reason : r.note)}</div></div>
     <div class="unlock" title="Leave blank if this role is not a level reward">
       unlocks at
@@ -1588,8 +1618,9 @@ function simpleGroup(kind, title, items, nameOf, noteOf){
   items.forEach((it,i) => {
     const n = nameOf(it);
     if(SEL[kind].includes(n)){
-      rows.push(`<div class="item"><div class="meta">
-        <div class="nm"><b>${esc(n)}</b></div>
+      const dead = featureOff(it);
+      rows.push(`<div class="item ${dead ? 'dimmed' : ''}"><div class="meta">
+        <div class="nm"><b>${esc(n)}</b>${dead ? offTag(it.feature) : ''}</div>
         <div class="why">${esc(noteOf(it))}</div></div>
         <button class="rm" onclick="removeSimple('${kind}', ${i})">Remove</button></div>`);
     } else {
@@ -2042,7 +2073,12 @@ function renderCalendar(){
       <button class="ghost small" style="margin-left:6px"
               onclick="setTemplate('${esc(CAL.suggested)}')">Use it</button></div>`;
   }
-  $('#calbody').innerHTML = head + mismatch + problems;
+  const paused = runOn('calendar') ? '' :
+    `<div class="msg warn">The content calendar is switched off in step 7, so
+      nothing here is drafted or posted. Everything below is kept exactly as it
+      is and stays editable; switching it back on resumes from today rather than
+      firing everything it missed.</div>`;
+  $('#calbody').innerHTML = paused + head + mismatch + problems;
   renderPosts();
 }
 
@@ -2348,6 +2384,80 @@ function publine(cls, text){
   $('#publog').scrollTop = $('#publog').scrollHeight;
 }
 
+/* ---------- what the bot does ----------
+   These live in steward/.env rather than in the blueprint, because they belong
+   to this deployment rather than to the design: the same blueprint should suit
+   a server that wants levels and a server that already runs MEE6. The bot
+   reads them once at startup, so a change is offered a restart rather than
+   pretending to be live. */
+let RUN = null, RESTART_PENDING = false;
+
+async function loadFeatures(){
+  try{ RUN = await api('/api/features'); }
+  catch(e){ return; }
+  syncFeatures();
+  renderFeatures();
+  if(CAL) renderCalendar();
+}
+
+function runOn(key){
+  if(!RUN) return true;
+  const f = RUN.features.find(x => x.key === key);
+  return !f || f.on;
+}
+
+/* True for a channel, role or question that belongs to a part that is off. */
+function featureOff(it){ return !!(it && it.feature) && !runOn(it.feature); }
+
+function syncFeatures(){
+  // The build carries the same switches, so a part that is off also keeps its
+  // channels, roles and onboarding question out of the server.
+  if(!RUN || !SEL) return;
+  RUN.features.forEach(f => { SEL.features[f.key] = f.on; });
+  SEL.levels.enabled = runOn('levels');
+}
+
+function renderFeatures(){
+  if(!RUN) return;
+  $('#runfeat').innerHTML = RUN.features.map(f => `<div class="item">
+    <label class="sw"><input type="checkbox" ${f.on ? 'checked' : ''}
+      onchange="setFeature('${f.key}', this)"><span></span></label>
+    <div class="meta"><div class="nm"><b>${esc(f.name)}</b>${
+      f.on ? '' : '<span class="tag off">off</span>'}</div>
+      <div class="why">${esc(f.blurb)}</div></div></div>`).join('');
+}
+
+async function setFeature(key, el){
+  const want = el.checked;
+  el.disabled = true;
+  try{
+    RUN = await api('/api/features',
+                    {method:'POST', body: JSON.stringify({key: key, on: want})});
+  }catch(e){
+    el.checked = !want;
+    el.disabled = false;
+    $('#runrestart').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    return;
+  }
+  syncFeatures();
+  renderFeatures();
+  if(CAL) renderCalendar();
+  // Saying "saved" is not enough when the running bot still has the old
+  // answer, so the restart that makes it true is offered here rather than
+  // left to be found in the header.
+  RESTART_PENDING = !!RUN.restart;
+  $('#runrestart').innerHTML = RESTART_PENDING ? restartNotice()
+    : `<div class="msg ok">Saved. It applies the next time the bot starts.</div>`;
+  if(SEL) redraw();
+}
+
+function restartNotice(){
+  return `<div class="msg warn">Saved. The bot is still running with the old
+    setting until it restarts.
+    <button class="ghost small" style="margin-left:6px"
+            onclick="restartLedger()">Restart it now</button></div>`;
+}
+
 /* ---------- 7. the ledger ---------- */
 let LEDGER_SEEN_LOG = '';
 
@@ -2424,6 +2534,9 @@ async function restartLedger(){
     await api('/api/ledger/restart', {method:'POST', body:'{}'});
     $('#lhint').textContent = 'Restarting. Slash commands re-register on '
       + 'startup, so give it a few seconds and refresh Discord with Ctrl+R.';
+    RESTART_PENDING = false;
+    $('#runrestart').innerHTML = '';
+    if(SEL) redraw();
     [1200, 4000, 9000].forEach(ms => setTimeout(ledgerStatus, ms));
   }catch(e){
     $('#lhint').textContent = e.message;
@@ -2542,6 +2655,7 @@ function copyStep(i, btn){
 
 initFolding();
 initBlueprints();
+loadFeatures();
 loadManual();
 loadCalendar();
 showVersion();

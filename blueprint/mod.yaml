@@ -72,6 +72,15 @@ add:
       topic: "Translating it, and telling translators when the text changes."
 
   roles:
+    # A release ping is not a playtest ping. Keeping them separate means a
+    # project that never runs a playtest can still ask this question, and can
+    # switch playtests off without losing its only opt-in role.
+    - name: Release Alerts
+      color: 0x3498DB
+      hoist: false
+      mentionable: true
+      permissions: []
+
     - name: Translator
       color: 0x1ABC9C
       hoist: false
@@ -143,7 +152,7 @@ onboarding_prompts:
       - title: "Yes, ping me"
         description: "Releases, and when a game patch breaks something."
         emoji: "🔔"
-        roles: [Ping Me For Playtests]
+        roles: [Release Alerts]
       - title: "No thanks"
         emoji: "🔕"
         channels: [general]

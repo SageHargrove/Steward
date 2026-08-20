@@ -2988,6 +2988,205 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+print("\nswitches")
+
+sys.path.insert(0, str(ROOT / "steward"))
+import features as _feat                                 # noqa: E402
+
+
+@test("a fresh install has everything switched on")
+def _():
+    """An absent key means on. Nothing should have to be written to .env for
+    the tool to behave the way its own documentation describes it."""
+    state = _feat.read({})
+    assert set(state) == set(_feat.KEYS), state
+    assert all(state.values()), state
+    assert not _feat.off(state) and not _feat.commands_off(state)
+
+
+@test("off is understood however it is spelled")
+def _():
+    for word in ("off", "OFF", "0", "false", "no", " off "):
+        assert _feat.read({"FEATURE_LEVELS": word})["levels"] is False, word
+    for word in ("on", "1", "true", "yes", ""):
+        assert _feat.read({"FEATURE_LEVELS": word})["levels"] is True, word
+
+
+@test("every switch names commands the bot actually has")
+def _():
+    """A renamed slash command would otherwise stop being switchable in
+    silence: the switch would still be shown and would still turn nothing off.
+    """
+    import re
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    real = set(re.findall(r'tree\.command\(name="([^"]+)"', src))
+    for f in _feat.CATALOG:
+        for name in f["commands"]:
+            assert name in real, f"{f['key']} claims /{name}, which does not exist"
+
+
+@test("switching playtests off takes the channel, the roles and the question")
+def _():
+    """A part is more than its bot job. Leaving #playtest-lounge, two roles and
+    an opt-in question on a server that will never run a playtest is how a
+    blueprint turns into clutter nobody can explain."""
+    bp = load({"features": {"playtest": False}})
+    roles = {r["name"] for r in bp["roles"]}
+    chans = {c["name"] for cat in bp["categories"] for c in cat["channels"]}
+    assert "playtest-lounge" not in chans
+    assert "Playtester" not in roles
+    assert "Ping Me For Playtests" not in roles, "required, but only for playtests"
+    assert not [p for p in bp["onboarding_prompts"] if "playtest" in p["title"].lower()]
+    assert not core.validate(bp)["errors"], core.validate(bp)["errors"]
+
+
+@test("switching levels off takes the tier roles and their rewards")
+def _():
+    bp = load({"features": {"levels": False}})
+    roles = {r["name"] for r in bp["roles"]}
+    assert not [r for r in roles if r.startswith("Tier ")], roles
+    assert not (bp.get("levels") or {}).get("rewards")
+    assert (bp.get("levels") or {}).get("enabled") is False, \
+        "the audit would go looking for reward roles that were just dropped"
+    assert not core.validate(bp)["errors"], core.validate(bp)["errors"]
+
+
+@test("everything on is the blueprint untouched")
+def _():
+    on = load({"features": {k: True for k in _feat.KEYS}})
+    plain = load()
+    assert [r["name"] for r in on["roles"]] == [r["name"] for r in plain["roles"]]
+    assert len(on["onboarding_prompts"]) == len(plain["onboarding_prompts"])
+
+
+@test("the bot leaves out the commands of a switched-off part")
+def _():
+    """Answering "that is switched off" is worse than being absent: the command
+    still fills the picker and a member cannot tell a choice from a fault."""
+    import os, subprocess, tempfile, json as _json
+    probe = (
+        "import sys, json\n"
+        "sys.path.insert(0, r'{steward}')\n"
+        "import bot\n"
+        "bot.client.hide_switched_off_commands()\n"
+        "print(json.dumps(sorted(c.name for c in bot.client.tree.get_commands())))"
+    ).format(steward=ROOT / "steward")
+    with tempfile.TemporaryDirectory() as d:
+        env = dict(os.environ)
+        env["STEWARD_DB"] = str(Path(d) / "t.sqlite3")
+        env["FEATURE_PLAYTEST"] = "off"
+        env["FEATURE_LEVELS"] = "off"
+        r = subprocess.run([sys.executable, "-c", probe], capture_output=True,
+                           text=True, cwd=str(ROOT), env=env, timeout=180)
+    assert r.returncode == 0, r.stderr[-1500:]
+    names = set(_json.loads(r.stdout.strip().splitlines()[-1]))
+    for gone in ("rank", "leaderboard", "playtest-join", "playtest-report"):
+        assert gone not in names, f"/{gone} survived being switched off"
+    for kept in ("calendar", "digest", "forget-me", "my-data"):
+        assert kept in names, f"/{kept} was taken out by an unrelated switch"
+
+
+@test("a switched-off job is never started")
+def _():
+    src = (ROOT / "steward" / "bot.py").read_text(encoding="utf-8")
+    assert 'if FEATURES["digest"]:\n            self.weekly_digest.start()' in src
+    assert 'if FEATURES["calendar"]:\n            self.calendar_tick.start()' in src
+    assert "self.nightly_purge.start()" in src and "self.pulse.start()" in src, \
+        "retention and the heartbeat are not optional"
+    # The moderation log has no command and no channel of its own, so the only
+    # thing that can switch it off is the write itself.
+    assert 'if not FEATURES["modlog"]:' in src
+
+
+@test("the ledger has no switch")
+def _():
+    """Every other part can be rebuilt from the server. Activity history cannot
+    be backfilled from anything, so an off switch here would quietly destroy
+    the one thing this tool exists to keep."""
+    assert "ledger" not in _feat.KEYS
+    page = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "The ledger itself has no switch" in page
+
+
+@test("switching something off writes one line and touches nothing else")
+def _():
+    """The bot token is in this file. A rewrite that lost it, or that reordered
+    it into a comment, would take the whole tool down."""
+    import tempfile, shutil
+    sys.path.insert(0, str(ROOT / "ui"))
+    import app as webapp
+    d = Path(tempfile.mkdtemp())
+    (d / ".env").write_text(
+        "# a comment\nDISCORD_TOKEN=secret.value\nCALENDAR=roblox-game\n",
+        encoding="utf-8")
+    was = webapp.STEWARD
+    try:
+        webapp.STEWARD = d
+        webapp.write_env(_feat.env_name("levels"), "off")
+        text = (d / ".env").read_text(encoding="utf-8")
+        assert "DISCORD_TOKEN=secret.value" in text and "# a comment" in text
+        assert "CALENDAR=roblox-game" in text
+        assert webapp.read_env()["FEATURE_LEVELS"] == "off"
+        assert _feat.read(webapp.read_env())["levels"] is False
+        # Back on removes the line rather than leaving FEATURE_LEVELS=on to be
+        # read as the only way to have levels.
+        webapp.write_env(_feat.env_name("levels"), None)
+        assert "FEATURE_LEVELS" not in (d / ".env").read_text(encoding="utf-8")
+        assert _feat.read(webapp.read_env())["levels"] is True
+    finally:
+        webapp.STEWARD = was
+        shutil.rmtree(d, ignore_errors=True)
+
+
+@test("the switches survive an update")
+def _():
+    """They live in .env beside the token, which an update copies over rather
+    than replacing. A switch that reset itself on every version bump would be
+    worse than no switch."""
+    sys.path.insert(0, str(ROOT / "provision"))
+    import updates
+    keep = set(updates.PROTECTED) | set(updates.KEEP_ON_UPDATE)
+    assert any("steward/.env" in str(k).replace("\\", "/") for k in keep), keep
+
+
+@test("the page offers every switch the bot reads")
+def _():
+    page = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "loadFeatures()" in page, "nothing fetches them"
+    assert "api('/api/features'" in page
+    assert "setFeature(" in page
+    # The catalog is served rather than duplicated in the page, so a new switch
+    # appears without anybody editing the HTML.
+    assert "RUN.features.map" in page
+
+
+@test("no switch leaves a question with a single answer")
+def _():
+    """Pruning an answer that granted a dropped role can leave a question whose
+    only possible reply is "no thanks". Checked across every blueprint against
+    every switch, because a variant replaces the questions wholesale and would
+    not inherit a fix made to the default."""
+    import glob
+    for path in sorted(glob.glob(str(ROOT / "blueprint" / "*.yaml"))):
+        if path.endswith(".local.yaml"):
+            continue
+        for key in _feat.KEYS + [None]:
+            sel = {"features": {key: False}} if key else None
+            bp = core.customize(core.load(path), sel)
+            report = core.validate(bp)
+            assert not report["errors"], (Path(path).name, key, report["errors"][:2])
+            stuck = [w for w in report["warnings"] if "one answer" in w]
+            assert not stuck, (Path(path).name, key, stuck)
+
+
+@test("the switches are written down where somebody editing .env by hand looks")
+def _():
+    example = (ROOT / "steward" / ".env.example").read_text(encoding="utf-8")
+    for key in _feat.KEYS:
+        assert _feat.env_name(key) in example, f"{key} is not in .env.example"
+
+
 print("\nversions and updates")
 
 import updates                                          # noqa: E402

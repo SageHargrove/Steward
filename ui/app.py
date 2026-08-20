@@ -34,6 +34,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "provision"))
 import core  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "steward"))
+import features  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 BLUEPRINTS = HERE.parent / "blueprint"
@@ -656,6 +658,32 @@ def write_env(key: str, value: str | None):
     envfile.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
+@app.get("/api/features")
+def features_get():
+    """What is switched on, and what each switch costs. The catalog comes from
+    the bot's own module so the page can never list a switch the bot does not
+    read."""
+    state = features.read(read_env())
+    return {"features": [{**f, "on": state[f["key"]]} for f in features.CATALOG]}
+
+
+@app.post("/api/features")
+def features_save(payload: dict = Body(...)):
+    """Set one switch. Written to steward/.env, which the bot reads at startup,
+    so the answer says plainly that a restart is what makes it real."""
+    key = str(payload.get("key") or "")
+    if key not in features.KEYS:
+        raise HTTPException(400, "No such feature.")
+    on = bool(payload.get("on"))
+    # Only the off state is written. An absent key means on, so switching
+    # something back on removes the line rather than leaving FEATURE_X=on
+    # lying around to be misread as the only way to have it.
+    write_env(features.env_name(key), None if on else "off")
+    state = features.read(read_env())
+    return {"features": [{**f, "on": state[f["key"]]} for f in features.CATALOG],
+            "restart": ledger_status()["running"]}
+
+
 @app.get("/api/calendar")
 def calendar_view(days: int = 120):
     sys.path.insert(0, str(STEWARD))
@@ -776,11 +804,22 @@ def audit(request: Request):
     roles = {r["name"] for r in live["roles"]}
 
     env = read_env()
+    on = features.read(env)
     problems, notes, good = [], [], []
+
+    # A switched-off part is not a fault, so it is neither checked nor counted
+    # against the server. Saying so is still worth a line, because "the
+    # calendar never posted" and "you turned the calendar off" look identical
+    # from Discord.
+    for f in features.CATALOG:
+        if not on[f["key"]]:
+            notes.append({"what": f"{f['name']} is switched off",
+                          "fix": "Nothing here checks it. Step 7 is where you "
+                                 "switch it back on."})
 
     # -- the calendar has somewhere to post ------------------------------
     cal_file = active_calendar()
-    if cal_file.exists():
+    if on["calendar"] and cal_file.exists():
         bp = core.load(BLUEPRINTS / "default.yaml") if (BLUEPRINTS / "default.yaml").exists() else {}
         variables = {k: (v or "") for k, v in (bp.get("variables") or {}).items()}
         cal = calendar_engine.load(cal_file, variables,
@@ -817,11 +856,15 @@ def audit(request: Request):
             good.append(f"Launch day is {cal.anchor.isoformat()}")
 
     # -- the bot's own channels ------------------------------------------
-    for key, default, why in (
+    for key, default, why, needed_by in (
             ("REPORT_CHANNEL", "steward-reports",
-             "the weekly digest, and where scheduled posts wait for approval"),
-            ("MOD_CHANNEL", "mod-log", "the moderation log"),
-            ("BUG_FORUM", "bug-reports", "where /playtest-report files bugs")):
+             "the weekly digest, and where scheduled posts wait for approval",
+             ("digest", "calendar")),
+            ("MOD_CHANNEL", "mod-log", "the moderation log", ("modlog",)),
+            ("BUG_FORUM", "bug-reports", "where /playtest-report files bugs",
+             ("playtest",))):
+        if not any(on[k] for k in needed_by):
+            continue
         name = env.get(key, default)
         if name not in chans:
             problems.append({
@@ -838,7 +881,9 @@ def audit(request: Request):
             good.append(f"#{name} exists")
 
     playtest_role = env.get("PLAYTEST_ROLE", "Ping Me For Playtests")
-    if playtest_role not in roles:
+    if not on["playtest"]:
+        pass
+    elif playtest_role not in roles:
         problems.append({
             "what": f"There is no @{playtest_role} role, so /playtest-join "
                     f"cannot give anyone one",
@@ -863,7 +908,7 @@ def audit(request: Request):
     # -- levels ------------------------------------------------------------
     levels = (core.load(BLUEPRINTS / "default.yaml").get("levels") or {}) \
         if (BLUEPRINTS / "default.yaml").exists() else {}
-    if levels.get("enabled", True):
+    if on["levels"] and levels.get("enabled", True):
         want = [r["role"] for r in (levels.get("rewards") or [])]
         gone = [r for r in want if r not in roles]
         if gone:

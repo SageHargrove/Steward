@@ -137,6 +137,15 @@ issuance, and an alert when a channel goes quieter than its own baseline.
 **Asks permission.** Nothing is posted to your members without a human
 clicking. The bot never sends an unsolicited direct message to anyone.
 
+**Leaves out what you already have.** Every part of that last paragraph has an
+on/off switch in step 7. A server that already runs MEE6 switches levels off
+and keeps everything else; one that posts its own announcements switches the
+calendar off. Switching a part off also keeps its channels, roles and
+onboarding question out of the build, so you are not left with a
+`#playtest-lounge` nobody will ever use. The ledger is the exception and has no
+switch: Discord keeps no record of who was active when, so a day it does not
+run is a day nobody can get back.
+
 ---
 
 ## What it deliberately does not do
