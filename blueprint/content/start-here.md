@@ -19,7 +19,7 @@ This server is where the people climbing it talk, and where the game gets made i
 
 **Do these three things**
 **1.** Read #rules. The short version is: be decent to people.
-**2.** Pick your pings in #pick-your-roles. Nothing there is compulsory and you can drop any of them later.
+**2.** Pick your pings under **Channels & Roles**, at the very top of the channel list. Nothing there is compulsory and you can change it whenever you like.
 **3.** Say hello in #general.
 
 **Free gems before you go anywhere else**
@@ -55,7 +55,7 @@ Codes are posted there the moment they go live, and most of them expire. Take th
 %%SPLIT%%
 ## Roles
 
-**Pings you choose.** All of them live in #pick-your-roles and none of them are required.
+**Pings you choose.** All of them live under **Channels & Roles** at the top of the channel list, and none of them are required.
 · **@Code Alerts** . A new code is live.
 · **@Update Alerts** . A new version is out.
 · **@Banner Alerts** . A featured summon banner has changed.

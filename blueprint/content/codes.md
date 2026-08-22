@@ -31,6 +31,6 @@ Every working code is posted in this channel, and every dead one stays here cros
 **Where codes come from**
 Updates, milestones, events, and the occasional apology. They are announced here first and usually nowhere else for a while.
 
-**Take the @Code Alerts role in #pick-your-roles** if you want to hear about them the day they go live. Most codes expire, and the good ones expire fastest.
+**Take the @Code Alerts role under Channels & Roles**, at the top of the channel list, if you want to hear about them the day they go live. Most codes expire, and the good ones expire fastest.
 
 **Codes are never given out in DMs.** Nobody on the team will message you a private code, an "early" code, or a code that needs your account details to work. See rule 6.

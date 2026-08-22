@@ -43,4 +43,4 @@ A winner is announced **in this channel**, publicly, in a reply to the giveaway 
 
 **Claim within 48 hours** or it gets rerolled. Nothing personal, it just cannot sit open forever.
 
-**Take @Giveaway Alerts** in #pick-your-roles if you want a ping when one starts. Without it you will find out afterwards, which is the same as not entering.
+**Take @Giveaway Alerts** under Channels & Roles, at the top of the channel list, if you want a ping when one starts. Without it you will find out afterwards, which is the same as not entering.

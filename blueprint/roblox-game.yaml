@@ -51,12 +51,6 @@ rename:
 
 add:
   channels:
-    - category: INFO
-      name: pick-your-roles
-      type: text
-      overwrites: readonly_reactable
-      topic: "Choose which pings you want. Nothing here is compulsory."
-
     - category: PLAY
       name: codes
       type: text
@@ -171,7 +165,7 @@ onboarding_prompts:
         emoji: "🐛"
         roles: [Bug Hunter]
 
-  # The role picker, and the reason #pick-your-roles does not need a bot.
+  # The role picker, and the reason this server needs no reaction-role bot.
   #
   # An onboarding prompt is not only a join-flow question: Discord keeps every
   # prompt in the Channels & Roles tab at the top of the channel list, where
@@ -189,19 +183,19 @@ onboarding_prompts:
     in_onboarding: true
     options:
       - title: "Codes"
-        description: "A new code is live. Most expire, and the generous ones expire fastest."
+        description: "A new code is live. Most expire fast, so the ping is the point. A few times a month."
         emoji: "🎁"
         roles: [Code Alerts]
       - title: "Updates"
-        description: "A new version is out, with notes in #update-notes."
+        description: "A new version is out, with notes in #update-notes. Often at first, then settling down."
         emoji: "🔔"
         roles: [Update Alerts]
       - title: "Events"
-        description: "An event window has started. These are time-limited, so the ping is most of the value."
+        description: "A time-limited event window has started. A handful a month."
         emoji: "📅"
         roles: [Event Alerts]
       - title: "Giveaways"
-        description: "A giveaway has started. Occasional."
+        description: "A giveaway has started in #giveaways. Occasional."
         emoji: "🎉"
         roles: [Giveaway Alerts]
 

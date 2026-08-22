@@ -936,6 +936,38 @@ def audit(request: Request):
                        "purpose. It only means the blueprint and the server "
                        "have drifted, so a rebuild would put them back."})
 
+    # -- pinned posts that point at channels nobody can see ---------------
+    #
+    # The welcome post is the first thing a member reads, and a #mention of a
+    # channel that is not there is the first thing they notice. It happens
+    # every time somebody renames or drops a channel and forgets the prose
+    # naming it, which is not something the blueprint can catch on its own
+    # because the prose lives in a separate file.
+    dangling: dict[str, set] = {}
+    for cat in load_active().get("categories", []):
+        for ch in cat.get("channels", []):
+            rel = ch.get("content_file")
+            if not rel:
+                continue
+            try:
+                raw = (BLUEPRINTS / rel).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            # Drop the file's own explanatory header, which is not posted.
+            body = re.sub(r"<!--.*?-->", "", raw, flags=re.S)
+            for name in re.findall(r"#([a-z][a-z0-9-]{2,})", body):
+                if name not in chans:
+                    dangling.setdefault(name, set()).add(ch["name"])
+    for name, where in sorted(dangling.items()):
+        problems.append({
+            "what": f"The pinned post in #{', #'.join(sorted(where))} sends "
+                    f"people to #{name}, which does not exist here",
+            "fix": f"Either make a channel called {name}, or fix the wording in "
+                   f"step 6. A welcome post pointing at a channel nobody can "
+                   f"see is the first thing a new member notices."})
+    if not dangling:
+        good.append("Every channel named in a pinned post exists")
+
     # -- can a member give themselves a role ------------------------------
     #
     # The failure this exists for: #pick-your-roles had a pin telling people to

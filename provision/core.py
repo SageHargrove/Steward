@@ -1054,6 +1054,18 @@ def validate(bp: dict) -> dict:
             warnings.append(
                 f"Prompt '{p['title']}' has one answer left, so there is "
                 f"nothing to choose between")
+        for o in p.get("options", []):
+            # Discord's caps on an onboarding answer. Over them it rejects the
+            # whole PUT, not the one option, so every question goes with it.
+            if len(o.get("title", "")) > 50:
+                errors.append(
+                    f"Answer '{o.get('title', '')[:30]}...' is "
+                    f"{len(o['title'])} characters and Discord allows 50")
+            if len(o.get("description") or "") > 100:
+                warnings.append(
+                    f"Answer '{o.get('title', '')}' has a "
+                    f"{len(o['description'])} character description, and "
+                    f"Discord's limit is 100")
         if p.get("in_onboarding") is False and p.get("required"):
             warnings.append(
                 f"Prompt '{p['title']}' is marked required but is not in the "

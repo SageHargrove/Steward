@@ -381,17 +381,46 @@ def _():
     assert len(upstream["options"]) == 4, "the append leaked into the parent"
 
 
-@test("the roles pin points at something that exists")
+@test("no pinned post sends people to a channel this server does not build")
 def _():
-    """It described five pings and told people to pick them in a channel that
-    had no picker in it. Whatever it points at has to be real, and Channels &
-    Roles is the only one of the two that is there without a bot."""
-    pin = (ROOT / "blueprint" / "content" / "pick-your-roles.md").read_text(
-        encoding="utf-8")
-    body = pin.split("-->")[-1]
-    assert "Channels & Roles" in body, "the pin never says where to go"
-    assert "reaction" not in body.lower(), \
-        "the pin promises a panel that no part of this tool posts"
+    """A #mention of a channel that is not there is the first thing a new
+    member notices, and the prose lives in a separate file from the blueprint
+    so nothing else connects the two.
+
+    Checked against the blueprint this checkout actually deploys, the one
+    carrying meta.default. The shared welcome text is tailored to whichever
+    project the checkout is for, so holding every blueprint to it would be
+    holding them to somebody else's channel list.
+    """
+    import re as _re
+    sys.path.insert(0, str(ROOT / "ui"))
+    import app as webapp
+    bp = core.customize(webapp.load_active(), None)
+    if not bp.get("categories"):
+        return
+    built = {c["name"] for cat in bp["categories"] for c in cat["channels"]}
+    for cat in bp["categories"]:
+        for ch in cat["channels"]:
+            rel = ch.get("content_file")
+            if not rel:
+                continue
+            raw = (ROOT / "blueprint" / rel).read_text(encoding="utf-8")
+            body = _re.sub(r"<!--.*?-->", "", raw, flags=_re.S)
+            for name in _re.findall(r"#([a-z][a-z0-9-]{2,})", body):
+                assert name in built, (
+                    f"{rel}, pinned in #{ch['name']}, sends people to #{name}, "
+                    f"which this blueprint does not build")
+
+
+@test("no pinned post promises a panel this tool never posts")
+def _():
+    """#pick-your-roles had a pin describing a reaction-role panel that nothing
+    here ever posted. The roles are picked in Discord's own Channels & Roles
+    tab, and the prose has to say the thing that is true."""
+    import glob
+    for path in sorted(glob.glob(str(ROOT / "blueprint" / "content" / "*.md"))):
+        body = Path(path).read_text(encoding="utf-8").split("-->")[-1]
+        assert "reaction role" not in body.lower(),             f"{Path(path).name} promises a reaction-role panel"
 
 
 @test("onboarding actually applies")

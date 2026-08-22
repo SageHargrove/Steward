@@ -66,13 +66,6 @@ set:
       content_file: content/codes.md
       pin: true
 
-    pick-your-roles:
-      # Sits ABOVE the reaction-role panel a bot posts. "What will this
-      # actually send me" is the question that stops people pressing a button,
-      # so the pin answers it.
-      content_file: content/pick-your-roles.md
-      pin: true
-
     bug-reports:
       # Replaces the default topic, which asks for a build number. On Roblox
       # everybody is on the current version within minutes and there is
@@ -256,7 +249,7 @@ add:
   onboarding_options:
     "Which pings do you want?":
       - title: "Banners"
-        description: "A featured summon banner has opened or is about to close."
+        description: "A featured summon banner opened or is about to close. Whenever a banner rotates."
         emoji: "✨"
         roles: [Banner Alerts]
 
@@ -266,32 +259,6 @@ add:
     - new-climbers
 
   manual_steps:
-    - kind: bot
-      title: "Buttons in #pick-your-roles, if you want them"
-      optional: true
-      why: >-
-        The five ping roles are already self-serve without this. They are one of
-        the onboarding questions, and Discord keeps every question in the
-        Channels & Roles tab at the top of the channel list, where anyone can
-        change their answer at any time. That needs no bot at all, which means
-        it cannot break, and the pin in #pick-your-roles points at it.
-
-        Do this only if you want buttons in the channel as well. Some servers
-        find a panel more discoverable than a tab most members have never
-        opened. It is a second front door to the same roles, so nothing is lost
-        by skipping it, and a bot that goes down takes the buttons with it.
-      where:
-        - "Install Sapphire from Discord's App Directory if it is not in already"
-        - "Sapphire's dashboard, then Reaction Roles, then New"
-        - "Point it at #pick-your-roles"
-        - "Add one button per role: Code Alerts, Update Alerts, Event Alerts, Giveaway Alerts, Banner Alerts"
-        - "Post the panel"
-      after: >-
-        Announce it once in #announcements. People do not go looking for a roles
-        channel, and a panel nobody knows about gets the same engagement as no
-        panel at all.
-      url: "https://discord.com/application-directory"
-
     - kind: setting
       title: "Gate #trading behind Verified"
       why: >-

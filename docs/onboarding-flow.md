@@ -52,6 +52,16 @@ hand, and the pin pointed at a panel that no part of this tool ever posted. A
 test now fails if a role whose name ends in `Alerts` is not granted by some
 onboarding option.
 
+Once the questions existed, the channel had nothing left to do. Its only
+remaining content was the frequency estimate for each ping, which fits in the
+answer's own description, so that is where it went and the channel is gone. A
+channel whose job is to point at something one click away is a redirect to a
+redirect.
+
+**Answer limits.** Title 50 characters, description 100. Over either and
+Discord rejects the whole request rather than the one answer, so validate
+checks both.
+
 ---
 
 ## Question 1: "What brings you to {{game}}?"
