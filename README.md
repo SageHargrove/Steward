@@ -137,6 +137,12 @@ issuance, and an alert when a channel goes quieter than its own baseline.
 **Asks permission.** Nothing is posted to your members without a human
 clicking. The bot never sends an unsolicited direct message to anyone.
 
+**Lets members pick their own roles, with nothing running.** The onboarding
+questions are not only asked on the way in: Discord keeps every one of them in
+the Channels & Roles tab at the top of the channel list, so a question that
+hands out a ping role is a self-serve panel that cannot break. No reaction-role
+bot, nothing to keep online.
+
 **Leaves out what you already have.** Every part of that last paragraph has an
 on/off switch in step 7. A server that already runs MEE6 switches levels off
 and keeps everything else; one that posts its own announcements switches the

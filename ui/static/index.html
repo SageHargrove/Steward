@@ -1161,7 +1161,15 @@ function renderTree(){
   h += simpleGroup('automod', 'Automatic moderation', INV.automod,
                    a => a.name, a => a.note);
   h += simpleGroup('prompts', 'Questions for new members', INV.prompts,
-                   p => p.title, p => p.note || p.options.join(' / '));
+    p => p.title, p => p.note || p.options.join(' / '),
+    p => p.in_onboarding === false
+      ? '<span class="tag">Channels &amp; Roles only</span>' : '',
+    `<b>These are also your role picker.</b> Discord keeps every question here
+     in the <b>Channels &amp; Roles</b> tab at the top of the channel list, where
+     a member can change their answer at any time afterwards. So a question that
+     hands out a ping role is a self-serve panel that needs no bot and cannot
+     break. A question marked <i>Channels &amp; Roles only</i> is left out of the
+     join flow and lives there alone.`);
   $('#tree').innerHTML = h;
 }
 
@@ -1629,14 +1637,15 @@ function setAddedColor(i, value){
   redraw();
 }
 
-function simpleGroup(kind, title, items, nameOf, noteOf){
+function simpleGroup(kind, title, items, nameOf, noteOf, tagOf, foot){
   const rows = [], gone = [];
   items.forEach((it,i) => {
     const n = nameOf(it);
     if(SEL[kind].includes(n)){
       const dead = featureOff(it);
       rows.push(`<div class="item ${dead ? 'dimmed' : ''}"><div class="meta">
-        <div class="nm"><b>${esc(n)}</b>${dead ? offTag(it.feature) : ''}</div>
+        <div class="nm"><b>${esc(n)}</b>${dead ? offTag(it.feature) : ''}${
+          tagOf ? tagOf(it) : ''}</div>
         <div class="why">${esc(noteOf(it))}</div></div>
         <button class="rm" onclick="removeSimple('${kind}', ${i})">Remove</button></div>`);
     } else {
@@ -1645,7 +1654,8 @@ function simpleGroup(kind, title, items, nameOf, noteOf){
   });
   return `<div class="group"><div class="gh">${title} <span class="count">${rows.length}</span></div>
     ${rows.join('')}
-    ${gone.length ? `<div class="gone">Removed:${gone.join('')}</div>` : ''}</div>`;
+    ${gone.length ? `<div class="gone">Removed:${gone.join('')}</div>` : ''}
+    ${foot ? `<div class="gone">${foot}</div>` : ''}</div>`;
 }
 
 /* ---------- mutations ---------- */

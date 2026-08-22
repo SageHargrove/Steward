@@ -251,6 +251,15 @@ add:
       mentionable: false
       permissions: []
 
+  # Appended to the question roblox-game.yaml already asks, rather than
+  # restating all four of its answers to add a fifth.
+  onboarding_options:
+    "Which pings do you want?":
+      - title: "Banners"
+        description: "A featured summon banner has opened or is about to close."
+        emoji: "✨"
+        roles: [Banner Alerts]
+
   onboarding_defaults:
     - codes
     - lucky-pulls
@@ -258,18 +267,24 @@ add:
 
   manual_steps:
     - kind: bot
-      title: "Self-assign roles in #pick-your-roles"
+      title: "Buttons in #pick-your-roles, if you want them"
+      optional: true
       why: >-
-        You now have five ping roles, and they do nothing until members can pick
-        them up. Steward does not do reaction roles on purpose; Sapphire does it
-        for free and does it better. Without this step every announcement is
-        still either @everyone or unread, which is the problem the roles were
-        added to solve.
+        The five ping roles are already self-serve without this. They are one of
+        the onboarding questions, and Discord keeps every question in the
+        Channels & Roles tab at the top of the channel list, where anyone can
+        change their answer at any time. That needs no bot at all, which means
+        it cannot break, and the pin in #pick-your-roles points at it.
+
+        Do this only if you want buttons in the channel as well. Some servers
+        find a panel more discoverable than a tab most members have never
+        opened. It is a second front door to the same roles, so nothing is lost
+        by skipping it, and a bot that goes down takes the buttons with it.
       where:
         - "Install Sapphire from Discord's App Directory if it is not in already"
         - "Sapphire's dashboard, then Reaction Roles, then New"
         - "Point it at #pick-your-roles"
-        - "Add one button or reaction per role: Code Alerts, Update Alerts, Event Alerts, Giveaway Alerts, Banner Alerts"
+        - "Add one button per role: Code Alerts, Update Alerts, Event Alerts, Giveaway Alerts, Banner Alerts"
         - "Post the panel"
       after: >-
         Announce it once in #announcements. People do not go looking for a roles

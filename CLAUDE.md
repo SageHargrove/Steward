@@ -72,6 +72,16 @@ writing `=on`. Dropping an item cascades: an onboarding answer that granted
 only a dropped role is pruned, and a question can end up with one answer left,
 which validate warns about.
 
+**Onboarding questions are the role picker, and they need no bot.** Discord
+keeps every onboarding prompt in the Channels & Roles tab at the top of the
+channel list, where a member can change their answer forever afterwards. So a
+question that grants a ping role is a permanent self-serve panel that works
+when nothing of ours is running. `in_onboarding: false` keeps a question out of
+the join flow and leaves it there alone. Reaction-role bots do the same job and
+stop doing it the moment that bot goes down, which is why the Sapphire step is
+optional. A ping role that appears in no onboarding option cannot be obtained
+at all; a test enforces that.
+
 **Never invent a third-party bot's client id** for an invite URL. A wrong
 invite link sends someone's server to the wrong application. Point at Discord's
 App Directory instead.

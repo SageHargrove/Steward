@@ -171,22 +171,39 @@ onboarding_prompts:
         emoji: "🐛"
         roles: [Bug Hunter]
 
-  - title: "Want a ping when an update drops?"
-    single_select: true
+  # The role picker, and the reason #pick-your-roles does not need a bot.
+  #
+  # An onboarding prompt is not only a join-flow question: Discord keeps every
+  # prompt in the Channels & Roles tab at the top of the channel list, where
+  # members can change their answer forever afterwards. That is a self-serve
+  # role panel built into Discord, it costs nothing, and it works whether or
+  # not anything of ours is running. A reaction-role bot does the same job and
+  # stops doing it the moment that bot goes down.
+  #
+  # Multi-select, because these are not alternatives: somebody can reasonably
+  # want codes and nothing else. Not required, because forcing a ping choice
+  # to get into a server is how you get everybody picking nothing.
+  - title: "Which pings do you want?"
+    single_select: false
     required: false
     in_onboarding: true
     options:
-      - title: "Yes, ping me"
-        description: "You will hear about updates and early testing."
+      - title: "Codes"
+        description: "A new code is live. Most expire, and the generous ones expire fastest."
+        emoji: "🎁"
+        roles: [Code Alerts]
+      - title: "Updates"
+        description: "A new version is out, with notes in #update-notes."
         emoji: "🔔"
-        # Update Alerts rather than the playtest role: the question asks about
-        # updates, and a server that switches playtests off should still be
-        # able to ask it.
         roles: [Update Alerts]
-      - title: "No thanks"
-        description: "You can pick this up later in #start-here."
-        emoji: "🔕"
-        channels: [general]
+      - title: "Events"
+        description: "An event window has started. These are time-limited, so the ping is most of the value."
+        emoji: "📅"
+        roles: [Event Alerts]
+      - title: "Giveaways"
+        description: "A giveaway has started. Occasional."
+        emoji: "🎉"
+        roles: [Giveaway Alerts]
 
   - title: "How did you find us?"
     single_select: true

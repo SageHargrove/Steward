@@ -320,6 +320,80 @@ def _():
         f"a channel Discord refused was not reported: {problems}"
 
 
+@test("every ping role can be picked up by the person who wants it")
+def _():
+    """#pick-your-roles explained five ping roles and there was no way to take
+    one. Four of the five appeared in no onboarding question at all, so the
+    only route to them was a moderator granting them by hand.
+
+    An onboarding question is the answer, and not only during the join flow:
+    Discord keeps every question in the Channels & Roles tab afterwards, which
+    makes it a self-serve panel that needs no bot.
+    """
+    import glob
+    for path in sorted(glob.glob(str(ROOT / "blueprint" / "*.yaml"))):
+        if path.endswith(".local.yaml"):
+            continue
+        bp = core.customize(core.load(path), None)
+        granted = {r for p in bp.get("onboarding_prompts", [])
+                   for o in p.get("options", []) for r in o.get("roles", [])}
+        for role in bp.get("roles", []):
+            if not role["name"].endswith("Alerts"):
+                continue
+            assert role["name"] in granted, (
+                f"{Path(path).name}: @{role['name']} is a ping role nobody can "
+                f"give themselves. Put it in an onboarding question")
+
+
+@test("a question can be kept out of the join flow and left in Channels & Roles")
+def _():
+    """in_onboarding was hardcoded to True, so the flag every blueprint already
+    carried did nothing. False is what makes a question a role picker and
+    nothing else."""
+    bp = load()
+    bp["onboarding_prompts"] = [
+        {"title": "in the flow", "options": [
+            {"title": "a", "roles": ["Mod"]}, {"title": "b", "roles": ["Dev"]}]},
+        {"title": "picker only", "in_onboarding": False, "options": [
+            {"title": "a", "roles": ["Mod"]}, {"title": "b", "roles": ["Dev"]}]},
+    ]
+    fake, _ = run(bp)
+    sent = next(b for m, p, b in fake.calls
+                if m == "PUT" and p.endswith("/onboarding"))
+    by_title = {p["title"]: p for p in sent["prompts"]}
+    assert by_title["in the flow"]["in_onboarding"] is True
+    assert by_title["picker only"]["in_onboarding"] is False
+
+
+@test("a variant can add an answer without restating the question")
+def _():
+    """The gacha needed one more ping than the Roblox blueprint it extends.
+    Without this it had to copy all three questions to change one of them, and
+    a later edit upstream would not have reached the copy."""
+    bp = core.customize(core.load(ROOT / "blueprint" / "roblox-gacha.yaml"), None)
+    pings = next(p for p in bp["onboarding_prompts"]
+                 if p["title"] == "Which pings do you want?")
+    titles = [o["title"] for o in pings["options"]]
+    assert titles == ["Codes", "Updates", "Events", "Giveaways", "Banners"], titles
+    parent = core.customize(core.load(ROOT / "blueprint" / "roblox-game.yaml"), None)
+    upstream = next(p for p in parent["onboarding_prompts"]
+                    if p["title"] == "Which pings do you want?")
+    assert len(upstream["options"]) == 4, "the append leaked into the parent"
+
+
+@test("the roles pin points at something that exists")
+def _():
+    """It described five pings and told people to pick them in a channel that
+    had no picker in it. Whatever it points at has to be real, and Channels &
+    Roles is the only one of the two that is there without a bot."""
+    pin = (ROOT / "blueprint" / "content" / "pick-your-roles.md").read_text(
+        encoding="utf-8")
+    body = pin.split("-->")[-1]
+    assert "Channels & Roles" in body, "the pin never says where to go"
+    assert "reaction" not in body.lower(), \
+        "the pin promises a panel that no part of this tool posts"
+
+
 @test("onboarding actually applies")
 def _():
     fake, prov = run(load())

@@ -27,6 +27,33 @@ That single constraint is why question three works the way it does.
 
 ---
 
+## The other thing these questions are
+
+They are the server's role picker, and this is the part that is easy to miss.
+
+**Discord keeps every onboarding prompt in the Channels & Roles tab** at the
+top of the channel list. A member who answered on the way in can open it and
+change their answer at any point afterwards; a member who joined before the
+questions existed can answer them for the first time. Nothing has to be running
+for that to work, because it is Discord's own UI reading Discord's own data.
+
+So a question whose answers grant ping roles **is** a self-serve role panel. It
+is the same thing a reaction-role bot posts, except that it cannot go offline,
+cannot be rate limited, and does not need a fifth application in the server.
+
+`in_onboarding: false` on a prompt keeps it out of the join flow and leaves it
+in Channels & Roles alone. Use that for a question that is only worth asking
+later, or for one that would make the join flow too long.
+
+The failure this replaced: `#pick-your-roles` had a pinned post describing five
+ping roles and no way to take any of them. Four of the five appeared in no
+question at all, so the only route to them was a moderator granting them by
+hand, and the pin pointed at a panel that no part of this tool ever posted. A
+test now fails if a role whose name ends in `Alerts` is not granted by some
+onboarding option.
+
+---
+
 ## Question 1: "What brings you to {{game}}?"
 
 Multi-select. Each answer grants an interest role.
@@ -147,6 +174,12 @@ failure above, and it would surface as an opaque 400 halfway through a run.
 
 **An answer that ends up granting nothing is dropped, not sent.** Validation
 catches it first and says so in the page.
+
+**A variant can append an answer without restating the question.** `add:` takes
+an `onboarding_options:` map of question title to extra answers, which is how
+the gacha blueprint adds its banner ping to a question the Roblox blueprint
+above it already asks. Copying the question instead would work until somebody
+edited the original.
 
 ---
 

@@ -338,6 +338,15 @@ def apply_variant(base: dict, over: dict) -> dict:
     for key, value in over.items():
         if key not in handled:
             out[key] = value
+
+    # Answers appended to a question that came from the blueprint above.
+    # Applied after the replace, so a variant that rewrites the questions and
+    # also adds an answer gets both rather than one silently undoing the other.
+    # Without this, adding one ping role meant restating every question.
+    for title, options in (added.get("onboarding_options") or {}).items():
+        for prompt in (out.get("onboarding_prompts") or []):
+            if prompt.get("title") == title:
+                prompt.setdefault("options", []).extend(options)
     return out
 
 
@@ -561,6 +570,7 @@ def inventory(bp: dict) -> dict:
         "prompts": [{
             "title": p["title"],
             "feature": p.get("feature", ""),
+            "in_onboarding": p.get("in_onboarding", True) is not False,
             "options": [o["title"] for o in p.get("options", [])],
             "note": p.get("note", ""),
         } for p in bp.get("onboarding_prompts", [])],
@@ -1044,6 +1054,10 @@ def validate(bp: dict) -> dict:
             warnings.append(
                 f"Prompt '{p['title']}' has one answer left, so there is "
                 f"nothing to choose between")
+        if p.get("in_onboarding") is False and p.get("required"):
+            warnings.append(
+                f"Prompt '{p['title']}' is marked required but is not in the "
+                f"join flow, so there is nothing for it to be required of")
         if not p.get("options"):
             errors.append(f"Question '{p['title']}' has no answers left")
         for o in p.get("options", []):
@@ -1734,7 +1748,10 @@ class Provisioner:
                 "options": options,
                 "single_select": bool(p.get("single_select", False)),
                 "required": bool(p.get("required", True)),
-                "in_onboarding": True,
+                # False puts the prompt in the Channels & Roles tab only,
+                # which is Discord's own permanent role picker. It needs no
+                # bot, so it keeps working when nothing of ours is running.
+                "in_onboarding": bool(p.get("in_onboarding", True)),
             })
 
         try:
