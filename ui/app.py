@@ -936,6 +936,46 @@ def audit(request: Request):
                        "purpose. It only means the blueprint and the server "
                        "have drifted, so a rebuild would put them back."})
 
+    # -- can a member give themselves a role ------------------------------
+    #
+    # The failure this exists for: #pick-your-roles had a pin telling people to
+    # open Channels & Roles, and Channels & Roles was not there. Nothing in
+    # Discord says onboarding is off. The entry is simply absent, and the pin
+    # is then pointing at nothing.
+    ob = core.read_onboarding(session["token"], guild_id)
+    role_name = {r["id"]: r["name"] for r in live["roles"]}
+    pings = sorted(n for n in roles if n.endswith("Alerts"))
+    if not ob["readable"]:
+        notes.append({
+            "what": "Could not read this server's onboarding",
+            "fix": "Usually a permissions problem. The bot needs Manage Server."})
+    elif not ob["enabled"]:
+        problems.append({
+            "what": "Server Onboarding is off, so there is no Channels & Roles "
+                    "entry at the top of the channel list and nobody can give "
+                    "themselves a role",
+            "fix": "Run step 5 again and read the log. Discord refuses "
+                   "onboarding unless Community mode is on and there are 7 or "
+                   "more starting channels with at least 5 of them fully open. "
+                   "You can also switch it on by hand: Server Settings, "
+                   "Onboarding, Enable Onboarding."})
+    else:
+        pickable = {role_name.get(i, i) for p in ob["prompts"] for i in p["roles"]}
+        good.append(
+            f"Channels & Roles is on, at the top of the channel list: "
+            f"{len(ob['prompts'])} question(s) handing out {len(pickable)} role(s)")
+        orphans = [n for n in pings if n not in pickable]
+        if orphans:
+            problems.append({
+                "what": f"{len(orphans)} ping role(s) exist that nobody can give "
+                        f"themselves: {', '.join(orphans)}",
+                "fix": "They are in no onboarding question, so only a moderator "
+                       "can hand them out. Add them to a question in step 4 and "
+                       "build again."})
+        elif pings:
+            good.append(f"All {len(pings)} ping roles can be picked up under "
+                        f"Channels & Roles")
+
     # -- levels ------------------------------------------------------------
     levels = load_active().get("levels") or {}
     if on["levels"] and levels.get("enabled", True):

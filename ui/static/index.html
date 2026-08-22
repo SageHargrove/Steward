@@ -38,7 +38,8 @@
     margin-top:16px; overflow:hidden}
   .step > .head{display:flex; align-items:center; gap:11px; padding:14px 18px}
   .step > .body{padding:0 18px 18px}
-  .step.locked{opacity:.4; pointer-events:none}
+  .step.locked{opacity:.55; pointer-events:none}
+  .step.locked .peek{color:var(--yellow)}
   /* Nine steps is a very long page, and somebody coming back needs three of
      them. Every section folds, and which ones are folded is remembered. */
   .step > .head{cursor:pointer; user-select:none}
@@ -463,7 +464,7 @@
 </section>
 
 <!-- 2. add the bot ------------------------------------------------------ -->
-<section class="step locked" id="s2">
+<section class="step locked" id="s2" data-locked="Paste your bot token in step 1 first">
   <div class="head"><div class="num"><span>2</span></div><h2>Add the bot to your server</h2><span class="peek">Authorize it into your server</span><span class="chev">&#9660;</span></div>
   <div class="body">
 
@@ -521,7 +522,7 @@
 </section>
 
 <!-- 3. pick server ------------------------------------------------------ -->
-<section class="step locked" id="s3">
+<section class="step locked" id="s3" data-locked="Add the bot to your server in step 2 first">
   <div class="head"><div class="num"><span>3</span></div><h2>Pick the server</h2><span class="peek">Choose which server to build</span><span class="chev">&#9660;</span></div>
   <div class="body">
     <div class="guilds" id="guilds"></div>
@@ -530,7 +531,7 @@
 </section>
 
 <!-- 4. customize -------------------------------------------------------- -->
-<section class="step locked" id="s4">
+<section class="step locked" id="s4" data-locked="Pick a server in step 3 first">
   <div class="head"><div class="num"><span>4</span></div><h2>Choose what to build</h2><span class="peek">Channels, roles, onboarding, levels</span>
     <div style="margin-left:auto" class="row">
       <select id="bpfile" style="width:auto" onchange="loadBlueprint()"></select>
@@ -568,7 +569,7 @@
 </section>
 
 <!-- 5. apply ------------------------------------------------------------ -->
-<section class="step locked" id="s5">
+<section class="step locked" id="s5" data-locked="Choose what to build in step 4 first">
   <div class="head"><div class="num"><span>5</span></div><h2>Build it</h2><span class="peek">Apply the blueprint to Discord</span><span class="chev">&#9660;</span></div>
   <div class="body">
     <div class="row">
@@ -583,7 +584,7 @@
 </section>
 
 <!-- 6. edit posted text ------------------------------------------------- -->
-<section class="step locked" id="s6">
+<section class="step locked" id="s6" data-locked="Needs a server. Reconnect in step 1: the token is held in memory only, so reopening this page loses it">
   <div class="head"><div class="num"><span>6</span></div><h2>Edit what the bot posted</h2><span class="peek">Rewrite the rules and welcome posts</span>
     <div style="margin-left:auto" class="row">
       <button class="ghost small" onclick="loadEdits()">Reload from disk</button>
@@ -778,7 +779,29 @@ function initFolding(){
 
 function esc(s){ return String(s??"").replace(/[&<>"]/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function unlock(id, on){ $(id).classList.toggle('locked', !on); }
+/* A locked step used to go grey and refuse clicks, saying nothing about why.
+   Somebody who reopened the page after building their server found step 6
+   dead with no explanation, because the token lives in this process's memory
+   and a restart loses it. The one-line summary next to the title is the right
+   place to say so, since it is the only text a folded step shows. */
+function unlock(id, on){
+  const el = $(id);
+  el.classList.toggle('locked', !on);
+  const peek = el.querySelector('.peek');
+  if(!peek) return;
+  if(!on){
+    if(peek.dataset.was === undefined) peek.dataset.was = peek.textContent;
+    peek.textContent = el.dataset.locked || 'Finish the step above first';
+  } else if(peek.dataset.was !== undefined){
+    peek.textContent = peek.dataset.was;
+  }
+}
+
+/* Nothing is connected at load, so every locked step should say why before
+   anybody clicks it rather than after. */
+function initLocks(){
+  document.querySelectorAll('.step.locked').forEach(el => unlock('#' + el.id, false));
+}
 function done(id, on){ $(id).classList.toggle('done', on); }
 
 /* A dead local server and a genuine error look identical to the browser: both
@@ -1859,8 +1882,13 @@ async function apply(dry){
         const n = data.problems.length;
         line('p', data.dry_run
           ? '\nDry run finished. Nothing was changed.'
-          : (n ? `\nFinished, with ${n} thing(s) worth reading above.`
+          : (n ? `\nFinished, and ${n} thing(s) did not work:`
                : '\nFinished. Open Discord and look at your server.'));
+        // Repeated here rather than left in the scrollback. A failed
+        // onboarding is the difference between members being able to pick
+        // their own roles and not, and a line saying to read above is not
+        // enough to make anybody scroll back up for it.
+        data.problems.forEach(p => line('w', '  - ' + p));
         if(!data.dry_run){ done('#s5', true); SEL.delete = {channels:[], roles:[]}; loadExisting(); }
       }
     }
@@ -2679,6 +2707,7 @@ function copyStep(i, btn){
   });
 }
 
+initLocks();
 initFolding();
 initBlueprints();
 loadFeatures();

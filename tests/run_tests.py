@@ -2091,6 +2091,60 @@ def _():
     assert "uvicorn.run" in src, "the tool does not serve the real page"
 
 
+@test("reading onboarding back tells a server that never had it from one with it off")
+def _():
+    """A server where onboarding was never configured and one where somebody
+    switched it off look the same from Discord: no Channels & Roles entry, no
+    message, nothing. Both mean nobody can pick a role, so both have to be
+    reported rather than assumed fine."""
+    from fake_discord import FakeDiscord, install as _install
+    fake = _install(core, FakeDiscord())
+    blank = core.read_onboarding("t", fake.guild_id)
+    assert blank["readable"] and blank["enabled"] is False and not blank["prompts"]
+
+    fake, _ = run(load())
+    live = core.read_onboarding("t", fake.guild_id)
+    assert live["enabled"] is True, "the build left onboarding switched off"
+    assert live["prompts"], "no questions, so no role picker"
+    granted = {r for p in live["prompts"] for r in p["roles"]}
+    assert granted, "the questions hand out no roles at all"
+
+
+@test("an unreadable onboarding is reported, not treated as healthy")
+def _():
+    from fake_discord import FakeDiscord, install as _install
+    fake = _install(core, FakeDiscord())
+    fake.fail_on[("GET", "/onboarding")] = 403
+    out = core.read_onboarding("t", fake.guild_id)
+    assert out["readable"] is False, "a refused read came back looking like an answer"
+
+
+@test("the health check looks at whether anybody can pick a role")
+def _():
+    """The pin in #pick-your-roles told people to open Channels & Roles while
+    Channels & Roles was not there. Discord gives no sign of that: the entry is
+    simply absent. Nothing checked it, so nothing said so."""
+    src = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    body = src[src.index("def audit("):src.index("def calendar_templates_api")]
+    assert "core.read_onboarding" in body, "the audit never reads onboarding back"
+    assert "Channels & Roles" in body, "it never says where members would look"
+    assert "Alerts" in body, "a ping role nobody can self-assign is not checked"
+
+
+@test("a locked step says why it is locked")
+def _():
+    """Locked steps went grey and refused clicks with no explanation. Step 6
+    reads as broken after a page restart, because the token is held in memory
+    and a restart loses it, which nothing on the page said."""
+    import re
+    page = (ROOT / "ui" / "static" / "index.html").read_text(encoding="utf-8")
+    locked = re.findall(r'<section class="step locked" id="(\w+)"([^>]*)>', page)
+    assert locked, "no locked steps found, so this check is watching nothing"
+    for sid, attrs in locked:
+        assert "data-locked=" in attrs, f"step {sid} locks with no reason given"
+    assert "initLocks()" in page, "the reasons are never shown at load"
+
+
 @test("the audit reads the server rather than describing it")
 def _():
     # Every other panel says what it would write. This is the only one that

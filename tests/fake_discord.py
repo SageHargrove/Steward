@@ -142,6 +142,11 @@ class FakeDiscord:
             return list(reversed(self.messages.get(cid, [])))    # newest first
         if path.endswith("/channels"):
             return self.channels
+        if path.endswith("/onboarding"):
+            # Never configured is not the same as configured and switched off,
+            # and the health check has to tell them apart.
+            return self.onboarding or {"enabled": False, "prompts": [],
+                                       "default_channel_ids": []}
         if "auto-moderation" in path:
             return self.automod
         return self.guild

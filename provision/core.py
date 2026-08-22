@@ -1290,6 +1290,36 @@ def read_guild(token: str, guild_id: str) -> dict:
     }
 
 
+def read_onboarding(token: str, guild_id: str) -> dict:
+    """What the server's onboarding actually says right now.
+
+    Worth reading back rather than assuming, because this is where a member
+    picks their own roles and there is no sign anywhere in Discord when it is
+    switched off. The Channels & Roles entry simply does not appear, and a
+    pinned post telling people to open it is then pointing at nothing.
+    """
+    c = Client(token, log=lambda *_: None)
+    try:
+        live = c.get(f"/guilds/{guild_id}/onboarding") or {}
+    except Failed:
+        return {"readable": False, "enabled": False, "prompts": []}
+    prompts = []
+    for p in live.get("prompts") or []:
+        prompts.append({
+            "title": p.get("title", ""),
+            "in_onboarding": p.get("in_onboarding", True) is not False,
+            "roles": sorted({r for o in (p.get("options") or [])
+                             for r in (o.get("role_ids") or [])}),
+            "options": len(p.get("options") or []),
+        })
+    return {
+        "readable": True,
+        "enabled": bool(live.get("enabled")),
+        "prompts": prompts,
+        "defaults": len(live.get("default_channel_ids") or []),
+    }
+
+
 def perms_to_int(names) -> int:
     total = 0
     for name in names or []:
