@@ -1,0 +1,25 @@
+name: tests
+
+# The suite Steward already has, run where a push can't dodge it. Windows is
+# the shipping platform, so the checks run there too — the ubuntu leg exists
+# because it's the fast signal, the windows leg because tzdata, paths and the
+# installer checks are exactly the things Linux CI would happily lie about.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r steward/requirements.txt -r ui/requirements.txt pillow
+      - run: python tests/run_tests.py
