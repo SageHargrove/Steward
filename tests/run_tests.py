@@ -3775,6 +3775,197 @@ def _():
         assert src != "..\\steward\\*", "steward\\* would package .env and the ledger"
 
 
+print("\nbot paths never run against a live guild")
+
+# The calendar end-to-end section drives draft and publish; these cover the
+# remaining bot code that had only ever executed on a real server: the mention
+# resolver's silent degrade, scheduled-event creation and its 100-event cap,
+# the approval view's gates, and the one branch of /playtest-issue where a
+# closed DM has to put the key back instead of burning it.
+
+
+class _Role:
+    def __init__(self, name):
+        self.name, self.mention = name, f"@{name}"
+
+
+class _EventGuild(_Guild):
+    def __init__(self, existing=0):
+        super().__init__()
+        self.existing, self.created = existing, []
+
+    async def fetch_scheduled_events(self):
+        return [object()] * self.existing
+
+    async def create_scheduled_event(self, **kw):
+        self.created.append(kw)
+
+
+@test("a calendar mention resolves to the role, or degrades to silence")
+def _():
+    async def go(b, g):
+        import discord as _d
+        g.roles = [_Role("playtester")]
+        text, allowed = b.client.mention_for(g, "everyone")
+        assert text == "@everyone" and allowed.everyone is True
+
+        text, allowed = b.client.mention_for(g, "playtester")
+        assert text == "@playtester", text
+        # AllowedMentions defaults are sentinels, so test the scope by content:
+        # exactly this role, nothing broader.
+        assert [r.name for r in allowed.roles] == ["playtester"], "role ping lost"
+        assert allowed.everyone is not True
+
+        # The degrade that only ever happened live: a calendar naming a role
+        # the server deleted posts anyway, with no ping and no crash.
+        text, allowed = b.client.mention_for(g, "vanished-role")
+        assert text == "" and not allowed.roles and allowed.everyone is False
+
+        text, allowed = b.client.mention_for(g, None)
+        assert text == ""
+    _drive(go)
+
+
+@test("a post's event is created with the window the calendar wrote")
+def _():
+    async def go(b, g):
+        from datetime import date as _dd, datetime as _dt, timedelta as _td, timezone as _tz
+        g = _EventGuild()
+        when = (_dt.now(_tz.utc) + _td(days=30)).date()
+        note = await b.client.make_event(
+            g, {"id": "demo", "event": {"name": "Demo day", "starts": "18:30",
+                                        "minutes": 90, "location": "Steam"}}, when)
+        assert "Demo day" in note, note
+        (kw,) = g.created
+        assert kw["name"] == "Demo day" and kw["location"] == "Steam"
+        assert (kw["end_time"] - kw["start_time"]) == _td(minutes=90)
+        assert kw["start_time"].hour == 18 and kw["start_time"].minute == 30
+
+        # A post with no event spec is a no-op, not an error.
+        assert await b.client.make_event(g, {"id": "plain"}, when) == ""
+    _drive(go)
+
+
+@test("at Discord's 100-event cap the note says so and nothing is created")
+def _():
+    async def go(b, g):
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        g = _EventGuild(existing=100)
+        when = (_dt.now(_tz.utc) + _td(days=3)).date()
+        note = await b.client.make_event(
+            g, {"id": "demo", "event": {"name": "Demo day"}}, when)
+        assert "100 limit" in note, note
+        assert g.created == [], "created an event past the cap"
+    _drive(go)
+
+
+@test("an event dated in the past slides forward instead of being refused")
+def _():
+    async def go(b, g):
+        from datetime import datetime as _dt, timezone as _tz
+        g = _EventGuild()
+        # Today with starts 00:00 is always in the past by post_hour.
+        await b.client.make_event(
+            g, {"id": "demo", "event": {"name": "Demo", "starts": "00:00"}},
+            _dt.now(_tz.utc).date())
+        (kw,) = g.created
+        assert kw["start_time"] > _dt.now(_tz.utc), "created an event in the past"
+    _drive(go)
+
+
+class _Perms:
+    def __init__(self, manage_guild):
+        self.manage_guild = manage_guild
+
+
+class _Response:
+    def __init__(self):
+        self.sent, self.deferred = [], False
+
+    async def send_message(self, content=None, **kw):
+        self.sent.append((content, kw))
+
+    async def defer(self, **kw):
+        self.deferred = True
+
+
+class _Inter:
+    def __init__(self, client, guild, *, manage_guild, message_id=1):
+        import types as _t
+        self.client, self.guild = client, guild
+        self.guild_id = guild.id
+        self.user = _t.SimpleNamespace(
+            id=7, mention="@staff", guild_permissions=_Perms(manage_guild))
+        self.message = _t.SimpleNamespace(id=message_id)
+        self.response = _Response()
+        self.followup = _t.SimpleNamespace(send=self.response.send_message)
+
+
+@test("approval buttons refuse anyone who cannot manage the server")
+def _():
+    async def go(b, g):
+        view = b.PostApproval()
+        inter = _Inter(b.client, g, manage_guild=False)
+        await view._decide(inter, True)
+        ((content, kw),) = inter.response.sent
+        assert "manage the server" in content and kw.get("ephemeral") is True
+        assert b.client.ledger.calendar_by_draft(g.id, 1) is None, "something was decided"
+    _drive(go)
+
+
+@test("a draft that was already decided says so instead of double-posting")
+def _():
+    async def go(b, g):
+        b.client.ledger.calendar_record(g.id, "launch-day", "2026-08-17",
+                                        "published", draft_id=5)
+        view = b.PostApproval()
+        inter = _Inter(b.client, g, manage_guild=True, message_id=5)
+        await view._decide(inter, True)
+        ((content, kw),) = inter.response.sent
+        assert "already been decided" in content and kw.get("ephemeral") is True
+    _drive(go)
+
+
+async def _noop_modlog(*a, **k):
+    pass
+
+
+@test("a closed DM puts the playtest key back instead of burning it")
+def _():
+    async def go(b, g):
+        import discord as _d
+        import types as _t
+
+        g.name = "Test Guild"
+        b.client.ledger.wave_open(g.id, "wave-1", 0)
+        b.client.ledger.add_keys(g.id, "wave-1", ["KEY-AAA"])
+
+        async def closed_dm(*a, **k):
+            raise _d.Forbidden(_t.SimpleNamespace(status=403, reason="Forbidden"),
+                               "Cannot send messages to this user")
+
+        shut_in = _t.SimpleNamespace(id=42, mention="@shut-in", send=closed_dm)
+        inter = _Inter(b.client, g, manage_guild=True)
+        await b.playtest_issue.callback(inter, "wave-1", shut_in)
+
+        ((content, kw),) = inter.response.sent
+        assert "DMs closed" in content and "back in the pool" in content, content
+        assert kw.get("ephemeral") is True
+
+        # The key must be issuable again — to someone whose DMs work.
+        sent_to = []
+
+        async def open_dm(text, **k):
+            sent_to.append(text)
+
+        b.client.mod_log = _noop_modlog
+        friendly = _t.SimpleNamespace(id=43, mention="@friendly", send=open_dm)
+        inter2 = _Inter(b.client, g, manage_guild=True)
+        await b.playtest_issue.callback(inter2, "wave-1", friendly)
+        assert sent_to and "KEY-AAA" in sent_to[0], "the returned key was not reissued"
+    _drive(go)
+
+
 # ---------------------------------------------------------------------------
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")

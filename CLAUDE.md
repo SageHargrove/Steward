@@ -17,7 +17,7 @@ list of files changed. The diff already says what changed.
 python tests\run_tests.py
 ```
 
-267 checks, no framework to install, a few seconds to run. Every one of them
+274 checks, no framework to install, a few seconds to run. Every one of them
 corresponds to something that broke or nearly broke against a live Discord
 server, so a failure is worth reading rather than deleting.
 

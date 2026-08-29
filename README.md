@@ -206,7 +206,7 @@ link once you paste a token. The CLI does the same job with flags.
 ```powershell
 python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
 python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
-python tests\run_tests.py                           # 267 checks, no framework
+python tests\run_tests.py                           # 274 checks, no framework
 ```
 
 ## State
@@ -684,7 +684,7 @@ python tests
 un_tests.py
 ```
 
-267 checks, no test framework to install. `tests/fake_discord.py` stands in for
+274 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.
