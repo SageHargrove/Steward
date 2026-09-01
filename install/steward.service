@@ -1,0 +1,22 @@
+# Steward as a systemd service, for hosting the bot on a Linux server
+# instead of leaving a PC on. SERVER.md at the repo root is the runbook;
+# fix the three /home/ubuntu paths below if your user or clone differ.
+#
+# The working directory must be the steward/ package dir: bot.py loads its
+# .env from beside itself, but the database default (data/steward.sqlite3)
+# is relative to the directory the process runs in.
+
+[Unit]
+Description=Steward Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/steward-app/steward
+ExecStart=/home/ubuntu/steward-app/.venv/bin/python -u bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

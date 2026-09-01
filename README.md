@@ -30,6 +30,9 @@ Deleting the folder removes it completely.
 **Linux and macOS, or if you already have Python:** clone the repository and
 run `./start.sh` or `START.bat`.
 
+**On a server, so it runs while your PC is off:** [SERVER.md](SERVER.md) — a
+venv, one `.env` line, and a systemd unit. Run the bot in exactly one place.
+
 ---
 
 ## What it looks like
