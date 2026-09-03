@@ -65,7 +65,7 @@ def _():
 @test("has the shape the docs claim")
 def _():
     s = core.validate(load())["summary"]
-    assert s["channels"] == 20, s
+    assert s["channels"] == 21, s
     assert s["categories"] == 7, s
     assert s["community"] is True
     assert s["defaults"] >= 7 and s["defaults_open"] >= 5, s

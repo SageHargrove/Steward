@@ -108,7 +108,7 @@ posts:
 
   - id: compatibility-post
     when: T+7
-    channel: start-here
+    channel: welcome
     title: "What {{game}} works with"
     body: |
       A running list of what {{game}} is compatible with, what it conflicts

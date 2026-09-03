@@ -162,7 +162,7 @@ Discord requires **at least 7 default channels, of which at least 5 must allow
 `@everyone` to both view and send.** Below either number the request is
 rejected.
 
-    start-here  rules  announcements       (readable, not writable)
+    welcome  rules  announcements       (readable, not writable)
     general  screenshots  strategy  looking-for-group  off-topic   (fully open)
 
 Eight defaults, five fully open. There is one channel of headroom on each

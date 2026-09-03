@@ -189,14 +189,14 @@ space automates it either.
 1. **Rules Screening.** Server Settings, Safety Setup, Rules Screening.
    Paste the rules (max 16). Draft below in section 7.
 2. **Server Guide.** Server Settings, Onboarding, Server Guide tab. Add
-   `#start-here`, `#announcements`, `#bug-reports` as resource pages with a
+   `#welcome`, `#announcements`, `#bug-reports` as resource pages with a
    line each. This is the panel new members see first.
 3. **Raid Protection.** Server Settings, Safety Setup, Raid Protection ON.
    ML join-spike detection that CAPTCHAs new joiners for an hour when it
    fires. Turn it on now, not after your first raid.
 4. **Server icon.** Either upload by hand or pass `--icon path\to\icon.png`
    to the provisioner.
-5. **Post the pinned content** in `#start-here`. Nothing else in the server
+5. **Post the pinned content** in `#welcome`. Nothing else in the server
    works if that channel is empty.
 
 ---

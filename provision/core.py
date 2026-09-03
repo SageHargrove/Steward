@@ -1570,16 +1570,27 @@ class Provisioner:
                     body[key] = spec[key]
         if "default_auto_archive_duration" in spec:
             body["default_auto_archive_duration"] = spec["default_auto_archive_duration"]
+        # Slow mode, in seconds (Discord caps it at six hours).
+        if spec.get("rate_limit_per_user") and ctype not in ("voice", "category"):
+            body["rate_limit_per_user"] = max(0, min(21600, int(spec["rate_limit_per_user"])))
         return body
 
     def _upsert(self, spec, existing, parent_id=None, position=None, indent="  "):
         name = spec["name"]
         body = self._channel_body(spec, parent_id, position)
-        if name in existing:
-            cid = existing[name]["id"]
+        # A channel the blueprint has since renamed is found under its old
+        # name and renamed in place, so the messages and pins it holds
+        # survive. Without this a rename in the blueprint meant a second
+        # channel on every server built before it, and the old one left
+        # behind full of history nobody wanted to delete.
+        former = next((old for old in spec.get("previously", []) or []
+                       if old in existing and name not in existing), None)
+        if name in existing or former:
+            found = existing[name] if name in existing else existing[former]
+            cid = found["id"]
             patch = {k: v for k, v in body.items() if k != "type"}   # type is immutable
             self.c.patch(f"/channels/{cid}", patch)
-            self.log(f"{indent}= {name}")
+            self.log(f"{indent}~ {former} -> {name}" if former else f"{indent}= {name}")
         else:
             created = self.c.post(f"/guilds/{self.gid}/channels", body)
             cid = created.get("id", f"<new:{name}>")

@@ -76,7 +76,7 @@ channel exists. Re-running edits what is there rather than duplicating it.
 
 ### It writes the words, and you rewrite them here
 
-A real 16-rule document and a start-here post, posted and pinned. Discord will
+A real 16-rule document and a welcome post, posted and pinned. Discord will
 not let you edit a message the bot wrote, so they are edited here instead, and
 saving rewrites the message already in Discord rather than posting a second one.
 
@@ -124,7 +124,7 @@ about half of that; this does not. Re-running edits what is there rather than
 duplicating it, so changing your mind is the normal path and not a recovery.
 
 **Writes the words.** A real 16-rule document with an enforcement ladder, and a
-start-here post. Posted and pinned for you, editable in the page afterwards,
+welcome post. Posted and pinned for you, editable in the page afterwards,
 and it rewrites the message already in Discord rather than posting a second one.
 
 **Remembers what happened.** Discord has no per-member last-active field, so
@@ -408,7 +408,7 @@ tool posts and pins them:
 ```
 blueprint/content/rules.md        16 rules, an enforcement ladder, and the
                                   list of things that skip it
-blueprint/content/start-here.md   what this is, where things happen, which
+blueprint/content/welcome.md      what this is, where things happen, which
                                   roles to pick up, what the ledger records
 ```
 

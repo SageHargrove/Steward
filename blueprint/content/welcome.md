@@ -1,5 +1,5 @@
 <!--
-  Posted into #start-here by the provisioner and pinned. Edit and re-run.
+  Posted into #welcome by the provisioner and pinned. Edit and re-run.
   A line containing only the split marker starts a new Discord message.
 
   {{game}} and {{tagline}} come from the variables block in the blueprint, so
@@ -20,7 +20,7 @@ This server is where the people climbing it talk, and where the game gets made i
 **Do these three things**
 **1.** Read #rules. The short version is: be decent to people.
 **2.** Pick your pings under **Channels & Roles**, at the very top of the channel list. Nothing there is compulsory and you can change it whenever you like.
-**3.** Say hello in #general.
+**3.** Post once in #introductions, then say hello in #general.
 
 **Free gems before you go anywhere else**
 #codes has every working code and every dead one, so check there before asking. To redeem, tap **OPTIONS** in game, scroll to the bottom, and type it into **REDEEM A CODE**.

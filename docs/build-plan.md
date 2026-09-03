@@ -110,7 +110,7 @@ It unlocks Announcement channels, Forum channels, Onboarding, Server Guide, Rule
 Onboarding requires **≥7 default channels, of which ≥5 must allow @everyone to view *and* send.** Design around that constraint.
 
 **INFO**
-- `#start-here` — Server Guide resource. Read-only.
+- `#welcome` — Server Guide resource. Read-only.
 - `#rules` — Rules Screening, max 16 rules.
 - `#announcements` — **Announcement channel.** Other servers can Follow it. Publishes are capped at 10/hour, and `@everyone`/`@here` get stripped when propagating to followers.
 - `#patch-notes` — Announcement channel. Separate from announcements on purpose; people who want builds don't want events.
