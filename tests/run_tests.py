@@ -65,7 +65,7 @@ def _():
 @test("has the shape the docs claim")
 def _():
     s = core.validate(load())["summary"]
-    assert s["channels"] == 21, s
+    assert s["channels"] == 24, s
     assert s["categories"] == 7, s
     assert s["community"] is True
     assert s["defaults"] >= 7 and s["defaults_open"] >= 5, s
@@ -663,6 +663,67 @@ def _():
     # Every pinned message is rewritten, and so is each forum starter post,
     # whose opening message shares its thread id.
     assert len(edits) >= first_count, f"expected at least {first_count} edits, got {len(edits)}"
+
+
+@test("a re-run leaves the bot's own non-content posts alone")
+def _():
+    """The weekly digest, the status embed and calendar drafts are posted by
+    the same bot user as the pinned content. Matching on author and deleting
+    the surplus deleted them too, and a deleted draft sat in "waiting on you"
+    forever. Only ids this tool recorded when it posted are ever touched."""
+    import json as _json
+    bp = load()
+    base = Path(bp["_base_dir"])
+    fake, prov = run(bp, content_dir=base)
+    record = base / core.CONTENT_IDS_FILE
+    try:
+        assert record.exists(), "content message ids were not recorded"
+        ids = _json.loads(record.read_text(encoding="utf-8"))
+        assert ids.get("rules"), ids
+        rules = fake.channel_named("rules")["id"]
+        before = len(fake.messages[rules])
+        # The bot itself now posts a digest into the same channel.
+        fake.messages[rules].append(
+            {"id": "777", "content": "weekly digest", "author": {"id": "4242"}})
+        # And one recorded content message is stale: the file shrank.
+        stale = {"id": "778", "content": "old section", "author": {"id": "4242"}}
+        fake.messages[rules].append(stale)
+        ids["rules"].append("778")
+        record.write_text(_json.dumps(ids), encoding="utf-8")
+
+        fake.calls.clear()
+        run(bp, fake=fake, content_dir=base)
+        left = {m["id"] for m in fake.messages[rules]}
+        deleted = [p for m, p, _ in fake.calls if m == "DELETE" and "/messages/" in p]
+        assert "777" in left, "the digest was deleted by a content re-run"
+        assert not any(p.endswith("/777") for p in deleted), deleted
+        assert any(p.endswith("/778") for p in deleted), (
+            f"the stale recorded message was kept: {deleted}")
+        assert len(fake.messages[rules]) == before + 1, fake.messages[rules]
+    finally:
+        record.unlink(missing_ok=True)
+
+
+@test("without a record, a server built by an older version is updated but never pruned")
+def _():
+    bp = load()
+    base = Path(bp["_base_dir"])
+    fake, _ = run(bp, content_dir=base)
+    record = base / core.CONTENT_IDS_FILE
+    record.unlink(missing_ok=True)           # as if this tool never recorded
+    rules = fake.channel_named("rules")["id"]
+    fake.messages[rules].append(
+        {"id": "779", "content": "status embed", "author": {"id": "4242"}})
+    fake.calls.clear()
+    try:
+        run(bp, fake=fake, content_dir=base)
+        deleted = [p for m, p, _ in fake.calls if m == "DELETE" and "/messages/" in p]
+        edits = [p for m, p, _ in fake.calls if m == "PATCH" and "/messages/" in p]
+        assert not deleted, deleted
+        assert edits, "existing content was not updated"
+        assert any(m["id"] == "779" for m in fake.messages[rules])
+    finally:
+        record.unlink(missing_ok=True)
 
 
 @test("an oversized section is refused before anything is sent")
@@ -3966,7 +4027,35 @@ def _():
     _drive(go)
 
 
+@test("the bot reads the blueprint the setup page deploys, not the base file")
+def _():
+    """The setup page builds whichever file claims meta.default; the bot's
+    level rewards and attribution roles must come from that same file."""
+    import os
+    saved = os.environ.pop("STEWARD_BLUEPRINT", None)
+    try:
+        b = _bot(Path(tempfile.mkdtemp()) / "t.sqlite3")
+        chosen = Path(b.find_blueprint())
+        claimants = sorted(
+            f.name for f in (ROOT / "blueprint").glob("*.yaml")
+            if (core.load(str(f)).get("meta") or {}).get("default"))
+        assert claimants, "no blueprint claims meta.default"
+        assert chosen.name in claimants, (chosen.name, claimants)
+        assert chosen.name != "default.yaml" or claimants == ["default.yaml"], (
+            f"bot fell back to default.yaml although {claimants} claim default")
+        # And the resolved blueprint carries the extends: chain.
+        bp = b.read_blueprint(str(chosen))
+        assert bp.get("categories"), "blueprint came back without categories"
+    finally:
+        if saved is not None:
+            os.environ["STEWARD_BLUEPRINT"] = saved
+
+
 # ---------------------------------------------------------------------------
+# Content tests run the provisioner against the real blueprint folder, so the
+# message-id record they leave there is the fake's, not a server's.
+(ROOT / "blueprint" / core.CONTENT_IDS_FILE).unlink(missing_ok=True)
+
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 if FAIL:

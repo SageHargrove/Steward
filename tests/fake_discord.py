@@ -108,6 +108,10 @@ class FakeDiscord:
             return _Resp(200, self._write(method, path, body))
         if method == "DELETE":
             self.deleted.append(path)
+            if "/messages/" in path:
+                cid, mid = path.split("/")[2], path.split("/")[4]
+                self.messages[cid] = [m for m in self.messages.get(cid, [])
+                                      if m["id"] != mid]
             return _Resp(204, None)
         return _Resp(200, {})
 

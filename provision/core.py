@@ -447,6 +447,7 @@ def substitute(bp: dict, values: dict) -> dict:
 # closed its own comment early and leaked the rest of the note into the
 # channel. A marker that cannot appear inside a comment cannot do that.
 SPLIT_MARKER = "%%SPLIT%%"
+CONTENT_IDS_FILE = "content-messages.json"   # beside the blueprint, gitignored
 
 
 def substitute_text(text: str, values: dict) -> str:
@@ -1362,6 +1363,11 @@ class Provisioner:
         self.dry = client.dry_run
         self.problems: list[str] = []
         self.invite_url_made: str | None = None
+        # Message ids of the content posts this tool made, per channel name,
+        # persisted beside the blueprint so a re-run edits and prunes only
+        # what it posted itself (see sync_content).
+        self._content_ids: dict[str, list[str]] = {}
+        self._content_path: Path | None = None
 
     def _warn(self, msg):
         self.problems.append(msg)
@@ -1873,6 +1879,25 @@ class Provisioner:
 
     # -- channel content --------------------------------------------------
 
+    def _load_content_ids(self, path: Path):
+        self._content_path = path
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        self._content_ids = {str(k): [str(i) for i in v]
+                             for k, v in data.items() if isinstance(v, list)}
+
+    def _save_content_ids(self):
+        if self.dry or not self._content_path:
+            return
+        try:
+            self._content_path.write_text(
+                json.dumps(self._content_ids, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+        except OSError as e:
+            self._warn(f"could not record content message ids: {e}")
+
     def sync_content(self, base_dir: Path):
         """Post the pinned welcome and rules text into their channels.
 
@@ -1887,6 +1912,7 @@ class Provisioner:
         if not jobs:
             return
         self.log("\nChannel content")
+        self._load_content_ids(Path(base_dir) / CONTENT_IDS_FILE)
 
         try:
             me = self.c.get("/users/@me")["id"]
@@ -1928,7 +1954,23 @@ class Provisioner:
                 existing = self.c.get(f"/channels/{cid}/messages?limit=100")
             except Failed:
                 existing = []
-            mine = [m for m in reversed(existing) if m.get("author", {}).get("id") == me]
+            # Which messages are the pinned content, as opposed to anything
+            # else this same bot user posts in the channel — the weekly digest,
+            # the status embed, a calendar draft. Treating every bot message as
+            # "mine" and deleting the surplus deleted those too, and a deleted
+            # draft sat in "waiting on you" forever. The ids of content posts
+            # are recorded, so only recorded ids are ever patched or deleted;
+            # on a server built before the record existed, the old author-based
+            # match is used to *find* messages to update, but nothing is deleted.
+            recorded = [i for i in self._content_ids.get(ch["name"], [])
+                        if any(m.get("id") == i for m in existing)]
+            by_author = [m for m in reversed(existing)
+                         if m.get("author", {}).get("id") == me]
+            if recorded:
+                mine = [m for i in recorded for m in existing if m.get("id") == i]
+            else:
+                mine = by_author
+            may_delete = bool(recorded)
 
             posted = []
             for i, payload in enumerate(payloads):
@@ -1948,11 +1990,14 @@ class Provisioner:
                 except Failed as e:
                     self._warn(f"{ch['name']}: could not write message {i + 1}: {str(e)[:120]}")
 
-            for surplus in mine[len(payloads):]:
-                try:
-                    self.c.request("DELETE", f"/channels/{cid}/messages/{surplus['id']}")
-                except Failed:
-                    pass
+            if may_delete:
+                for surplus in mine[len(payloads):]:
+                    try:
+                        self.c.request("DELETE", f"/channels/{cid}/messages/{surplus['id']}")
+                    except Failed:
+                        pass
+            self._content_ids[ch["name"]] = [i for i in posted if i]
+            self._save_content_ids()
 
             if ch.get("pin") and posted and posted[0]:
                 try:

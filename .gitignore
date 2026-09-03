@@ -30,3 +30,4 @@ dist/
 blueprint/calendars/*.local.yaml
 blueprint/variables.local.yaml
 blueprint/content-calendar.local.yaml
+blueprint/content-messages.json

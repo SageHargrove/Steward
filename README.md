@@ -209,14 +209,14 @@ link once you paste a token. The CLI does the same job with flags.
 ```powershell
 python tools\build_dist.py --clean --zip            # just the download, 29 MB zipped
 python tools\release.py 0.4.1 --notes "..." --build  # bump, tag, push, publish, attach
-python tests\run_tests.py                           # 274 checks, no framework
+python tests\run_tests.py                           # 277 checks, no framework
 ```
 
 ## State
 
 | | |
 |---|---|
-| Blueprint | validates clean: 24 roles, 20 channels, 7 categories, 5 AutoMod rules, 3 onboarding prompts |
+| Blueprint | validates clean: 24 roles, 24 channels, 7 categories, 5 AutoMod rules, 3 onboarding prompts |
 | Core | verified against a stubbed Discord API: phase ordering, idempotency (second run makes 0 creates, 45 updates), dry-run writes nothing |
 | UI | boots and serves; connect / invite / refresh / customize / apply / cleanup all exercised against a stubbed API |
 | Ledger | logic smoke-tested against a temp database |
@@ -414,9 +414,16 @@ blueprint/content/welcome.md      what this is, where things happen, which
 
 Edit the markdown and re-run; it edits the messages already there rather than
 posting duplicates, and deletes any it previously posted that the file no
-longer contains. A line containing only `<!-- split -->` starts a new Discord
+longer contains. A line containing only `%%SPLIT%%` starts a new Discord
 message, because Discord caps a message at 2000 characters and the provisioner
 refuses to send anything longer. `{{game}}` works inside these files too.
+
+The ids of the messages it posted are recorded in
+`blueprint/content-messages.json` (gitignored), and only those are ever
+edited or deleted. The weekly digest, the status embed and calendar drafts
+come from the same bot user, and a re-run must leave them alone. A server
+built before that record existed is still updated in place; nothing on it is
+deleted until the record catches up.
 
 It also sets the welcome screen, points Discord's join notices at `#general`,
 silences the setup-tip nagging, sets an AFK channel and turns on the boost
@@ -687,7 +694,7 @@ python tests
 un_tests.py
 ```
 
-274 checks, no test framework to install. `tests/fake_discord.py` stands in for
+277 checks, no test framework to install. `tests/fake_discord.py` stands in for
 the REST API and records every call, so the suite can assert on ordering as
 well as on the result. The web-layer tests boot the real server on a spare port
 and drive it over HTTP rather than mocking it.

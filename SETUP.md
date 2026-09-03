@@ -177,7 +177,7 @@ over.
 ### Verify
 
 Server Settings should now show: Community enabled, Onboarding with 3
-questions, AutoMod with 5 rules, and 21 channels across 7 categories.
+questions, AutoMod with 5 rules, and 24 channels across 7 categories.
 
 ---
 

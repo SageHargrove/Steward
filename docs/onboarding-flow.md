@@ -165,7 +165,7 @@ rejected.
     welcome  rules  announcements       (readable, not writable)
     general  screenshots  strategy  looking-for-group  off-topic   (fully open)
 
-Eight defaults, five fully open. There is one channel of headroom on each
+Nine defaults, six fully open. There is one channel of headroom on each
 count, which is deliberate: removing a channel in the setup page should not
 silently break onboarding, and the live validation catches it before anything
 is sent if it would.

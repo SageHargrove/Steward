@@ -48,18 +48,70 @@ DB_PATH = os.environ.get("STEWARD_DB", "data/steward.sqlite3")
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "400"))
 REPORT_CHANNEL = os.environ.get("REPORT_CHANNEL", "steward-reports")
 MOD_CHANNEL = os.environ.get("MOD_CHANNEL", "mod-log")
+
+
+def _blueprint_core():
+    """The provisioner's loader, so the bot resolves `extends:` and picks the
+    same file the setup page builds from. Imported lazily: the bot must still
+    start when provision/ is absent (a trimmed deploy), just with defaults."""
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(here)
+    if repo not in sys.path:
+        sys.path.insert(0, repo)
+    try:
+        from provision import core                           # noqa: PLC0415
+    except Exception:                                        # noqa: BLE001
+        return None
+    return core
+
+
+def _blueprint_dir() -> str:
+    for guess in ("../blueprint", "blueprint"):
+        if os.path.isdir(guess):
+            return guess
+    return "../blueprint"
+
+
 def find_blueprint() -> str:
-    """Where the blueprint is. Falls back to whatever is in the folder, so
-    renaming or replacing it does not silently switch levels off."""
+    """Where the blueprint is.
+
+    The setup page builds the server from whichever file claims
+    `meta.default: true`, and the bot has to read that same file or its level
+    rewards and attribution roles describe a server that was never built. The
+    base default.yaml is only the answer when nothing claims the job.
+    """
     named = os.environ.get("STEWARD_BLUEPRINT")
     if named and os.path.exists(named):
         return named
-    for guess in ("../blueprint/default.yaml", "blueprint/default.yaml"):
-        if os.path.exists(guess):
-            return guess
+    folder = _blueprint_dir()
+    core = _blueprint_core()
+    if core is not None:
+        import glob
+        for candidate in sorted(glob.glob(os.path.join(folder, "*.yaml"))):
+            try:
+                bp = core.load(candidate)
+            except Exception:                                # noqa: BLE001
+                continue
+            if (bp.get("meta") or {}).get("default"):
+                return candidate
+    fallback = os.path.join(folder, "default.yaml")
+    if os.path.exists(fallback):
+        return fallback
     import glob
-    found = sorted(glob.glob("../blueprint/*.yaml")) or sorted(glob.glob("blueprint/*.yaml"))
-    return found[0] if found else (named or "../blueprint/default.yaml")
+    found = sorted(glob.glob(os.path.join(folder, "*.yaml")))
+    return found[0] if found else (named or fallback)
+
+
+def _load_resolved(path: str) -> dict:
+    """The blueprint with `extends:` applied, or the raw file if the
+    provisioner's loader is unavailable."""
+    core = _blueprint_core()
+    if core is not None:
+        return core.load(path)
+    import yaml
+    with open(path, encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
 
 
 BLUEPRINT = find_blueprint()
@@ -154,8 +206,7 @@ def read_blueprint(path: str) -> dict:
     """
     try:
         import yaml
-        with open(path, encoding="utf-8") as fh:
-            bp = yaml.safe_load(fh) or {}
+        bp = _load_resolved(path)
         local = os.path.join(os.path.dirname(path) or ".", "variables.local.yaml")
         if os.path.exists(local):
             with open(local, encoding="utf-8") as fh:
@@ -181,9 +232,7 @@ def ephemeral_roles(path: str) -> dict[str, str]:
     answer belongs in the ledger, not on somebody's profile.
     """
     try:
-        import yaml
-        with open(path, encoding="utf-8") as fh:
-            bp = yaml.safe_load(fh)
+        bp = _load_resolved(path)
     except FileNotFoundError:
         log.warning("no blueprint at %s, so attribution roles will not be stripped", path)
         return {}
